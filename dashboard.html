@@ -161,6 +161,11 @@
     border:1px solid var(--line);
     border-radius:16px;
     padding:14px;
+    transition:border-color 0.3s ease, box-shadow 0.3s ease;
+  }
+  .order-card.highlighted{
+    border-color:var(--gold);
+    box-shadow: 0 0 15px rgba(254, 79, 0, 0.35);
   }
   .order-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
   .order-id{font-family:'Cairo';font-weight:800;font-size:14.5px;color:var(--gold-soft);}
@@ -364,13 +369,55 @@
     try{ localStorage.setItem('onesignal_app_id', id); }catch(e){}
   }
 
+  function checkAndOpenTargetOrder(){
+    const hash = window.location.hash.replace(/^#/, '').trim();
+    const params = new URLSearchParams(window.location.search);
+    const target = hash || params.get('order') || params.get('order_id') || params.get('order_serial');
+    if(!target) return;
+
+    // First reset search and filter to 'all' so the order is visible
+    const targetStr = decodeURIComponent(target).trim();
+    
+    // Find matching order in full list
+    const found = allOrders.find(o => 
+      String(o['Order Serial'] || '').trim().toLowerCase() === targetStr.toLowerCase() ||
+      String(o['order ID'] || '').trim().toLowerCase() === targetStr.toLowerCase()
+    );
+
+    if(found){
+      // Clear filters so target is in view
+      activeShip = 'all';
+      activePay = 'all';
+      searchTerm = '';
+      if($('searchInput')) $('searchInput').value = '';
+      buildPills();
+      
+      // Move target order to top of list
+      filteredOrders = [found, ...allOrders.filter(o => o !== found)];
+      shownCount = 0;
+      $('list').innerHTML = '';
+      renderMore();
+
+      // Open target card and highlight
+      const card = document.getElementById('order-' + (found['Order Serial'] || ''));
+      if(card){
+        const panel = card.querySelector('[data-panel]');
+        const btn = card.querySelector('[data-toggle]');
+        if(panel && !panel.classList.contains('open')){
+          panel.classList.add('open');
+          if(btn) btn.textContent = 'Hide details';
+        }
+        card.classList.add('highlighted');
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }
+
   window.OneSignalDeferred = window.OneSignalDeferred || [];
   let oneSignalInitialized = false;
   function initOneSignal(appId){
     if(!appId || oneSignalInitialized) return;
     oneSignalInitialized = true;
-    // site scope: everything after the domain, up to the folder this page lives in
-    // e.g. https://user.github.io/UVA/dashboard.html -> scope "/UVA/"
     const scope = location.pathname.replace(/[^/]*$/, '');
     window.OneSignalDeferred.push(async function(OneSignal){
       try{
@@ -382,6 +429,20 @@
         });
         updateBellState(OneSignal);
         OneSignal.User.PushSubscription.addEventListener('change', ()=> updateBellState(OneSignal));
+
+        // When user clicks a notification while dashboard is open / foreground
+        OneSignal.Notifications.addEventListener('click', (event) => {
+          try {
+            const url = event.notification.launchURL;
+            if(url){
+              const urlObj = new URL(url, window.location.href);
+              if(urlObj.hash){
+                window.location.hash = urlObj.hash;
+              }
+              checkAndOpenTargetOrder();
+            }
+          } catch(e) {}
+        });
       }catch(err){
         $('pushDebug').textContent = 'Init error: ' + err;
       }
@@ -488,6 +549,8 @@
 
   $('refreshBtn').addEventListener('click', ()=> fetchOrders());
 
+  window.addEventListener('hashchange', checkAndOpenTargetOrder);
+
   async function fetchOrders(){
     $('statusDot').classList.add('stale');
     $('loadingSpinner').style.display = 'block';
@@ -508,6 +571,7 @@
       renderStats();
       buildPills();
       applyFilters();
+      checkAndOpenTargetOrder();
       return true;
     }catch(err){
       $('setup-error').textContent = 'Could not reach that URL. Make sure the deployment access is set to "Anyone", executing as "Me". (' + err + ')';
@@ -547,8 +611,6 @@
   function buildPills(){
     const shipCounts = {};
     allOrders.forEach(o=>{ const k=o.shipping_status||''; shipCounts[k]=(shipCounts[k]||0)+1; });
-    // primary filter: always show every known shipping status (even 0 count),
-    // plus any unexpected values found in the sheet that aren't in the fixed list
     const extraKeys = Object.keys(shipCounts).filter(k=> k!=='' && !SHIP_STATUSES.includes(k));
     const shipKeys = [...SHIP_STATUSES, ...extraKeys];
     $('shipPills').innerHTML = ['all', ...shipKeys].map(k=>{
@@ -627,8 +689,9 @@
     const total = o.total ? (parseFloat(o.total)||o.total) + ' EGP' : '—';
     const city = [o.Gov, o.city].filter(Boolean).join(' - ');
     const hasOrderId = o['order ID'] !== undefined && o['order ID'] !== null && o['order ID'] !== '';
+    const serial = o['Order Serial'] || '';
     return `
-    <div class="order-card" data-row="${o._row}">
+    <div class="order-card" id="order-${escapeAttr(serial)}" data-row="${o._row}">
       <div class="order-top">
         <div>
           <div class="order-id display">${escapeHtml(pkLabel(o))}</div>
