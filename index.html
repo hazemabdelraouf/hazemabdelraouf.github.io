@@ -952,24 +952,31 @@
   }
 
   $('connectBtn').addEventListener('click', async ()=>{
-    const url = $('urlInput').value.trim();
+    let url = $('urlInput').value.trim().replace(/^["']|["']$/g, '');
     $('setup-error').textContent = '';
     if(!url.startsWith('https://script.google.com/')){
       $('setup-error').textContent = 'The URL should start with https://script.google.com/ — check the deploy steps above.';
       return;
     }
     API_URL = url;
+    $('connectBtn').disabled = true;
     $('connectBtn').textContent = 'Connecting...';
-    const ok = await fetchOrders();
-    $('connectBtn').textContent = 'Connect & Load Orders';
-    if(ok){
-      saveStorageUrl(url);
-      const osId = $('oneSignalInput').value.trim();
-      if(osId){
-        saveOneSignalId(osId);
-        initOneSignal(osId);
+    try {
+      const ok = await fetchOrders();
+      if(ok){
+        saveStorageUrl(url);
+        const osId = $('oneSignalInput').value.trim();
+        if(osId){
+          saveOneSignalId(osId);
+          initOneSignal(osId);
+        }
+        showApp();
       }
-      showApp();
+    } catch(err) {
+      $('setup-error').textContent = 'Connection error: ' + err.message;
+    } finally {
+      $('connectBtn').disabled = false;
+      $('connectBtn').textContent = 'Connect & Load Orders';
     }
   });
 
@@ -984,19 +991,28 @@
 
   async function fetchOrders(){
     $('statusDot').classList.add('stale');
-    $('loadingSpinner').style.display = 'block';
-    $('list').innerHTML = '';
+    if($('loadingSpinner')) $('loadingSpinner').style.display = 'block';
+    if($('list')) $('list').innerHTML = '';
     try{
       const sep = API_URL.includes('?') ? '&' : '?';
-      const res = await fetch(API_URL + sep + 'action=list');
+      const res = await fetch(API_URL + sep + 'action=list', {
+        method: 'GET',
+        redirect: 'follow'
+      });
+      
+      if (!res.ok) {
+        throw new Error('HTTP status ' + res.status);
+      }
+      
       const data = await res.json();
       if(data.error){
         $('setup-error').textContent = 'Sheet error: ' + data.error;
-        $('loadingSpinner').style.display = 'none';
+        if($('loadingSpinner')) $('loadingSpinner').style.display = 'none';
         return false;
       }
-      allOrders = data.orders || [];
-      headers = data.headers || [];
+      
+      allOrders = Array.isArray(data.orders) ? data.orders : [];
+      headers = Array.isArray(data.headers) ? data.headers : [];
 
       // Sort from newest to oldest by Order Serial (descending)
       allOrders.sort((a, b) => {
@@ -1013,8 +1029,9 @@
       checkAndOpenTargetOrder();
       return true;
     }catch(err){
-      $('setup-error').textContent = 'Could not reach that URL. Make sure the deployment access is set to "Anyone", executing as "Me". (' + err + ')';
-      $('loadingSpinner').style.display = 'none';
+      console.error('fetchOrders error:', err);
+      $('setup-error').textContent = 'Could not reach Google Sheet URL (' + err.message + '). Check: 1) Deploy -> Access: Anyone. 2) URL is correct.';
+      if($('loadingSpinner')) $('loadingSpinner').style.display = 'none';
       return false;
     }
   }
