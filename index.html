@@ -521,7 +521,15 @@
 (function(){
   const MAKE_WEBHOOK_URL = 'https://hook.eu1.make.com/cbsn3w2zotz94kq1kw5w988o34al5874';
 
-  const SHIP_STATUSES = ['delivered','request needed','wuilt','pending pickup','in transit','out for delivery','rescheduled','cancelled','returned'];
+  const ORDERED_PRIMARY_SHIP_STATUSES = [
+    'request needed',
+    'pending pickup',
+    'rescheduled',
+    'in transit',
+    'out for delivery',
+    'delivered'
+  ];
+
   const SHIP_LABELS = {
     'delivered':'Delivered','request needed':'Request needed','wuilt':'Wuilt',
     'cancelled':'Cancelled','returned':'Returned','pending pickup':'Pending pickup',
@@ -775,7 +783,7 @@
       if('serviceWorker' in navigator){
         const regs = await navigator.serviceWorker.getRegistrations();
         lines.push('Service workers registered: ' + regs.length);
-        regs.forEach(r=> lines.push('  scope: ' + r.scope + (r.active ? ' (active)' : ' (not active)')));
+        regs.forEach(r=> lines.push('  scope: ' + r.scope + (r.active ? ' (not active)')));
       } else {
         lines.push('Service workers: unsupported in this browser');
       }
@@ -980,7 +988,15 @@
       }
       allOrders = data.orders || [];
       headers = data.headers || [];
-      allOrders.sort((a,b)=> new Date(b['Updated']||0) - new Date(a['Updated']||0));
+
+      // Sort from newest to oldest by Order Serial (descending)
+      allOrders.sort((a, b) => {
+        const sA = parseFloat(a['Order Serial']) || 0;
+        const sB = parseFloat(b['Order Serial']) || 0;
+        if (sB !== sA) return sB - sA;
+        return String(b['Order Serial'] || '').localeCompare(String(a['Order Serial'] || ''));
+      });
+
       $('statusDot').classList.remove('stale');
       renderStats();
       buildPills();
@@ -1025,9 +1041,12 @@
   function buildPills(){
     const shipCounts = {};
     allOrders.forEach(o=>{ const k=o.shipping_status||''; shipCounts[k]=(shipCounts[k]||0)+1; });
-    const extraKeys = Object.keys(shipCounts).filter(k=> k!=='' && !SHIP_STATUSES.includes(k));
-    const shipKeys = [...SHIP_STATUSES, ...extraKeys];
-    $('shipPills').innerHTML = ['all', ...shipKeys].map(k=>{
+
+    // Primary requested order: request needed -> pending pickup -> rescheduled -> in transit -> out for delivery -> delivered -> all -> others
+    const otherKeys = Object.keys(shipCounts).filter(k => k !== '' && !ORDERED_PRIMARY_SHIP_STATUSES.includes(k));
+    const finalShipPills = [...ORDERED_PRIMARY_SHIP_STATUSES, 'all', ...otherKeys];
+
+    $('shipPills').innerHTML = finalShipPills.map(k=>{
       const label = k==='all' ? 'All shipping' : (SHIP_LABELS[k]||k);
       const count = k==='all' ? allOrders.length : (shipCounts[k]||0);
       return `<div class="pill ${k===activeShip?'active':''}" data-ship="${escapeAttr(k)}">${label} (${count})</div>`;
