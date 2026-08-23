@@ -829,10 +829,18 @@
       hideModal();
 
       if(!btn || !serial) return;
-      await sendMakeWebhook(btn, {
+
+      // Find the full order record so we send ALL its data to Make, not just the serial + location
+      const orderRecord = allOrders.find(o => String(o['Order Serial']) === String(serial)) || {};
+      const orderData = Object.assign({}, orderRecord);
+      delete orderData._row; // internal-only field, not needed by Make
+
+      const payload = Object.assign({}, orderData, {
         "order serial": serial,
         "pickup location": selectedLocation
-      }, `AWB Created (${selectedLocation})`);
+      });
+
+      await sendMakeWebhook(btn, payload, `AWB Created (${selectedLocation})`);
     });
   });
 
