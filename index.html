@@ -783,7 +783,7 @@
       if('serviceWorker' in navigator){
         const regs = await navigator.serviceWorker.getRegistrations();
         lines.push('Service workers registered: ' + regs.length);
-        regs.forEach(r=> lines.push('  scope: ' + r.scope + (r.active ? ' (active)' : ' (not active)')));
+        regs.forEach(r=> lines.push('  scope: ' + r.scope + (r.active ? ' (not active)')));
       } else {
         lines.push('Service workers: unsupported in this browser');
       }
@@ -802,6 +802,7 @@
   }
   $('checkPushBtn').addEventListener('click', checkPushStatus);
 
+  // Modal open for AWB
   function promptLocationSelection(btn, serial){
     currentTargetBtn = btn;
     currentOrderSerial = serial;
@@ -821,6 +822,7 @@
     if(e.target === $('locationModal')) hideModal();
   });
 
+  // Modal selection for AWB (Exact matching working structure from Source 22)
   document.querySelectorAll('#locationModal .modal-opt-btn').forEach(optBtn => {
     optBtn.addEventListener('click', async () => {
       const selectedLocation = optBtn.getAttribute('data-loc');
@@ -829,21 +831,11 @@
       hideModal();
 
       if(!btn || !serial) return;
-
-      // Find the full order record so we send ALL its data to Make, not just the serial + location
-      const orderRecord = allOrders.find(o => String(o['Order Serial']) === String(serial)) || {};
-      const orderData = Object.assign({}, orderRecord);
-      delete orderData._row; // internal-only field, not needed by Make
-
-      const payload = Object.assign({}, orderData, {
-        "order serial": serial,
-        "pickup location": selectedLocation
-      });
-
-      await sendMakeWebhook(btn, payload, `AWB Created (${selectedLocation})`);
+      await sendAwbWebhook(btn, serial, selectedLocation);
     });
   });
 
+  // Modal open for Send Mail
   function promptMailSelection(btn, orderId){
     currentTargetBtn = btn;
     currentOrderId = orderId;
@@ -862,6 +854,7 @@
     if(e.target === $('mailModal')) hideMailModal();
   });
 
+  // Modal selection for Send Mail
   document.querySelectorAll('#mailModal .modal-opt-btn').forEach(optBtn => {
     optBtn.addEventListener('click', async () => {
       const selectedMailStatus = optBtn.getAttribute('data-mail');
@@ -870,64 +863,69 @@
       hideMailModal();
 
       if(!btn || !orderId) return;
-      await sendMakeWebhook(btn, {
-        "order ID": orderId,
-        "mail status": selectedMailStatus
-      }, `Mail Sent (${selectedMailStatus})`);
+      await sendMailWebhook(btn, orderId, selectedMailStatus);
     });
   });
 
-    async function sendMakeWebhook(btn, payload, successDefaultMsg){
+  // EXACT ORIGINAL WORKING DISPATCH FOR AWB (from Source 22)
+  async function sendAwbWebhook(btn, orderSerial, locationChoice){
     const origText = btn.innerHTML;
     btn.classList.add('sending');
-    btn.innerHTML = `<svg class="spinner" style="width:14px;height:14px;border-width:2px;margin:0 4px 0 0;display:inline-block;vertical-align:middle;"></svg> Sending...`;
+    btn.innerHTML = `Sending...`;
 
     try {
-      // Build query string so Make captures variables directly from URL parameters
-      const urlParams = new URLSearchParams();
-      for (const key in payload) {
-        if (payload[key] !== undefined && payload[key] !== null) {
-          urlParams.append(key, payload[key]);
-        }
-      }
+      const payload = {
+        "order serial": orderSerial,
+        "pickup location": locationChoice
+      };
 
-      const targetUrl = MAKE_WEBHOOK_URL + (MAKE_WEBHOOK_URL.includes('?') ? '&' : '?') + urlParams.toString();
-
-      // Send request using standard fetch
-      try {
-        await fetch(targetUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify(payload),
-          mode: 'no-cors'
-        });
-      } catch (err) {
-        // Fallback using Image beacon to bypass any strict browser network restrictions
-        const beacon = new Image();
-        beacon.src = targetUrl;
-      }
+      await fetch(MAKE_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
       btn.classList.add('success');
-      btn.innerHTML = `✓ ${escapeHtml(successDefaultMsg)}`;
-      
-      setTimeout(()=> {
-        if (typeof fetchOrders === 'function') fetchOrders();
-      }, 1500);
-
+      btn.innerHTML = `✓ AWB (${escapeHtml(locationChoice)})`;
       setTimeout(()=>{
         btn.classList.remove('sending', 'success');
         btn.innerHTML = origText;
       }, 3500);
     } catch (err) {
-      console.error('Make Webhook error:', err);
+      alert('Error: ' + err);
       btn.classList.remove('sending');
-      btn.classList.add('error');
-      btn.innerHTML = `✕ Failed`;
-      alert('Webhook error: ' + err.message);
+      btn.innerHTML = origText;
+    }
+  }
+
+  // EXACT ORIGINAL WORKING DISPATCH FOR SEND MAIL
+  async function sendMailWebhook(btn, orderId, mailStatus){
+    const origText = btn.innerHTML;
+    btn.classList.add('sending');
+    btn.innerHTML = `Sending...`;
+
+    try {
+      const payload = {
+        "order ID": orderId,
+        "mail status": mailStatus
+      };
+
+      await fetch(MAKE_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      btn.classList.add('success');
+      btn.innerHTML = `✓ Mail Sent (${escapeHtml(mailStatus)})`;
       setTimeout(()=>{
-        btn.classList.remove('error');
+        btn.classList.remove('sending', 'success');
         btn.innerHTML = origText;
       }, 3500);
+    } catch (err) {
+      alert('Error: ' + err);
+      btn.classList.remove('sending');
+      btn.innerHTML = origText;
     }
   }
 
@@ -994,21 +992,13 @@
     $('statusDot').classList.add('stale');
     if($('loadingSpinner')) $('loadingSpinner').style.display = 'block';
     if($('list')) $('list').innerHTML = '';
-    const controller = new AbortController();
-    // Without a timeout, a stuck/unresponsive network request leaves fetch()
-    // pending forever — no error is ever thrown, so the button just stays on
-    // "Connecting..." with no feedback. Abort after 20s so the user always
-    // gets a clear error instead of an infinite hang.
-    const timeoutId = setTimeout(()=> controller.abort(), 20000);
     try{
       const sep = API_URL.includes('?') ? '&' : '?';
       const res = await fetch(API_URL + sep + 'action=list', {
         method: 'GET',
-        redirect: 'follow',
-        signal: controller.signal
+        redirect: 'follow'
       });
-      clearTimeout(timeoutId);
-
+      
       if (!res.ok) {
         throw new Error('HTTP status ' + res.status);
       }
@@ -1038,14 +1028,9 @@
       checkAndOpenTargetOrder();
       return true;
     }catch(err){
-      clearTimeout(timeoutId);
       console.error('fetchOrders error:', err);
-      const msg = (err.name === 'AbortError')
-        ? 'Request timed out after 20s — the Google Sheet URL is not responding. Check: 1) Deploy -> Access: Anyone. 2) URL is correct. 3) Your internet connection.'
-        : 'Could not reach Google Sheet URL (' + err.message + '). Check: 1) Deploy -> Access: Anyone. 2) URL is correct.';
-      $('setup-error').textContent = msg;
+      $('setup-error').textContent = 'Could not reach Google Sheet URL (' + err.message + '). Check: 1) Deploy -> Access: Anyone. 2) URL is correct.';
       if($('loadingSpinner')) $('loadingSpinner').style.display = 'none';
-      $('statusDot').classList.add('stale');
       return false;
     }
   }
