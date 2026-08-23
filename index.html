@@ -775,7 +775,7 @@
       if('serviceWorker' in navigator){
         const regs = await navigator.serviceWorker.getRegistrations();
         lines.push('Service workers registered: ' + regs.length);
-        regs.forEach(r=> lines.push('  scope: ' + r.scope + (r.active ? ' (active)' : ' (not active)')));
+        regs.forEach(r=> lines.push('  scope: ' + r.scope + (r.active ? ' (not active)')));
       } else {
         lines.push('Service workers: unsupported in this browser');
       }
@@ -1109,6 +1109,7 @@
     // Logic for button type
     const isRequestNeeded = (ship === 'request needed');
     const isPendingPickup = (ship === 'pending pickup');
+    const isDelivered = (ship === 'delivered');
 
     let actionBtnHtml = '';
     if (isRequestNeeded) {
@@ -1123,7 +1124,7 @@
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           Replace AWB
         </button>`;
-    } else {
+    } else if (!isDelivered) {
       actionBtnHtml = `
         <button class="card-btn send-mail-btn" data-mail-btn data-orderid="${escapeAttr(orderId)}">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
