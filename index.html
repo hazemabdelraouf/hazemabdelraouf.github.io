@@ -520,6 +520,8 @@
   function initOneSignal(appId){
     if(!appId || oneSignalInitialized) return;
     oneSignalInitialized = true;
+    
+    // Automatically determine folder scope for GitHub Pages / PWA
     const scope = location.pathname.replace(/[^/]*$/, '');
     window.OneSignalDeferred.push(async function(OneSignal){
       try{
@@ -532,6 +534,7 @@
         updateBellState(OneSignal);
         OneSignal.User.PushSubscription.addEventListener('change', ()=> updateBellState(OneSignal));
 
+        // When notification is clicked in foreground/background
         OneSignal.Notifications.addEventListener('click', (event) => {
           try {
             const url = event.notification.launchURL;
@@ -655,7 +658,6 @@
         throw new Error(`Server returned HTTP ${response.status}`);
       }
 
-      // Read Webhook Response (Text or JSON)
       const resText = await response.text();
       let resMsg = `AWB Created (${locationChoice})`;
       try {
@@ -672,7 +674,6 @@
       btn.classList.add('success');
       btn.innerHTML = `✓ ${escapeHtml(resMsg)}`;
       
-      // Auto-refresh sheet orders if Make updated the tracking number in sheet
       setTimeout(()=> {
         if (typeof fetchOrders === 'function') fetchOrders();
       }, 1500);
