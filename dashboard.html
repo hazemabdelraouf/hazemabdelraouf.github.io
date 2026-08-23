@@ -189,13 +189,46 @@
   .badge.pay-paid{color:var(--sage);border-color:rgba(127,160,122,0.4);background:rgba(127,160,122,0.08);}
   .badge.pay-pending{color:var(--amber);border-color:rgba(217,164,65,0.4);background:rgba(217,164,65,0.08);}
 
-  .expand-btn{
-    margin-top:10px;width:100%;
-    background:transparent;border:1px dashed var(--line-strong);
-    color:var(--cream-dim);border-radius:10px;padding:9px;
-    font-size:12.5px;font-family:inherit;cursor:pointer;
+  /* Direct Action Buttons on Card */
+  .card-actions{
+    display:flex;
+    gap:8px;
+    margin-top:12px;
   }
-  .edit-panel{display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);}
+  .create-awb-btn{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:7px;
+    padding:10px 14px;
+    background:linear-gradient(180deg, #ff7a3d, #fe4f00);
+    border:none;
+    border-radius:10px;
+    color:#1c1409;
+    font-family:'Cairo', sans-serif;
+    font-weight:800;
+    font-size:13px;
+    cursor:pointer;
+    transition:transform 0.1s, opacity 0.2s;
+  }
+  .create-awb-btn:active{transform:scale(0.98);}
+  .create-awb-btn.sending{opacity:0.7;pointer-events:none;}
+  .create-awb-btn.success{background:var(--sage);color:#1c1409;}
+
+  .expand-btn{
+    flex:1;
+    background:transparent;
+    border:1px dashed var(--line-strong);
+    color:var(--cream-dim);
+    border-radius:10px;
+    padding:9px;
+    font-size:12.5px;
+    font-family:inherit;
+    cursor:pointer;
+  }
+
+  .edit-panel{display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);}
   .edit-panel.open{display:block;}
   .action-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
   .action-link{
@@ -207,15 +240,6 @@
     cursor:pointer;font-family:inherit;
   }
   .action-link:hover{background:rgba(201,154,61,0.15);}
-  .action-link.webhook-btn{
-    background:rgba(127,160,122,0.1);border-color:rgba(127,160,122,0.4);color:var(--sage);
-  }
-  .action-link.webhook-btn:hover{
-    background:rgba(127,160,122,0.2);
-  }
-  .action-link.webhook-btn.sending{
-    opacity:0.6;pointer-events:none;
-  }
   .action-link svg{width:14px;height:14px;flex:0 0 auto;}
   .detail-grid{display:flex;flex-direction:column;gap:0;}
   .detail-row{
@@ -359,8 +383,8 @@
 <!-- ============ MODAL ============ -->
 <div class="modal-overlay" id="locationModal">
   <div class="modal-card">
-    <div class="modal-title" id="modalTitle">Select Location</div>
-    <div class="modal-sub">Choose location to create AWB</div>
+    <div class="modal-title" id="modalTitle">Create AWB</div>
+    <div class="modal-sub">Select pickup location:</div>
     <div class="modal-options">
       <button class="modal-opt-btn" data-loc="Menya">Menya</button>
       <button class="modal-opt-btn" data-loc="Mahalla">Mahalla</button>
@@ -568,7 +592,7 @@
   function promptLocationSelection(btn, serial){
     currentTargetBtn = btn;
     currentOrderSerial = serial;
-    $('modalTitle').textContent = 'Create AWB for #' + serial;
+    $('modalTitle').textContent = 'Create AWB #' + serial;
     $('locationModal').classList.add('active');
   }
 
@@ -599,7 +623,7 @@
   async function sendMakeWebhook(btn, orderSerial, locationChoice){
     const origText = btn.innerHTML;
     btn.classList.add('sending');
-    btn.innerHTML = `<svg class="spinner" style="width:14px;height:14px;border-width:2px;margin:0 4px 0 0;display:inline-block;vertical-align:middle;"></svg> Creating AWB...`;
+    btn.innerHTML = `Sending...`;
 
     try {
       const payload = {
@@ -607,7 +631,6 @@
         location: locationChoice
       };
 
-      // Sending data as JSON text in no-cors mode to bypass browser CORS preflight restrictions
       await fetch(MAKE_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
@@ -615,17 +638,14 @@
         mode: 'no-cors'
       });
 
-      btn.style.borderColor = 'var(--sage)';
-      btn.style.color = 'var(--sage)';
-      btn.innerHTML = `✓ AWB Requested (${escapeHtml(locationChoice)})`;
+      btn.classList.add('success');
+      btn.innerHTML = `✓ AWB (${escapeHtml(locationChoice)})`;
       setTimeout(()=>{
-        btn.classList.remove('sending');
+        btn.classList.remove('sending', 'success');
         btn.innerHTML = origText;
-        btn.style.borderColor = '';
-        btn.style.color = '';
       }, 3500);
     } catch (err) {
-      alert('Failed to trigger webhook: ' + err);
+      alert('Error: ' + err);
       btn.classList.remove('sending');
       btn.innerHTML = origText;
     }
@@ -850,13 +870,17 @@
       </div>
       ${o.note ? `<div class="note-line">📝 ${escapeHtml(o.note)}</div>` : ''}
 
-      <button class="expand-btn" data-toggle>View details</button>
+      <!-- Direct Visible Buttons on Every Order Card -->
+      <div class="card-actions">
+        <button class="create-awb-btn" data-webhook data-serial="${escapeAttr(serial)}">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Create AWB
+        </button>
+        <button class="expand-btn" data-toggle>View details</button>
+      </div>
+
       <div class="edit-panel" data-panel>
         <div class="action-row">
-          <button class="action-link webhook-btn" data-webhook data-serial="${escapeAttr(serial)}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            Create AWB
-          </button>
           ${o.tracking_number ? `
           <a class="action-link" href="${escapeAttr(trackUrl(o.tracking_number))}" target="_blank" rel="noopener">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -905,7 +929,8 @@
     document.querySelectorAll('[data-toggle]').forEach(btn=>{
       if(btn._bound) return; btn._bound = true;
       btn.addEventListener('click', ()=>{
-        const panel = btn.nextElementSibling;
+        const panel = btn.closest('.order-card').querySelector('[data-panel]');
+        if(!panel) return;
         panel.classList.toggle('open');
         btn.textContent = panel.classList.contains('open') ? 'Hide details' : 'View details';
       });
