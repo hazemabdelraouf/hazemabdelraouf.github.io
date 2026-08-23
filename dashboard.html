@@ -210,11 +210,12 @@
     font-weight:800;
     font-size:13px;
     cursor:pointer;
-    transition:transform 0.1s, opacity 0.2s;
+    transition:transform 0.1s, opacity 0.2s, background 0.3s;
   }
   .create-awb-btn:active{transform:scale(0.98);}
   .create-awb-btn.sending{opacity:0.7;pointer-events:none;}
   .create-awb-btn.success{background:var(--sage);color:#1c1409;}
+  .create-awb-btn.error{background:var(--rust);color:#fff;}
 
   .expand-btn{
     flex:1;
@@ -623,31 +624,59 @@
   async function sendMakeWebhook(btn, orderSerial, locationChoice){
     const origText = btn.innerHTML;
     btn.classList.add('sending');
-    btn.innerHTML = `Sending...`;
+    btn.innerHTML = `<svg class="spinner" style="width:14px;height:14px;border-width:2px;margin:0 4px 0 0;display:inline-block;vertical-align:middle;"></svg> Waiting for Make...`;
 
     try {
       const payload = {
-        order_serial: orderSerial,
-        location: locationChoice
+        "order serial": orderSerial,
+        "pickup location": locationChoice
       };
 
-      await fetch(MAKE_WEBHOOK_URL, {
+      const response = await fetch(MAKE_WEBHOOK_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload),
-        mode: 'no-cors'
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
 
+      if (!response.ok) {
+        throw new Error(`Server returned HTTP ${response.status}`);
+      }
+
+      // Read Webhook Response (Text or JSON)
+      const resText = await response.text();
+      let resMsg = `AWB Created (${locationChoice})`;
+      try {
+        const json = JSON.parse(resText);
+        if (json.message) resMsg = json.message;
+        else if (json.status) resMsg = json.status;
+        else if (typeof json === 'string') resMsg = json;
+      } catch (e) {
+        if (resText && resText.length < 35 && resText.toLowerCase() !== 'accepted') {
+          resMsg = resText;
+        }
+      }
+
       btn.classList.add('success');
-      btn.innerHTML = `✓ AWB (${escapeHtml(locationChoice)})`;
+      btn.innerHTML = `✓ ${escapeHtml(resMsg)}`;
+      
+      // Auto-refresh sheet orders if Make updated the tracking number in sheet
+      setTimeout(()=> {
+        if (typeof fetchOrders === 'function') fetchOrders();
+      }, 1500);
+
       setTimeout(()=>{
         btn.classList.remove('sending', 'success');
         btn.innerHTML = origText;
-      }, 3500);
+      }, 4000);
     } catch (err) {
-      alert('Error: ' + err);
       btn.classList.remove('sending');
-      btn.innerHTML = origText;
+      btn.classList.add('error');
+      btn.innerHTML = `✕ Failed`;
+      alert('Webhook response error: ' + err.message);
+      setTimeout(()=>{
+        btn.classList.remove('error');
+        btn.innerHTML = origText;
+      }, 3500);
     }
   }
 
