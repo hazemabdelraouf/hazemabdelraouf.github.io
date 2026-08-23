@@ -212,10 +212,22 @@
     cursor:pointer;
     transition:transform 0.1s, opacity 0.2s, background 0.3s;
   }
-  .create-awb-btn:active{transform:scale(0.98);}
+  .create-awb-btn.replace-mode{
+    background:linear-gradient(180deg, #e6b04b, #d9a441);
+    color:#1c1409;
+  }
+  .create-awb-btn:active:not(:disabled){transform:scale(0.98);}
+  .create-awb-btn:disabled{
+    background:var(--panel-2);
+    color:var(--cream-dim);
+    border:1px solid var(--line);
+    opacity:0.4;
+    cursor:not-allowed;
+    filter:grayscale(1);
+  }
   .create-awb-btn.sending{opacity:0.7;pointer-events:none;}
-  .create-awb-btn.success{background:var(--sage);color:#1c1409;}
-  .create-awb-btn.error{background:var(--rust);color:#fff;}
+  .create-awb-btn.success{background:var(--sage) !important;color:#1c1409 !important;border:none !important;opacity:1 !important;}
+  .create-awb-btn.error{background:var(--rust) !important;color:#fff !important;border:none !important;opacity:1 !important;}
 
   .expand-btn{
     flex:1;
@@ -593,7 +605,8 @@
   function promptLocationSelection(btn, serial){
     currentTargetBtn = btn;
     currentOrderSerial = serial;
-    $('modalTitle').textContent = 'Create AWB #' + serial;
+    const isReplace = btn.classList.contains('replace-mode');
+    $('modalTitle').textContent = (isReplace ? 'Replace AWB #' : 'Create AWB #') + serial;
     $('locationModal').classList.add('active');
   }
 
@@ -871,6 +884,13 @@
     const hasOrderId = o['order ID'] !== undefined && o['order ID'] !== null && o['order ID'] !== '';
     const serial = o['Order Serial'] || '';
 
+    // Logic for button state & label
+    const isRequestNeeded = (ship === 'request needed');
+    const isPendingPickup = (ship === 'pending pickup');
+    const isAwbActive = (isRequestNeeded || isPendingPickup);
+    const awbButtonLabel = isPendingPickup ? 'Replace AWB' : 'Create AWB';
+    const replaceClass = isPendingPickup ? 'replace-mode' : '';
+
     return `
     <div class="order-card" id="order-${escapeAttr(serial)}" data-row="${o._row}">
       <div class="order-top">
@@ -901,9 +921,9 @@
 
       <!-- Direct Visible Buttons on Every Order Card -->
       <div class="card-actions">
-        <button class="create-awb-btn" data-webhook data-serial="${escapeAttr(serial)}">
+        <button class="create-awb-btn ${replaceClass}" data-webhook data-serial="${escapeAttr(serial)}" ${!isAwbActive ? 'disabled' : ''}>
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          Create AWB
+          ${escapeHtml(awbButtonLabel)}
         </button>
         <button class="expand-btn" data-toggle>View details</button>
       </div>
@@ -968,6 +988,7 @@
     document.querySelectorAll('[data-webhook]').forEach(btn=>{
       if(btn._boundWebhook) return; btn._boundWebhook = true;
       btn.addEventListener('click', ()=>{
+        if(btn.disabled) return;
         const serial = btn.getAttribute('data-serial');
         promptLocationSelection(btn, serial);
       });
