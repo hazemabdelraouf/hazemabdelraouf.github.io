@@ -869,46 +869,38 @@
     });
   });
 
-  async function sendMakeWebhook(btn, payload, successDefaultMsg){
+    async function sendMakeWebhook(btn, payload, successDefaultMsg){
     const origText = btn.innerHTML;
     btn.classList.add('sending');
-    btn.innerHTML = `<svg class="spinner" style="width:14px;height:14px;border-width:2px;margin:0 4px 0 0;display:inline-block;vertical-align:middle;"></svg> Waiting for Make...`;
+    btn.innerHTML = `<svg class="spinner" style="width:14px;height:14px;border-width:2px;margin:0 4px 0 0;display:inline-block;vertical-align:middle;"></svg> Sending...`;
 
     try {
-      let resMsg = successDefaultMsg;
-      try {
-        // Try standard JSON post
-        const response = await fetch(MAKE_WEBHOOK_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        if (response.ok) {
-          const resText = await response.text();
-          try {
-            const json = JSON.parse(resText);
-            if (json.message) resMsg = json.message;
-            else if (json.status) resMsg = json.status;
-            else if (typeof json === 'string') resMsg = json;
-          } catch (e) {
-            if (resText && resText.length < 35 && resText.toLowerCase() !== 'accepted') {
-              resMsg = resText;
-            }
-          }
+      // Build query string so Make captures variables directly from URL parameters
+      const urlParams = new URLSearchParams();
+      for (const key in payload) {
+        if (payload[key] !== undefined && payload[key] !== null) {
+          urlParams.append(key, payload[key]);
         }
-      } catch (netErr) {
-        // If browser blocks CORS, fallback to simple POST to ensure Make receives the webhook
-        await fetch(MAKE_WEBHOOK_URL, {
+      }
+
+      const targetUrl = MAKE_WEBHOOK_URL + (MAKE_WEBHOOK_URL.includes('?') ? '&' : '?') + urlParams.toString();
+
+      // Send request using standard fetch
+      try {
+        await fetch(targetUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify(payload),
           mode: 'no-cors'
         });
+      } catch (err) {
+        // Fallback using Image beacon to bypass any strict browser network restrictions
+        const beacon = new Image();
+        beacon.src = targetUrl;
       }
 
       btn.classList.add('success');
-      btn.innerHTML = `✓ ${escapeHtml(resMsg)}`;
+      btn.innerHTML = `✓ ${escapeHtml(successDefaultMsg)}`;
       
       setTimeout(()=> {
         if (typeof fetchOrders === 'function') fetchOrders();
@@ -917,12 +909,13 @@
       setTimeout(()=>{
         btn.classList.remove('sending', 'success');
         btn.innerHTML = origText;
-      }, 4000);
+      }, 3500);
     } catch (err) {
+      console.error('Make Webhook error:', err);
       btn.classList.remove('sending');
       btn.classList.add('error');
       btn.innerHTML = `✕ Failed`;
-      alert('Failed: ' + err.message);
+      alert('Webhook error: ' + err.message);
       setTimeout(()=>{
         btn.classList.remove('error');
         btn.innerHTML = origText;
