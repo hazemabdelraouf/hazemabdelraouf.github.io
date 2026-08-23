@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>Orders Dashboard</title>
+
+<!-- PWA: installs as a standalone app icon on mobile -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Orders">
+
+<!-- OneSignal Web Push -->
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0a0a;
+    --panel:#161616;
+    --panel-2:#1e1e1e;
+    --cream:#f5f5f2;
+    --cream-dim:#a8a8a3;
+    --gold:#fe4f00;
+    --gold-soft:#ff7a3d;
+    --sage:#7fa07a;
+    --amber:#d9a441;
+    --rust:#c15a42;
+    --line:rgba(245,245,242,0.10);
+    --line-strong:rgba(245,245,242,0.18);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(ellipse 900px 500px at 85% -10%, rgba(254,79,0,0.10), transparent 60%),
+      var(--bg);
+    color:var(--cream);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .display{font-family:'Cairo', sans-serif;}
+
+  /* ===== setup screen ===== */
+  #setup{
+    min-height:100vh;
+    display:flex;flex-direction:column;justify-content:center;align-items:center;
+    padding:calc(28px + env(safe-area-inset-top)) 22px calc(28px + env(safe-area-inset-bottom));
+    text-align:center;
+  }
+  .bean{width:46px;height:46px;margin-bottom:18px;opacity:.9;}
+  #setup h1{font-size:22px;margin:0 0 8px;font-weight:800;}
+  #setup p{color:var(--cream-dim);font-size:14px;line-height:1.9;max-width:380px;margin:0 0 20px;}
+  #setup ol{color:var(--cream-dim);font-size:13.5px;line-height:2;text-align:left;max-width:380px;margin:0 0 22px;padding-inline-start:20px;}
+  #setup ol b{color:var(--cream);}
+  .field{width:100%;max-width:380px;}
+  input[type=text], select, input[type=search]{
+    width:100%;
+    background:var(--panel);
+    border:1px solid var(--line-strong);
+    color:var(--cream);
+    padding:13px 14px;
+    border-radius:12px;
+    font-family:inherit;
+    font-size:14px;
+    outline:none;
+  }
+  input:focus, select:focus{border-color:var(--gold);}
+  .btn{
+    background:linear-gradient(180deg, var(--gold-soft), var(--gold));
+    color:#1c1409;
+    border:none;
+    padding:13px 22px;
+    border-radius:12px;
+    font-family:'Cairo',sans-serif;
+    font-weight:800;
+    font-size:14.5px;
+    cursor:pointer;
+    width:100%;
+    max-width:380px;
+    margin-top:12px;
+  }
+  .btn:active{transform:scale(.98);}
+  .btn.ghost{
+    background:transparent;
+    border:1px solid var(--line-strong);
+    color:var(--cream-dim);
+  }
+  #setup-error{color:var(--rust);font-size:13px;margin-top:10px;min-height:16px;}
+
+  /* ===== app shell ===== */
+  #app{display:none;padding-bottom:40px;}
+  header.topbar{
+    position:sticky;top:0;z-index:20;
+    background:rgba(21,16,12,0.92);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+    padding:calc(14px + env(safe-area-inset-top)) 16px 12px;
+  }
+  .topbar-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .brand{display:flex;align-items:center;gap:9px;}
+  .brand svg{width:24px;height:24px;}
+  .brand-text{font-family:'Cairo';font-weight:800;font-size:16px;}
+  .status-dot{width:8px;height:8px;border-radius:50%;background:var(--sage);box-shadow:0 0 8px var(--sage);}
+  .status-dot.stale{background:var(--amber);box-shadow:0 0 8px var(--amber);}
+  .icon-btn{
+    background:var(--panel);border:1px solid var(--line-strong);
+    color:var(--cream-dim);border-radius:10px;padding:8px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+  }
+  .icon-btn svg{width:17px;height:17px;}
+  .icon-btn.on{border-color:var(--gold);color:var(--gold-soft);}
+
+  /* ===== stat cards ===== */
+  .stat-scroll{
+    display:flex;gap:10px;overflow-x:auto;padding:14px 16px 4px;
+    scrollbar-width:none;
+  }
+  .stat-scroll::-webkit-scrollbar{display:none;}
+  .stat-card{
+    flex:0 0 auto;min-width:118px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:12px 14px;
+  }
+  .stat-num{font-family:'Cairo';font-weight:800;font-size:21px;line-height:1;}
+  .stat-label{color:var(--cream-dim);font-size:11.5px;margin-top:6px;}
+  .stat-card.accent .stat-num{color:var(--gold-soft);}
+  .stat-card.sage .stat-num{color:var(--sage);}
+  .stat-card.amber .stat-num{color:var(--amber);}
+  .stat-card.rust .stat-num{color:var(--rust);}
+
+  /* ===== filters ===== */
+  .filters{padding:8px 16px 4px;}
+  .search-row{display:flex;gap:8px;margin-bottom:10px;}
+  .pill-row{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;}
+  .pill-row::-webkit-scrollbar{display:none;}
+  .pill{
+    flex:0 0 auto;
+    padding:7px 13px;border-radius:999px;
+    background:var(--panel);border:1px solid var(--line-strong);
+    color:var(--cream-dim);font-size:12.5px;cursor:pointer;white-space:nowrap;
+  }
+  .pill.active{background:var(--gold);border-color:var(--gold);color:#1c1409;font-weight:700;}
+  .filter-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--cream-dim);opacity:.7;margin:2px 0 6px;}
+  #shipPills .pill{font-size:13px;padding:8px 15px;}
+  #shipPills{margin-bottom:2px;}
+
+  /* ===== order list ===== */
+  #list{padding:12px 16px 0;display:flex;flex-direction:column;gap:10px;}
+  .order-card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:14px;
+  }
+  .order-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .order-id{font-family:'Cairo';font-weight:800;font-size:14.5px;color:var(--gold-soft);}
+  .order-id-sub{font-size:10px;color:var(--cream-dim);opacity:.7;margin-top:1px;word-break:break-all;}
+  .order-date{color:var(--cream-dim);font-size:11px;}
+  .order-name{font-size:14px;font-weight:600;margin-top:4px;}
+  .order-sub{color:var(--cream-dim);font-size:12px;margin-top:2px;display:flex;gap:10px;flex-wrap:wrap;}
+  .order-total{font-family:'Cairo';font-weight:700;font-size:15px;color:var(--cream);}
+
+  .drip-line{display:flex;align-items:center;gap:4px;margin:11px 0 10px;}
+  .drip-seg{flex:1;height:3px;border-radius:2px;background:var(--line-strong);}
+  .drip-seg.on{background:var(--gold);}
+  .drip-seg.on.done{background:var(--sage);}
+  .drip-seg.on.bad{background:var(--rust);}
+
+  .badges{display:flex;gap:7px;flex-wrap:wrap;margin-top:2px;}
+  .badge{font-size:11.5px;padding:4px 10px;border-radius:999px;border:1px solid var(--line-strong);color:var(--cream-dim);}
+  .badge.ship-delivered{color:var(--sage);border-color:rgba(127,160,122,0.4);background:rgba(127,160,122,0.08);}
+  .badge.ship-cancelled,.badge.ship-returned{color:var(--rust);border-color:rgba(193,90,66,0.4);background:rgba(193,90,66,0.08);}
+  .badge.ship-pending{color:var(--amber);border-color:rgba(217,164,65,0.4);background:rgba(217,164,65,0.08);}
+  .badge.pay-paid{color:var(--sage);border-color:rgba(127,160,122,0.4);background:rgba(127,160,122,0.08);}
+  .badge.pay-pending{color:var(--amber);border-color:rgba(217,164,65,0.4);background:rgba(217,164,65,0.08);}
+
+  .expand-btn{
+    margin-top:10px;width:100%;
+    background:transparent;border:1px dashed var(--line-strong);
+    color:var(--cream-dim);border-radius:10px;padding:9px;
+    font-size:12.5px;font-family:inherit;cursor:pointer;
+  }
+  .edit-panel{display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);}
+  .edit-panel.open{display:block;}
+  .action-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+  .action-link{
+    display:flex;align-items:center;gap:7px;flex:1;
+    padding:10px 12px;
+    background:rgba(201,154,61,0.08);border:1px solid rgba(201,154,61,0.35);
+    border-radius:10px;color:var(--gold-soft);text-decoration:none;
+    font-size:12.5px;font-weight:600;white-space:nowrap;justify-content:center;
+  }
+  .action-link svg{width:14px;height:14px;flex:0 0 auto;}
+  .detail-grid{display:flex;flex-direction:column;gap:0;}
+  .detail-row{
+    display:flex;justify-content:space-between;gap:14px;
+    padding:7px 0;border-bottom:1px solid var(--line);
+    font-size:12.5px;
+  }
+  .detail-row:last-child{border-bottom:none;}
+  .detail-label{color:var(--cream-dim);flex:0 0 auto;}
+  .detail-value{color:var(--cream);text-align:right;word-break:break-word;}
+  .note-line{font-size:12px;color:var(--cream-dim);margin-top:8px;background:rgba(242,230,211,0.04);padding:8px 10px;border-radius:8px;}
+
+  .empty{text-align:center;padding:60px 20px;color:var(--cream-dim);font-size:13px;}
+  .loadmore{
+    display:block;margin:16px auto;padding:11px 24px;
+    background:var(--panel);border:1px solid var(--line-strong);
+    color:var(--cream);border-radius:12px;font-family:inherit;font-size:13px;cursor:pointer;
+  }
+  .spinner{
+    width:26px;height:26px;border-radius:50%;
+    border:3px solid var(--line-strong);border-top-color:var(--gold);
+    animation:spin 0.8s linear infinite;margin:40px auto;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  ::selection{background:var(--gold);color:#1c1409;}
+</style>
+</head>
+<body>
+
+<!-- ============ SETUP SCREEN ============ -->
+<div id="setup">
+  <svg class="bean" viewBox="0 0 24 24" fill="none">
+    <ellipse cx="12" cy="12" rx="9" ry="11" stroke="#fe4f00" stroke-width="1.6"/>
+    <path d="M12 1.5 C7 6, 7 18, 12 22.5" stroke="#fe4f00" stroke-width="1.6" fill="none"/>
+  </svg>
+  <h1 class="display">Orders Dashboard</h1>
+  <p>To read and update your sheet live, this needs a Google Apps Script "Web App" URL. Steps:</p>
+  <ol>
+    <li>Open your Google Sheet, then go to <b>Extensions ← Apps Script</b></li>
+    <li>Paste the code from <b>AppsScript_Code.gs</b> (change the sheet name if needed)</li>
+    <li>Run <b>Deploy ← New deployment ← Web app</b><br>Execute as: <b>Me</b> — Access: <b>Anyone</b></li>
+    <li>Copy the URL it gives you and paste it below</li>
+  </ol>
+  <div class="field">
+    <input type="text" id="urlInput" placeholder="https://script.google.com/macros/s/.../exec">
+  </div>
+  <div class="field" style="margin-top:10px;">
+    <input type="text" id="oneSignalInput" placeholder="OneSignal App ID (optional, for push alerts)">
+  </div>
+  <button class="btn" id="connectBtn">Connect & Load Orders</button>
+  <div id="setup-error"></div>
+  <button class="btn ghost" id="checkPushBtn" style="margin-top:18px;">Check notification status</button>
+  <div id="pushDebug" style="font-size:11.5px;color:var(--cream-dim);margin-top:10px;max-width:380px;text-align:left;line-height:1.8;"></div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app">
+  <header class="topbar">
+    <div class="topbar-row">
+      <div class="brand">
+        <svg viewBox="0 0 24 24" fill="none">
+          <ellipse cx="12" cy="12" rx="9" ry="11" stroke="#fe4f00" stroke-width="1.6"/>
+          <path d="M12 1.5 C7 6, 7 18, 12 22.5" stroke="#fe4f00" stroke-width="1.6" fill="none"/>
+        </svg>
+        <span class="brand-text">Orders</span>
+        <span class="status-dot" id="statusDot"></span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <div class="icon-btn" id="bellBtn" title="Notifications">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </div>
+        <div class="icon-btn" id="refreshBtn" title="Refresh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg>
+        </div>
+        <div class="icon-btn" id="settingsBtn" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="stat-scroll" id="statScroll"></div>
+
+  <div class="filters">
+    <div class="search-row">
+      <input type="search" id="searchInput" placeholder="Search by order ID, name, or phone">
+    </div>
+    <div class="filter-label">Shipping status</div>
+    <div class="pill-row" id="shipPills"></div>
+    <div class="filter-label" style="margin-top:12px;">Payment status</div>
+    <div class="pill-row" id="payPills"></div>
+  </div>
+
+  <div id="list"></div>
+  <div id="loadingSpinner" class="spinner" style="display:none;"></div>
+  <button class="loadmore" id="loadMoreBtn" style="display:none;">Load more</button>
+</div>
+
+<script>
+(function(){
+  const SHIP_STATUSES = ['delivered','request needed','wuilt','pending pickup','in transit','out for delivery','rescheduled','cancelled','returned'];
+  const SHIP_LABELS = {
+    'delivered':'Delivered','request needed':'Request needed','wuilt':'Wuilt',
+    'cancelled':'Cancelled','returned':'Returned','pending pickup':'Pending pickup',
+    'in transit':'In transit','out for delivery':'Out for delivery','rescheduled':'Rescheduled',
+    '':'No status', 'null':'No status'
+  };
+  const PAY_LABELS = {'PAID':'Paid','PENDING':'Pending','':'Unspecified','null':'Unspecified'};
+
+  let API_URL = '';
+  let allOrders = [];
+  let headers = [];
+  let filteredOrders = [];
+  let shownCount = 0;
+  const PAGE_SIZE = 20;
+  let activeShip = 'all';
+  let activePay = 'all';
+  let searchTerm = '';
+
+  const $ = id => document.getElementById(id);
+
+  // primary key: Order Serial
+  function pk(o){
+    return o['Order Serial'];
+  }
+  function pkLabel(o){
+    return '#' + o['Order Serial'];
+  }
+
+  function shipClass(s){
+    if(s==='delivered') return 'ship-delivered';
+    if(s==='cancelled'||s==='returned') return 'ship-cancelled';
+    if(!s) return '';
+    return 'ship-pending';
+  }
+  function payClass(s){
+    if(s==='PAID') return 'pay-paid';
+    if(s==='PENDING') return 'pay-pending';
+    return '';
+  }
+  function dripState(s){
+    if(s==='delivered') return ['on','on','on','on done'];
+    if(s==='cancelled'||s==='returned') return ['on','on bad','on bad','on bad'];
+    if(s==='out for delivery'||s==='in transit') return ['on','on','on',''];
+    if(s==='pending pickup'||s==='request needed'||s==='wuilt'||s==='rescheduled') return ['on','on','',''];
+    return ['on','','',''];
+  }
+
+  function loadStorageUrl(){
+    try{
+      return localStorage.getItem('apps_script_url') || '';
+    }catch(e){ return ''; }
+  }
+  function saveStorageUrl(url){
+    try{ localStorage.setItem('apps_script_url', url); }catch(e){}
+  }
+  function loadOneSignalId(){
+    try{ return localStorage.getItem('onesignal_app_id') || ''; }catch(e){ return ''; }
+  }
+  function saveOneSignalId(id){
+    try{ localStorage.setItem('onesignal_app_id', id); }catch(e){}
+  }
+
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  let oneSignalInitialized = false;
+  function initOneSignal(appId){
+    if(!appId || oneSignalInitialized) return;
+    oneSignalInitialized = true;
+    // site scope: everything after the domain, up to the folder this page lives in
+    // e.g. https://user.github.io/UVA/dashboard.html -> scope "/UVA/"
+    const scope = location.pathname.replace(/[^/]*$/, '');
+    window.OneSignalDeferred.push(async function(OneSignal){
+      try{
+        await OneSignal.init({
+          appId: appId,
+          allowLocalhostAsSecureOrigin: true,
+          serviceWorkerParam: { scope: scope },
+          serviceWorkerPath: scope.replace(/^\//,'') + 'OneSignalSDKWorker.js'
+        });
+        updateBellState(OneSignal);
+        OneSignal.User.PushSubscription.addEventListener('change', ()=> updateBellState(OneSignal));
+      }catch(err){
+        $('pushDebug').textContent = 'Init error: ' + err;
+      }
+    });
+  }
+
+  async function checkPushStatus(){
+    const lines = [];
+    lines.push('Notification permission (browser): ' + (typeof Notification !== 'undefined' ? Notification.permission : 'Notification API unsupported'));
+    lines.push('Running as installed app (standalone): ' + (window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches ? 'yes' : 'no'));
+    try{
+      if('serviceWorker' in navigator){
+        const regs = await navigator.serviceWorker.getRegistrations();
+        lines.push('Service workers registered: ' + regs.length);
+        regs.forEach(r=> lines.push('  scope: ' + r.scope + (r.active ? ' (active)' : ' (not active)')));
+      } else {
+        lines.push('Service workers: unsupported in this browser');
+      }
+    }catch(err){ lines.push('Service worker check failed: ' + err); }
+    const osId = loadOneSignalId();
+    lines.push('Saved OneSignal App ID: ' + (osId || '(none saved yet)'));
+    if(osId && window.OneSignal){
+      try{
+        lines.push('OneSignal subscribed: ' + window.OneSignal.User.PushSubscription.optedIn);
+        lines.push('OneSignal subscription id: ' + (window.OneSignal.User.PushSubscription.id || '(none)'));
+      }catch(err){ lines.push('OneSignal state check failed: ' + err); }
+    } else {
+      lines.push('OneSignal SDK: not initialized yet on this page load');
+    }
+    $('pushDebug').innerHTML = lines.map(escapeHtml).join('<br>');
+  }
+  $('checkPushBtn').addEventListener('click', checkPushStatus);
+  function updateBellState(OneSignal){
+    const subscribed = OneSignal.User.PushSubscription.optedIn;
+    $('bellBtn').classList.toggle('on', !!subscribed);
+  }
+  $('bellBtn').addEventListener('click', ()=>{
+    window.OneSignalDeferred.push(async function(OneSignal){
+      try{
+        const subscribed = OneSignal.User.PushSubscription.optedIn;
+        if(subscribed){
+          await OneSignal.User.PushSubscription.optOut();
+        } else {
+          const perm = await OneSignal.Notifications.requestPermission();
+          if(perm === false){
+            alert('Notifications permission was blocked. Enable it for this site in your browser settings and try again.');
+            return;
+          }
+          await OneSignal.User.PushSubscription.optIn();
+        }
+        updateBellState(OneSignal);
+      }catch(err){
+        alert('Could not enable notifications: ' + err);
+      }
+    });
+  });
+
+  async function init(){
+    const saved = loadStorageUrl();
+    const osId = loadOneSignalId();
+    if(osId){
+      $('oneSignalInput').value = osId;
+      initOneSignal(osId);
+    }
+    if(saved){
+      $('urlInput').value = saved;
+      API_URL = saved;
+      showApp();
+      fetchOrders();
+    }
+  }
+
+  function showApp(){
+    $('setup').style.display = 'none';
+    $('app').style.display = 'block';
+  }
+
+  $('connectBtn').addEventListener('click', async ()=>{
+    const url = $('urlInput').value.trim();
+    $('setup-error').textContent = '';
+    if(!url.startsWith('https://script.google.com/')){
+      $('setup-error').textContent = 'The URL should start with https://script.google.com/ — check the deploy steps above.';
+      return;
+    }
+    API_URL = url;
+    $('connectBtn').textContent = 'Connecting...';
+    const ok = await fetchOrders();
+    $('connectBtn').textContent = 'Connect & Load Orders';
+    if(ok){
+      saveStorageUrl(url);
+      const osId = $('oneSignalInput').value.trim();
+      if(osId){
+        saveOneSignalId(osId);
+        initOneSignal(osId);
+      }
+      showApp();
+    }
+  });
+
+  $('settingsBtn').addEventListener('click', ()=>{
+    $('app').style.display = 'none';
+    $('setup').style.display = 'flex';
+  });
+
+  $('refreshBtn').addEventListener('click', ()=> fetchOrders());
+
+  async function fetchOrders(){
+    $('statusDot').classList.add('stale');
+    $('loadingSpinner').style.display = 'block';
+    $('list').innerHTML = '';
+    try{
+      const sep = API_URL.includes('?') ? '&' : '?';
+      const res = await fetch(API_URL + sep + 'action=list');
+      const data = await res.json();
+      if(data.error){
+        $('setup-error').textContent = 'Sheet error: ' + data.error;
+        $('loadingSpinner').style.display = 'none';
+        return false;
+      }
+      allOrders = data.orders || [];
+      headers = data.headers || [];
+      allOrders.sort((a,b)=> new Date(b['Updated']||0) - new Date(a['Updated']||0));
+      $('statusDot').classList.remove('stale');
+      renderStats();
+      buildPills();
+      applyFilters();
+      return true;
+    }catch(err){
+      $('setup-error').textContent = 'Could not reach that URL. Make sure the deployment access is set to "Anyone", executing as "Me". (' + err + ')';
+      $('loadingSpinner').style.display = 'none';
+      return false;
+    }
+  }
+
+  function renderStats(){
+    const total = allOrders.length;
+    const delivered = allOrders.filter(o=>o.shipping_status==='delivered').length;
+    const cancelled = allOrders.filter(o=> o.shipping_status==='cancelled' || o.shipping_status==='returned').length;
+    const pendingShip = allOrders.filter(o=> !['delivered','cancelled','returned'].includes(o.shipping_status)).length;
+    const paid = allOrders.filter(o=>o.payment_status==='PAID').length;
+    const pendingPay = allOrders.filter(o=>o.payment_status==='PENDING').length;
+    const revenue = allOrders.reduce((sum,o)=>{
+      const t = parseFloat(o.total);
+      return sum + (isNaN(t)?0:t);
+    },0);
+
+    const stats = [
+      {n: total, l:'Total orders', c:'accent'},
+      {n: delivered, l:'Delivered', c:'sage'},
+      {n: pendingShip, l:'In progress', c:'amber'},
+      {n: cancelled, l:'Cancelled / returned', c:'rust'},
+      {n: paid, l:'Paid', c:'sage'},
+      {n: pendingPay, l:'Payment pending', c:'amber'},
+      {n: revenue.toLocaleString('en-US',{maximumFractionDigits:0}), l:'Total recorded value', c:'accent'},
+    ];
+    $('statScroll').innerHTML = stats.map(s=>`
+      <div class="stat-card ${s.c}">
+        <div class="stat-num display">${s.n}</div>
+        <div class="stat-label">${s.l}</div>
+      </div>`).join('');
+  }
+
+  function buildPills(){
+    const shipCounts = {};
+    allOrders.forEach(o=>{ const k=o.shipping_status||''; shipCounts[k]=(shipCounts[k]||0)+1; });
+    // primary filter: always show every known shipping status (even 0 count),
+    // plus any unexpected values found in the sheet that aren't in the fixed list
+    const extraKeys = Object.keys(shipCounts).filter(k=> k!=='' && !SHIP_STATUSES.includes(k));
+    const shipKeys = [...SHIP_STATUSES, ...extraKeys];
+    $('shipPills').innerHTML = ['all', ...shipKeys].map(k=>{
+      const label = k==='all' ? 'All shipping' : (SHIP_LABELS[k]||k);
+      const count = k==='all' ? allOrders.length : (shipCounts[k]||0);
+      return `<div class="pill ${k===activeShip?'active':''}" data-ship="${escapeAttr(k)}">${label} (${count})</div>`;
+    }).join('');
+
+    const payCounts = {};
+    allOrders.forEach(o=>{ const k=o.payment_status||''; payCounts[k]=(payCounts[k]||0)+1; });
+    const payKeys = Object.keys(payCounts).sort((a,b)=>payCounts[b]-payCounts[a]);
+    $('payPills').innerHTML = ['all', ...payKeys].map(k=>{
+      const label = k==='all' ? 'All payment' : (PAY_LABELS[k]||k);
+      const count = k==='all' ? allOrders.length : payCounts[k];
+      return `<div class="pill ${k===activePay?'active':''}" data-pay="${escapeAttr(k)}">${label} (${count})</div>`;
+    }).join('');
+
+    document.querySelectorAll('[data-ship]').forEach(el=>{
+      el.addEventListener('click', ()=>{ activeShip = el.getAttribute('data-ship'); buildPills(); applyFilters(); });
+    });
+    document.querySelectorAll('[data-pay]').forEach(el=>{
+      el.addEventListener('click', ()=>{ activePay = el.getAttribute('data-pay'); buildPills(); applyFilters(); });
+    });
+  }
+
+  $('searchInput').addEventListener('input', (e)=>{
+    searchTerm = e.target.value.trim().toLowerCase();
+    applyFilters();
+  });
+
+  function applyFilters(){
+    filteredOrders = allOrders.filter(o=>{
+      if(activeShip !== 'all' && (o.shipping_status||'') !== activeShip) return false;
+      if(activePay !== 'all' && (o.payment_status||'') !== activePay) return false;
+      if(searchTerm){
+        const hay = [pk(o), o['Order Serial'], o['Customer Name'], o['Phone'], o['Phone2']].join(' ').toLowerCase();
+        if(!hay.includes(searchTerm)) return false;
+      }
+      return true;
+    });
+    shownCount = 0;
+    $('list').innerHTML = '';
+    renderMore();
+  }
+
+  function renderMore(){
+    $('loadingSpinner').style.display = 'none';
+    const next = filteredOrders.slice(shownCount, shownCount + PAGE_SIZE);
+    if(shownCount === 0 && next.length === 0){
+      $('list').innerHTML = '<div class="empty">No orders match these filters</div>';
+      $('loadMoreBtn').style.display = 'none';
+      return;
+    }
+    next.forEach(o=> $('list').insertAdjacentHTML('beforeend', orderCard(o)));
+    shownCount += next.length;
+    attachCardHandlers();
+    $('loadMoreBtn').style.display = shownCount < filteredOrders.length ? 'block' : 'none';
+  }
+  $('loadMoreBtn').addEventListener('click', renderMore);
+
+  function trackUrl(trackingNumber){
+    return 'https://www.aramex.com/eg/en/track/track-results-new?source=aramex&ShipmentNumber=' + encodeURIComponent(trackingNumber);
+  }
+
+  function fmtDate(iso){
+    if(!iso) return '';
+    const d = new Date(iso);
+    if(isNaN(d)) return '';
+    return d.toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'});
+  }
+
+  function orderCard(o){
+    const drip = dripState(o.shipping_status);
+    const ship = o.shipping_status || '';
+    const pay = o.payment_status || '';
+    const total = o.total ? (parseFloat(o.total)||o.total) + ' EGP' : '—';
+    const city = [o.Gov, o.city].filter(Boolean).join(' - ');
+    const hasOrderId = o['order ID'] !== undefined && o['order ID'] !== null && o['order ID'] !== '';
+    return `
+    <div class="order-card" data-row="${o._row}">
+      <div class="order-top">
+        <div>
+          <div class="order-id display">${escapeHtml(pkLabel(o))}</div>
+          ${hasOrderId ? `<div class="order-id-sub">${escapeHtml(o['order ID'])}</div>` : ''}
+          <div class="order-name">${escapeHtml(o['Customer Name']||'No name')}</div>
+          <div class="order-sub">
+            <span>${escapeHtml(o.Phone||'')}</span>
+            ${city? `<span>${escapeHtml(city)}</span>`:''}
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <div class="order-total">${total}</div>
+          <div class="order-date">${fmtDate(o.Updated)}</div>
+        </div>
+      </div>
+
+      <div class="drip-line">
+        ${drip.map(s=>`<div class="drip-seg ${s}"></div>`).join('')}
+      </div>
+
+      <div class="badges">
+        <span class="badge ${shipClass(ship)}">Shipping: ${SHIP_LABELS[ship]||ship||'No status'}</span>
+        <span class="badge ${payClass(pay)}">Payment: ${PAY_LABELS[pay]||pay||'Unspecified'}</span>
+      </div>
+      ${o.note ? `<div class="note-line">📝 ${escapeHtml(o.note)}</div>` : ''}
+
+      <button class="expand-btn" data-toggle>View details</button>
+      <div class="edit-panel" data-panel>
+        <div class="action-row">
+          ${o.tracking_number ? `
+          <a class="action-link" href="${escapeAttr(trackUrl(o.tracking_number))}" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+            Track shipment
+          </a>` : ''}
+          ${o.label_url ? `
+          <a class="action-link" href="${escapeAttr(o.label_url)}" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Print label
+          </a>` : ''}
+        </div>
+        <div class="detail-grid">
+          ${detailRow('Order Serial', o['Order Serial'])}
+          ${detailRow('Order ID', o['order ID'])}
+          ${detailRow('Phone', o.Phone)}
+          ${detailRow('Phone 2', o.Phone2)}
+          ${detailRow('Governorate', o.Gov)}
+          ${detailRow('City', o.city)}
+          ${detailRow('Address line 1', o.Address_line1)}
+          ${detailRow('Address line 2', o.Address_line2)}
+          ${detailRow('Address', o.Address)}
+          ${detailRow('Items', o.items)}
+          ${detailRow('Pieces', o.pieces)}
+          ${detailRow('Weight', o.weight)}
+          ${detailRow('Total', o.total)}
+          ${detailRow('COD', o.COD)}
+          ${detailRow('Tracking number', o.tracking_number)}
+          ${detailRow('Pickup reference', o.pickup_reference)}
+          ${detailRow('Pickup location', o.pickup_location)}
+          ${detailRow('Open package', o['open package'])}
+          ${detailRow('Language', o.Lang)}
+          ${detailRow('Date', fmtDate(o.date))}
+          ${detailRow('Last updated', fmtDate(o.Updated))}
+        </div>
+        ${o.note ? `<div class="note-line" style="margin-top:10px;">📝 ${escapeHtml(o.note)}</div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  function detailRow(label, value){
+    if(value === undefined || value === null || value === '') return '';
+    return `<div class="detail-row"><span class="detail-label">${escapeHtml(label)}</span><span class="detail-value">${escapeHtml(value)}</span></div>`;
+  }
+
+  function attachCardHandlers(){
+    document.querySelectorAll('[data-toggle]').forEach(btn=>{
+      if(btn._bound) return; btn._bound = true;
+      btn.addEventListener('click', ()=>{
+        const panel = btn.nextElementSibling;
+        panel.classList.toggle('open');
+        btn.textContent = panel.classList.contains('open') ? 'Hide details' : 'View details';
+      });
+    });
+  }
+
+  function escapeHtml(s){
+    if(s===undefined||s===null) return '';
+    return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function escapeAttr(s){ return escapeHtml(s); }
+
+  init();
+})();
+</script>
+</body>
+</html>
