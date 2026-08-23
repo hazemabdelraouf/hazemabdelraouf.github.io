@@ -204,6 +204,17 @@
     background:rgba(201,154,61,0.08);border:1px solid rgba(201,154,61,0.35);
     border-radius:10px;color:var(--gold-soft);text-decoration:none;
     font-size:12.5px;font-weight:600;white-space:nowrap;justify-content:center;
+    cursor:pointer;font-family:inherit;
+  }
+  .action-link:hover{background:rgba(201,154,61,0.15);}
+  .action-link.webhook-btn{
+    background:rgba(127,160,122,0.1);border-color:rgba(127,160,122,0.4);color:var(--sage);
+  }
+  .action-link.webhook-btn:hover{
+    background:rgba(127,160,122,0.2);
+  }
+  .action-link.webhook-btn.sending{
+    opacity:0.6;pointer-events:none;
   }
   .action-link svg{width:14px;height:14px;flex:0 0 auto;}
   .detail-grid{display:flex;flex-direction:column;gap:0;}
@@ -229,6 +240,47 @@
     animation:spin 0.8s linear infinite;margin:40px auto;
   }
   @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* ===== Modal Selection Styling ===== */
+  .modal-overlay{
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    background:rgba(0,0,0,0.75);
+    backdrop-filter:blur(4px);
+    z-index:999;display:none;
+    align-items:center;justify-content:center;
+    padding:20px;
+  }
+  .modal-overlay.active{display:flex;}
+  .modal-card{
+    background:var(--panel);
+    border:1px solid var(--line-strong);
+    border-radius:18px;
+    width:100%;max-width:320px;
+    padding:22px 18px;
+    text-align:center;
+    box-shadow:0 12px 30px rgba(0,0,0,0.5);
+    animation:popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  @keyframes popIn{
+    from{transform:scale(0.9);opacity:0;}
+    to{transform:scale(1);opacity:1;}
+  }
+  .modal-title{font-family:'Cairo';font-weight:800;font-size:16px;margin:0 0 6px;color:var(--cream);}
+  .modal-sub{font-size:12.5px;color:var(--cream-dim);margin:0 0 16px;}
+  .modal-options{display:flex;flex-direction:column;gap:10px;}
+  .modal-opt-btn{
+    width:100%;padding:13px;border-radius:12px;
+    background:var(--panel-2);border:1px solid var(--line-strong);
+    color:var(--cream);font-family:'Cairo',sans-serif;font-weight:700;
+    font-size:14px;cursor:pointer;transition:all 0.15s ease;
+  }
+  .modal-opt-btn:hover,.modal-opt-btn:active{
+    background:var(--gold);color:#1c1409;border-color:var(--gold);
+  }
+  .modal-cancel{
+    margin-top:14px;background:transparent;border:none;
+    color:var(--cream-dim);font-size:13px;cursor:pointer;padding:6px;
+  }
 
   ::selection{background:var(--gold);color:#1c1409;}
 </style>
@@ -304,8 +356,24 @@
   <button class="loadmore" id="loadMoreBtn" style="display:none;">Load more</button>
 </div>
 
+<!-- ============ MODAL ============ -->
+<div class="modal-overlay" id="locationModal">
+  <div class="modal-card">
+    <div class="modal-title" id="modalTitle">Select Location</div>
+    <div class="modal-sub">Choose location to create AWB</div>
+    <div class="modal-options">
+      <button class="modal-opt-btn" data-loc="Menya">Menya</button>
+      <button class="modal-opt-btn" data-loc="Mahalla">Mahalla</button>
+      <button class="modal-opt-btn" data-loc="Mashaya">Mashaya</button>
+    </div>
+    <button class="modal-cancel" id="closeModalBtn">Cancel</button>
+  </div>
+</div>
+
 <script>
 (function(){
+  const MAKE_WEBHOOK_URL = 'https://hook.eu1.make.com/cbsn3w2zotz94kq1kw5w988o34al5874';
+
   const SHIP_STATUSES = ['delivered','request needed','wuilt','pending pickup','in transit','out for delivery','rescheduled','cancelled','returned'];
   const SHIP_LABELS = {
     'delivered':'Delivered','request needed':'Request needed','wuilt':'Wuilt',
@@ -325,9 +393,11 @@
   let activePay = 'all';
   let searchTerm = '';
 
+  let currentTargetBtn = null;
+  let currentOrderSerial = '';
+
   const $ = id => document.getElementById(id);
 
-  // primary key: Order Serial
   function pk(o){
     return o['Order Serial'];
   }
@@ -375,30 +445,25 @@
     const target = hash || params.get('order') || params.get('order_id') || params.get('order_serial');
     if(!target) return;
 
-    // First reset search and filter to 'all' so the order is visible
     const targetStr = decodeURIComponent(target).trim();
     
-    // Find matching order in full list
     const found = allOrders.find(o => 
       String(o['Order Serial'] || '').trim().toLowerCase() === targetStr.toLowerCase() ||
       String(o['order ID'] || '').trim().toLowerCase() === targetStr.toLowerCase()
     );
 
     if(found){
-      // Clear filters so target is in view
       activeShip = 'all';
       activePay = 'all';
       searchTerm = '';
       if($('searchInput')) $('searchInput').value = '';
       buildPills();
       
-      // Move target order to top of list
       filteredOrders = [found, ...allOrders.filter(o => o !== found)];
       shownCount = 0;
       $('list').innerHTML = '';
       renderMore();
 
-      // Open target card and highlight
       const card = document.getElementById('order-' + (found['Order Serial'] || ''));
       if(card){
         const panel = card.querySelector('[data-panel]');
@@ -430,7 +495,6 @@
         updateBellState(OneSignal);
         OneSignal.User.PushSubscription.addEventListener('change', ()=> updateBellState(OneSignal));
 
-        // When user clicks a notification while dashboard is open / foreground
         OneSignal.Notifications.addEventListener('click', (event) => {
           try {
             const url = event.notification.launchURL;
@@ -499,6 +563,73 @@
       }
     });
   });
+
+  // Open modal for location selection
+  function promptLocationSelection(btn, serial){
+    currentTargetBtn = btn;
+    currentOrderSerial = serial;
+    $('modalTitle').textContent = 'Create AWB for #' + serial;
+    $('locationModal').classList.add('active');
+  }
+
+  function hideModal(){
+    $('locationModal').classList.remove('active');
+    currentTargetBtn = null;
+    currentOrderSerial = '';
+  }
+
+  $('closeModalBtn').addEventListener('click', hideModal);
+  $('locationModal').addEventListener('click', (e)=>{
+    if(e.target === $('locationModal')) hideModal();
+  });
+
+  // Handle location button clicks inside modal
+  document.querySelectorAll('.modal-opt-btn').forEach(optBtn => {
+    optBtn.addEventListener('click', async () => {
+      const selectedLocation = optBtn.getAttribute('data-loc');
+      const btn = currentTargetBtn;
+      const serial = currentOrderSerial;
+      hideModal();
+
+      if(!btn || !serial) return;
+      await sendMakeWebhook(btn, serial, selectedLocation);
+    });
+  });
+
+  async function sendMakeWebhook(btn, orderSerial, locationChoice){
+    const origText = btn.innerHTML;
+    btn.classList.add('sending');
+    btn.innerHTML = `<svg class="spinner" style="width:14px;height:14px;border-width:2px;margin:0 4px 0 0;display:inline-block;vertical-align:middle;"></svg> Creating AWB...`;
+
+    try {
+      const payload = {
+        order_serial: orderSerial,
+        location: locationChoice
+      };
+
+      // Sending data as JSON text in no-cors mode to bypass browser CORS preflight restrictions
+      await fetch(MAKE_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload),
+        mode: 'no-cors'
+      });
+
+      btn.style.borderColor = 'var(--sage)';
+      btn.style.color = 'var(--sage)';
+      btn.innerHTML = `✓ AWB Requested (${escapeHtml(locationChoice)})`;
+      setTimeout(()=>{
+        btn.classList.remove('sending');
+        btn.innerHTML = origText;
+        btn.style.borderColor = '';
+        btn.style.color = '';
+      }, 3500);
+    } catch (err) {
+      alert('Failed to trigger webhook: ' + err);
+      btn.classList.remove('sending');
+      btn.innerHTML = origText;
+    }
+  }
 
   async function init(){
     const saved = loadStorageUrl();
@@ -690,6 +821,7 @@
     const city = [o.Gov, o.city].filter(Boolean).join(' - ');
     const hasOrderId = o['order ID'] !== undefined && o['order ID'] !== null && o['order ID'] !== '';
     const serial = o['Order Serial'] || '';
+
     return `
     <div class="order-card" id="order-${escapeAttr(serial)}" data-row="${o._row}">
       <div class="order-top">
@@ -721,6 +853,10 @@
       <button class="expand-btn" data-toggle>View details</button>
       <div class="edit-panel" data-panel>
         <div class="action-row">
+          <button class="action-link webhook-btn" data-webhook data-serial="${escapeAttr(serial)}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            Create AWB
+          </button>
           ${o.tracking_number ? `
           <a class="action-link" href="${escapeAttr(trackUrl(o.tracking_number))}" target="_blank" rel="noopener">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -772,6 +908,14 @@
         const panel = btn.nextElementSibling;
         panel.classList.toggle('open');
         btn.textContent = panel.classList.contains('open') ? 'Hide details' : 'View details';
+      });
+    });
+
+    document.querySelectorAll('[data-webhook]').forEach(btn=>{
+      if(btn._boundWebhook) return; btn._boundWebhook = true;
+      btn.addEventListener('click', ()=>{
+        const serial = btn.getAttribute('data-serial');
+        promptLocationSelection(btn, serial);
       });
     });
   }
