@@ -783,7 +783,7 @@
       if('serviceWorker' in navigator){
         const regs = await navigator.serviceWorker.getRegistrations();
         lines.push('Service workers registered: ' + regs.length);
-        regs.forEach(r=> lines.push('  scope: ' + r.scope + (r.active ? ' (not active)')));
+        regs.forEach(r=> lines.push('  scope: ' + r.scope + (r.active ? ' (active)' : ' (not active)')));
       } else {
         lines.push('Service workers: unsupported in this browser');
       }
@@ -994,13 +994,21 @@
     $('statusDot').classList.add('stale');
     if($('loadingSpinner')) $('loadingSpinner').style.display = 'block';
     if($('list')) $('list').innerHTML = '';
+    const controller = new AbortController();
+    // Without a timeout, a stuck/unresponsive network request leaves fetch()
+    // pending forever — no error is ever thrown, so the button just stays on
+    // "Connecting..." with no feedback. Abort after 20s so the user always
+    // gets a clear error instead of an infinite hang.
+    const timeoutId = setTimeout(()=> controller.abort(), 20000);
     try{
       const sep = API_URL.includes('?') ? '&' : '?';
       const res = await fetch(API_URL + sep + 'action=list', {
         method: 'GET',
-        redirect: 'follow'
+        redirect: 'follow',
+        signal: controller.signal
       });
-      
+      clearTimeout(timeoutId);
+
       if (!res.ok) {
         throw new Error('HTTP status ' + res.status);
       }
@@ -1030,9 +1038,14 @@
       checkAndOpenTargetOrder();
       return true;
     }catch(err){
+      clearTimeout(timeoutId);
       console.error('fetchOrders error:', err);
-      $('setup-error').textContent = 'Could not reach Google Sheet URL (' + err.message + '). Check: 1) Deploy -> Access: Anyone. 2) URL is correct.';
+      const msg = (err.name === 'AbortError')
+        ? 'Request timed out after 20s — the Google Sheet URL is not responding. Check: 1) Deploy -> Access: Anyone. 2) URL is correct. 3) Your internet connection.'
+        : 'Could not reach Google Sheet URL (' + err.message + '). Check: 1) Deploy -> Access: Anyone. 2) URL is correct.';
+      $('setup-error').textContent = msg;
       if($('loadingSpinner')) $('loadingSpinner').style.display = 'none';
+      $('statusDot').classList.add('stale');
       return false;
     }
   }
