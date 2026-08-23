@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+<title>Orders Dashboard</title>
+
+<!-- PWA: installs as a standalone app icon on mobile -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ffffff">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Orders">
+
+<!-- OneSignal Web Push -->
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@600;700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f8fafc;
+    --panel:#ffffff;
+    --panel-2:#f1f5f9;
+    --cream:#0f172a;
+    --cream-dim:#64748b;
+    --gold:#ea580c;
+    --gold-soft:#f97316;
+    --sage:#16a34a;
+    --amber:#d97706;
+    --rust:#dc2626;
+    --blue:#2563eb;
+    --line:#e2e8f0;
+    --line-strong:#cbd5e1;
+    --shadow-sm:0 1px 2px 0 rgba(0,0,0,0.05);
+    --shadow-md:0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(ellipse 900px 500px at 85% -10%, rgba(234,88,12,0.05), transparent 60%),
+      var(--bg);
+    color:var(--cream);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .display{font-family:'Cairo', sans-serif;}
+
+  /* ===== setup screen ===== */
+  #setup{
+    min-height:100vh;
+    display:flex;flex-direction:column;justify-content:center;align-items:center;
+    padding:calc(28px + env(safe-area-inset-top)) 22px calc(28px + env(safe-area-inset-bottom));
+    text-align:center;
+  }
+  .bean{width:46px;height:46px;margin-bottom:18px;opacity:.95;}
+  #setup h1{font-size:22px;margin:0 0 8px;font-weight:800;color:var(--cream);}
+  #setup p{color:var(--cream-dim);font-size:14px;line-height:1.8;max-width:380px;margin:0 0 20px;}
+  #setup ol{color:var(--cream-dim);font-size:13.5px;line-height:2;text-align:left;max-width:380px;margin:0 0 22px;padding-inline-start:20px;}
+  #setup ol b{color:var(--cream);}
+  .field{width:100%;max-width:380px;}
+  input[type=text], select, input[type=search]{
+    width:100%;
+    background:var(--panel);
+    border:1px solid var(--line-strong);
+    color:var(--cream);
+    padding:13px 14px;
+    border-radius:12px;
+    font-family:inherit;
+    font-size:14px;
+    outline:none;
+    box-shadow:var(--shadow-sm);
+    transition:border-color 0.2s, box-shadow 0.2s;
+  }
+  input:focus, select:focus{
+    border-color:var(--gold-soft);
+    box-shadow:0 0 0 3px rgba(249,115,22,0.15);
+  }
+  .btn{
+    background:linear-gradient(180deg, var(--gold-soft), var(--gold));
+    color:#ffffff;
+    border:none;
+    padding:13px 22px;
+    border-radius:12px;
+    font-family:'Cairo',sans-serif;
+    font-weight:800;
+    font-size:14.5px;
+    cursor:pointer;
+    width:100%;
+    max-width:380px;
+    margin-top:12px;
+    box-shadow:0 3px 8px rgba(234,88,12,0.25);
+    transition:transform 0.1s, box-shadow 0.2s;
+  }
+  .btn:active{transform:scale(.98);}
+  .btn.ghost{
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--cream-dim);
+    box-shadow:var(--shadow-sm);
+  }
+  #setup-error{color:var(--rust);font-size:13px;margin-top:10px;min-height:16px;}
+
+  /* ===== app shell ===== */
+  #app{display:none;padding-bottom:40px;}
+  header.topbar{
+    position:sticky;top:0;z-index:20;
+    background:rgba(255,255,255,0.94);
+    backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--line);
+    padding:calc(14px + env(safe-area-inset-top)) 16px 12px;
+  }
+  .topbar-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .brand{display:flex;align-items:center;gap:9px;}
+  .brand svg{width:24px;height:24px;}
+  .brand-text{font-family:'Cairo';font-weight:800;font-size:17px;color:var(--cream);}
+  .status-dot{width:8px;height:8px;border-radius:50%;background:var(--sage);box-shadow:0 0 6px rgba(22,163,74,0.4);}
+  .status-dot.stale{background:var(--amber);box-shadow:0 0 6px rgba(217,119,6,0.4);}
+  .icon-btn{
+    position:relative;
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--cream-dim);
+    border-radius:10px;padding:8px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    box-shadow:var(--shadow-sm);
+    transition:all 0.15s ease;
+  }
+  .icon-btn:hover{background:var(--panel-2);color:var(--cream);}
+  .icon-btn svg{width:17px;height:17px;}
+  .icon-btn.on{border-color:var(--gold);color:var(--gold);}
+  .notif-badge-count{
+    position:absolute;top:-4px;right:-4px;
+    background:var(--gold);color:#fff;
+    font-size:10px;font-weight:700;
+    width:16px;height:16px;border-radius:50%;
+    display:none;align-items:center;justify-content:center;
+    box-shadow:0 1px 3px rgba(0,0,0,0.2);
+  }
+
+  /* ===== Notifications Drawer ===== */
+  .notif-drawer-overlay{
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    background:rgba(15,23,42,0.4);backdrop-filter:blur(3px);
+    z-index:100;display:none;
+  }
+  .notif-drawer-overlay.open{display:block;}
+  .notif-drawer{
+    position:fixed;top:0;right:0;bottom:0;
+    width:100%;max-width:340px;
+    background:var(--panel);
+    z-index:101;box-shadow:-6px 0 25px rgba(0,0,0,0.1);
+    display:flex;flex-direction:column;
+    transform:translateX(100%);
+    transition:transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .notif-drawer.open{transform:translateX(0);}
+  .notif-header{
+    padding:calc(16px + env(safe-area-inset-top)) 16px 14px;
+    border-bottom:1px solid var(--line);
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  .notif-title{font-family:'Cairo';font-weight:800;font-size:16px;color:var(--cream);}
+  .notif-clear-btn{
+    background:transparent;border:none;color:var(--cream-dim);
+    font-size:12.5px;cursor:pointer;font-family:inherit;font-weight:600;
+  }
+  .notif-clear-btn:hover{color:var(--rust);}
+  .notif-list{
+    flex:1;overflow-y:auto;padding:12px 14px;
+    display:flex;flex-direction:column;gap:8px;
+  }
+  .notif-item{
+    background:var(--panel-2);border:1px solid var(--line);
+    border-radius:12px;padding:12px;cursor:pointer;
+    transition:background 0.15s ease, border-color 0.15s ease;
+  }
+  .notif-item:hover{background:#e2e8f0;border-color:var(--gold);}
+  .notif-item-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
+  .notif-item-title{font-weight:700;font-size:13px;color:var(--cream);}
+  .notif-item-time{font-size:11px;color:var(--cream-dim);}
+  .notif-item-body{font-size:12px;color:var(--cream-dim);line-height:1.5;}
+  .notif-empty{text-align:center;color:var(--cream-dim);font-size:13px;margin:auto;}
+
+  /* ===== stat cards ===== */
+  .stat-scroll{
+    display:flex;gap:10px;overflow-x:auto;padding:14px 16px 4px;
+    scrollbar-width:none;
+  }
+  .stat-scroll::-webkit-scrollbar{display:none;}
+  .stat-card{
+    flex:0 0 auto;min-width:118px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:12px 14px;
+    box-shadow:var(--shadow-sm);
+  }
+  .stat-num{font-family:'Cairo';font-weight:800;font-size:21px;line-height:1;}
+  .stat-label{color:var(--cream-dim);font-size:11.5px;margin-top:6px;}
+  .stat-card.accent .stat-num{color:var(--gold);}
+  .stat-card.sage .stat-num{color:var(--sage);}
+  .stat-card.amber .stat-num{color:var(--amber);}
+  .stat-card.rust .stat-num{color:var(--rust);}
+
+  /* ===== filters ===== */
+  .filters{padding:8px 16px 4px;}
+  .search-row{display:flex;gap:8px;margin-bottom:10px;}
+  .pill-row{display:flex;gap:7px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;}
+  .pill-row::-webkit-scrollbar{display:none;}
+  .pill{
+    flex:0 0 auto;
+    padding:7px 13px;border-radius:999px;
+    background:var(--panel);border:1px solid var(--line);
+    color:var(--cream-dim);font-size:12.5px;cursor:pointer;white-space:nowrap;
+    box-shadow:var(--shadow-sm);
+    transition:all 0.15s ease;
+  }
+  .pill:hover{border-color:var(--line-strong);color:var(--cream);}
+  .pill.active{background:var(--gold);border-color:var(--gold);color:#ffffff;font-weight:700;}
+  .filter-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--cream-dim);margin:2px 0 6px;}
+  #shipPills .pill{font-size:13px;padding:8px 15px;}
+  #shipPills{margin-bottom:2px;}
+
+  /* ===== order list ===== */
+  #list{padding:12px 16px 0;display:flex;flex-direction:column;gap:12px;}
+  .order-card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:15px;
+    box-shadow:var(--shadow-sm);
+    transition:border-color 0.25s ease, box-shadow 0.25s ease;
+  }
+  .order-card.highlighted{
+    border-color:var(--gold-soft);
+    box-shadow: 0 0 0 2px rgba(249,115,22,0.25), var(--shadow-md);
+  }
+  .order-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .order-id{font-family:'Cairo';font-weight:800;font-size:15px;color:var(--gold);}
+  .order-id-sub{font-size:10.5px;color:var(--cream-dim);margin-top:1px;word-break:break-all;}
+  .order-date{color:var(--cream-dim);font-size:11.5px;}
+  .order-name{font-size:14.5px;font-weight:700;margin-top:4px;color:var(--cream);}
+  .order-sub{color:var(--cream-dim);font-size:12.5px;margin-top:2px;display:flex;gap:10px;flex-wrap:wrap;}
+  .order-total{font-family:'Cairo';font-weight:800;font-size:15.5px;color:var(--cream);}
+
+  .drip-line{display:flex;align-items:center;gap:4px;margin:12px 0 10px;}
+  .drip-seg{flex:1;height:3.5px;border-radius:2px;background:var(--line);}
+  .drip-seg.on{background:var(--gold);}
+  .drip-seg.on.done{background:var(--sage);}
+  .drip-seg.on.bad{background:var(--rust);}
+
+  .badges{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px;}
+  .badge{
+    font-size:12px;font-weight:600;
+    padding:4px 11px;border-radius:999px;
+    border:1px solid transparent;
+  }
+  .badge.ship-delivered{color:#15803d;border-color:#bbf7d0;background:#f0fdf4;}
+  .badge.ship-cancelled,.badge.ship-returned{color:#b91c1c;border-color:#fecaca;background:#fef2f2;}
+  .badge.ship-pending{color:#b45309;border-color:#fde68a;background:#fffbeb;}
+  .badge.pay-paid{color:#15803d;border-color:#bbf7d0;background:#f0fdf4;}
+  .badge.pay-pending{color:#b45309;border-color:#fde68a;background:#fffbeb;}
+
+  /* Direct Action Buttons on Card */
+  .card-actions{
+    display:flex;
+    gap:8px;
+    margin-top:13px;
+  }
+  .card-btn{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:7px;
+    padding:10.5px 14px;
+    border:none;
+    border-radius:11px;
+    font-family:'Cairo', sans-serif;
+    font-weight:800;
+    font-size:13.5px;
+    cursor:pointer;
+    box-shadow:var(--shadow-sm);
+    transition:transform 0.1s, opacity 0.2s, background 0.2s, box-shadow 0.2s;
+  }
+  .create-awb-btn{
+    background:linear-gradient(180deg, #fb923c, #ea580c);
+    color:#ffffff;
+  }
+  .create-awb-btn.replace-mode{
+    background:linear-gradient(180deg, #fbbf24, #d97706);
+    color:#ffffff;
+  }
+  .send-mail-btn{
+    background:linear-gradient(180deg, #60a5fa, #2563eb);
+    color:#ffffff;
+  }
+  .card-btn:active{transform:scale(0.98);}
+  .card-btn.sending{opacity:0.75;pointer-events:none;}
+  .card-btn.success{background:var(--sage) !important;color:#ffffff !important;border:none !important;opacity:1 !important;}
+  .card-btn.error{background:var(--rust) !important;color:#fff !important;border:none !important;opacity:1 !important;}
+
+  .expand-btn{
+    flex:1;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:#475569;
+    border-radius:11px;
+    padding:9.5px;
+    font-size:12.5px;
+    font-weight:600;
+    font-family:inherit;
+    cursor:pointer;
+    transition:background 0.15s, border-color 0.15s;
+  }
+  .expand-btn:hover{background:#e2e8f0;border-color:var(--line-strong);}
+
+  .edit-panel{display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);}
+  .edit-panel.open{display:block;}
+  .action-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+  .action-link{
+    display:flex;align-items:center;gap:7px;flex:1;
+    padding:10px 12px;
+    background:#fff7ed;border:1px solid #ffedd5;
+    border-radius:10px;color:var(--gold);text-decoration:none;
+    font-size:12.5px;font-weight:700;white-space:nowrap;justify-content:center;
+    cursor:pointer;font-family:inherit;
+    transition:background 0.15s, border-color 0.15s;
+  }
+  .action-link:hover{background:#ffedd5;border-color:#fed7aa;}
+  .action-link svg{width:14px;height:14px;flex:0 0 auto;}
+  .detail-grid{display:flex;flex-direction:column;gap:0;}
+  .detail-row{
+    display:flex;justify-content:space-between;gap:14px;
+    padding:7px 0;border-bottom:1px solid var(--line);
+    font-size:12.5px;
+  }
+  .detail-row:last-child{border-bottom:none;}
+  .detail-label{color:var(--cream-dim);flex:0 0 auto;}
+  .detail-value{color:var(--cream);font-weight:500;text-align:right;word-break:break-word;}
+  .note-line{font-size:12px;color:#334155;margin-top:8px;background:var(--panel-2);border:1px solid var(--line);padding:9px 12px;border-radius:9px;line-height:1.5;}
+
+  .empty{text-align:center;padding:60px 20px;color:var(--cream-dim);font-size:13.5px;}
+  .loadmore{
+    display:block;margin:16px auto;padding:11px 24px;
+    background:var(--panel);border:1px solid var(--line);
+    color:var(--cream);border-radius:12px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;
+    box-shadow:var(--shadow-sm);
+    transition:background 0.15s, border-color 0.15s;
+  }
+  .loadmore:hover{background:var(--panel-2);border-color:var(--line-strong);}
+  .spinner{
+    width:26px;height:26px;border-radius:50%;
+    border:3px solid var(--line);border-top-color:var(--gold);
+    animation:spin 0.8s linear infinite;margin:40px auto;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* ===== Modal Selection Styling ===== */
+  .modal-overlay{
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    background:rgba(15,23,42,0.45);
+    backdrop-filter:blur(4px);
+    z-index:999;display:none;
+    align-items:center;justify-content:center;
+    padding:20px;
+  }
+  .modal-overlay.active{display:flex;}
+  .modal-card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:20px;
+    width:100%;max-width:320px;
+    padding:22px 18px;
+    text-align:center;
+    box-shadow:0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);
+    animation:popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  @keyframes popIn{
+    from{transform:scale(0.92);opacity:0;}
+    to{transform:scale(1);opacity:1;}
+  }
+  .modal-title{font-family:'Cairo';font-weight:800;font-size:17px;margin:0 0 6px;color:var(--cream);}
+  .modal-sub{font-size:12.5px;color:var(--cream-dim);margin:0 0 16px;}
+  .modal-options{display:flex;flex-direction:column;gap:10px;}
+  .modal-opt-btn{
+    width:100%;padding:13px;border-radius:12px;
+    background:var(--panel-2);border:1px solid var(--line);
+    color:var(--cream);font-family:'Cairo',sans-serif;font-weight:700;
+    font-size:14px;cursor:pointer;transition:all 0.15s ease;
+  }
+  .modal-opt-btn:hover,.modal-opt-btn:active{
+    background:var(--gold);color:#ffffff;border-color:var(--gold);
+    box-shadow:0 3px 8px rgba(234,88,12,0.25);
+  }
+  .modal-cancel{
+    margin-top:14px;background:transparent;border:none;
+    color:var(--cream-dim);font-size:13px;font-weight:600;cursor:pointer;padding:6px;
+  }
+  .modal-cancel:hover{color:var(--rust);}
+
+  ::selection{background:var(--gold-soft);color:#ffffff;}
+</style>
+</head>
+<body>
+
+<!-- ============ SETUP SCREEN ============ -->
+<div id="setup">
+  <svg class="bean" viewBox="0 0 24 24" fill="none">
+    <ellipse cx="12" cy="12" rx="9" ry="11" stroke="#ea580c" stroke-width="1.6"/>
+    <path d="M12 1.5 C7 6, 7 18, 12 22.5" stroke="#ea580c" stroke-width="1.6" fill="none"/>
+  </svg>
+  <h1 class="display">Orders Dashboard</h1>
+  <p>To read and update your sheet live, this needs a Google Apps Script "Web App" URL. Steps:</p>
+  <ol>
+    <li>Open your Google Sheet, then go to <b>Extensions ← Apps Script</b></li>
+    <li>Paste the code from <b>AppsScript_Code.gs</b> (change the sheet name if needed)</li>
+    <li>Run <b>Deploy ← New deployment ← Web app</b><br>Execute as: <b>Me</b> — Access: <b>Anyone</b></li>
+    <li>Copy the URL it gives you and paste it below</li>
+  </ol>
+  <div class="field">
+    <input type="text" id="urlInput" placeholder="https://script.google.com/macros/s/.../exec">
+  </div>
+  <div class="field" style="margin-top:10px;">
+    <input type="text" id="oneSignalInput" placeholder="OneSignal App ID (optional, for push alerts)">
+  </div>
+  <button class="btn" id="connectBtn">Connect & Load Orders</button>
+  <div id="setup-error"></div>
+  <button class="btn ghost" id="checkPushBtn" style="margin-top:18px;">Check notification status</button>
+  <div id="pushDebug" style="font-size:11.5px;color:var(--cream-dim);margin-top:10px;max-width:380px;text-align:left;line-height:1.8;"></div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app">
+  <header class="topbar">
+    <div class="topbar-row">
+      <div class="brand">
+        <svg viewBox="0 0 24 24" fill="none">
+          <ellipse cx="12" cy="12" rx="9" ry="11" stroke="#ea580c" stroke-width="1.6"/>
+          <path d="M12 1.5 C7 6, 7 18, 12 22.5" stroke="#ea580c" stroke-width="1.6" fill="none"/>
+        </svg>
+        <span class="brand-text">Orders</span>
+        <span class="status-dot" id="statusDot"></span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <div class="icon-btn" id="bellBtn" title="Today's Notifications">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="notif-badge-count" id="notifBadge">0</span>
+        </div>
+        <div class="icon-btn" id="refreshBtn" title="Refresh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg>
+        </div>
+        <div class="icon-btn" id="settingsBtn" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="stat-scroll" id="statScroll"></div>
+
+  <div class="filters">
+    <div class="search-row">
+      <input type="search" id="searchInput" placeholder="Search by order ID, name, or phone">
+    </div>
+    <div class="filter-label">Shipping status</div>
+    <div class="pill-row" id="shipPills"></div>
+    <div class="filter-label" style="margin-top:12px;">Payment status</div>
+    <div class="pill-row" id="payPills"></div>
+  </div>
+
+  <div id="list"></div>
+  <div id="loadingSpinner" class="spinner" style="display:none;"></div>
+  <button class="loadmore" id="loadMoreBtn" style="display:none;">Load more</button>
+</div>
+
+<!-- ============ NOTIFICATIONS DRAWER ============ -->
+<div class="notif-drawer-overlay" id="notifOverlay"></div>
+<div class="notif-drawer" id="notifDrawer">
+  <div class="notif-header">
+    <div class="notif-title">Today's Notifications</div>
+    <button class="notif-clear-btn" id="clearNotifsBtn">Clear</button>
+  </div>
+  <div class="notif-list" id="notifList"></div>
+</div>
+
+<!-- ============ MODAL (For AWB Pickup Location) ============ -->
+<div class="modal-overlay" id="locationModal">
+  <div class="modal-card">
+    <div class="modal-title" id="modalTitle">Create AWB</div>
+    <div class="modal-sub">Select pickup location:</div>
+    <div class="modal-options">
+      <button class="modal-opt-btn" data-loc="Menya">Menya</button>
+      <button class="modal-opt-btn" data-loc="Mahalla">Mahalla</button>
+      <button class="modal-opt-btn" data-loc="Mashaya">Mashaya</button>
+    </div>
+    <button class="modal-cancel" id="closeModalBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ MODAL (For Send Mail) ============ -->
+<div class="modal-overlay" id="mailModal">
+  <div class="modal-card">
+    <div class="modal-title" id="mailModalTitle">Send Mail</div>
+    <div class="modal-sub">Select email type:</div>
+    <div class="modal-options">
+      <button class="modal-opt-btn" data-mail="urgent">urgent</button>
+      <button class="modal-opt-btn" data-mail="any update">any update</button>
+    </div>
+    <button class="modal-cancel" id="closeMailModalBtn">Cancel</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const MAKE_WEBHOOK_URL = 'https://hook.eu1.make.com/cbsn3w2zotz94kq1kw5w988o34al5874';
+
+  const ORDERED_PRIMARY_SHIP_STATUSES = [
+    'request needed',
+    'pending pickup',
+    'rescheduled',
+    'in transit',
+    'out for delivery',
+    'delivered'
+  ];
+
+  const SHIP_LABELS = {
+    'delivered':'Delivered','request needed':'Request needed','wuilt':'Wuilt',
+    'cancelled':'Cancelled','returned':'Returned','pending pickup':'Pending pickup',
+    'in transit':'In transit','out for delivery':'Out for delivery','rescheduled':'Rescheduled',
+    '':'No status', 'null':'No status'
+  };
+  const PAY_LABELS = {'PAID':'Paid','PENDING':'Pending','':'Unspecified','null':'Unspecified'};
+
+  let API_URL = '';
+  let allOrders = [];
+  let headers = [];
+  let filteredOrders = [];
+  let shownCount = 0;
+  const PAGE_SIZE = 20;
+  let activeShip = 'all';
+  let activePay = 'all';
+  let searchTerm = '';
+
+  let currentTargetBtn = null;
+  let currentOrderSerial = '';
+  let currentOrderId = '';
+
+  const $ = id => document.getElementById(id);
+
+  function pk(o){
+    return o['Order Serial'];
+  }
+  function pkLabel(o){
+    return '#' + o['Order Serial'];
+  }
+
+  function shipClass(s){
+    if(s==='delivered') return 'ship-delivered';
+    if(s==='cancelled'||s==='returned') return 'ship-cancelled';
+    if(!s) return '';
+    return 'ship-pending';
+  }
+  function payClass(s){
+    if(s==='PAID') return 'pay-paid';
+    if(s==='PENDING') return 'pay-pending';
+    return '';
+  }
+  function dripState(s){
+    if(s==='delivered') return ['on','on','on','on done'];
+    if(s==='cancelled'||s==='returned') return ['on','on bad','on bad','on bad'];
+    if(s==='out for delivery'||s==='in transit') return ['on','on','on',''];
+    if(s==='pending pickup'||s==='request needed'||s==='wuilt'||s==='rescheduled') return ['on','on','',''];
+    return ['on','','',''];
+  }
+
+  function loadStorageUrl(){
+    try{
+      return localStorage.getItem('apps_script_url') || '';
+    }catch(e){ return ''; }
+  }
+  function saveStorageUrl(url){
+    try{ localStorage.setItem('apps_script_url', url); }catch(e){}
+  }
+  function loadOneSignalId(){
+    try{ return localStorage.getItem('onesignal_app_id') || ''; }catch(e){ return ''; }
+  }
+  function saveOneSignalId(id){
+    try{ localStorage.setItem('onesignal_app_id', id); }catch(e){}
+  }
+
+  // ===== Notification History Management (Filtered for Today) =====
+  function getNotificationsKey(){
+    const today = new Date().toISOString().slice(0, 10);
+    return 'notifs_' + today;
+  }
+
+  function loadTodayNotifications(){
+    try{
+      const key = getNotificationsKey();
+      return JSON.parse(localStorage.getItem(key) || '[]');
+    }catch(e){ return []; }
+  }
+
+  function saveTodayNotification(notif){
+    try{
+      const key = getNotificationsKey();
+      const list = loadTodayNotifications();
+      list.unshift(notif);
+      localStorage.setItem(key, JSON.stringify(list));
+      renderNotificationList();
+    }catch(e){}
+  }
+
+  function clearTodayNotifications(){
+    try{
+      localStorage.removeItem(getNotificationsKey());
+      renderNotificationList();
+    }catch(e){}
+  }
+
+  function renderNotificationList(){
+    const list = loadTodayNotifications();
+    const countEl = $('notifBadge');
+    if(list.length > 0){
+      countEl.style.display = 'flex';
+      countEl.textContent = list.length > 99 ? '99+' : list.length;
+    } else {
+      countEl.style.display = 'none';
+    }
+
+    const container = $('notifList');
+    if(list.length === 0){
+      container.innerHTML = '<div class="notif-empty">No notifications received today</div>';
+      return;
+    }
+
+    container.innerHTML = list.map(item => `
+      <div class="notif-item" data-notif-target="${escapeAttr(item.target || '')}">
+        <div class="notif-item-top">
+          <span class="notif-item-title">${escapeHtml(item.title || 'Notification')}</span>
+          <span class="notif-item-time">${escapeHtml(item.time || '')}</span>
+        </div>
+        <div class="notif-item-body">${escapeHtml(item.body || '')}</div>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('[data-notif-target]').forEach(el => {
+      el.addEventListener('click', ()=>{
+        const target = el.getAttribute('data-notif-target');
+        closeNotifDrawer();
+        if(target){
+          window.location.hash = target;
+          checkAndOpenTargetOrder();
+        }
+      });
+    });
+  }
+
+  function openNotifDrawer(){
+    $('notifOverlay').classList.add('open');
+    $('notifDrawer').classList.add('open');
+  }
+
+  function closeNotifDrawer(){
+    $('notifOverlay').classList.remove('open');
+    $('notifDrawer').classList.remove('open');
+  }
+
+  $('bellBtn').addEventListener('click', openNotifDrawer);
+  $('notifOverlay').addEventListener('click', closeNotifDrawer);
+  $('clearNotifsBtn').addEventListener('click', clearTodayNotifications);
+
+  function checkAndOpenTargetOrder(){
+    const hash = window.location.hash.replace(/^#/, '').trim();
+    const params = new URLSearchParams(window.location.search);
+    const target = hash || params.get('order') || params.get('order_id') || params.get('order_serial');
+    if(!target) return;
+
+    const targetStr = decodeURIComponent(target).trim();
+    
+    const found = allOrders.find(o => 
+      String(o['Order Serial'] || '').trim().toLowerCase() === targetStr.toLowerCase() ||
+      String(o['order ID'] || '').trim().toLowerCase() === targetStr.toLowerCase()
+    );
+
+    if(found){
+      activeShip = 'all';
+      activePay = 'all';
+      searchTerm = '';
+      if($('searchInput')) $('searchInput').value = '';
+      buildPills();
+      
+      filteredOrders = [found, ...allOrders.filter(o => o !== found)];
+      shownCount = 0;
+      $('list').innerHTML = '';
+      renderMore();
+
+      const card = document.getElementById('order-' + (found['Order Serial'] || ''));
+      if(card){
+        const panel = card.querySelector('[data-panel]');
+        const btn = card.querySelector('[data-toggle]');
+        if(panel && !panel.classList.contains('open')){
+          panel.classList.add('open');
+          if(btn) btn.textContent = 'Hide details';
+        }
+        card.classList.add('highlighted');
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }
+
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  let oneSignalInitialized = false;
+  function initOneSignal(appId){
+    if(!appId || oneSignalInitialized) return;
+    oneSignalInitialized = true;
+    
+    const scope = location.pathname.replace(/[^/]*$/, '');
+    window.OneSignalDeferred.push(async function(OneSignal){
+      try{
+        await OneSignal.init({
+          appId: appId,
+          allowLocalhostAsSecureOrigin: true,
+          serviceWorkerParam: { scope: scope },
+          serviceWorkerPath: scope.replace(/^\//,'') + 'OneSignalSDKWorker.js'
+        });
+
+        OneSignal.Notifications.addEventListener('foregroundWillDisplay', (event) => {
+          const notif = event.notification;
+          const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          let target = '';
+          if(notif.launchURL){
+            const urlObj = new URL(notif.launchURL, window.location.href);
+            target = urlObj.hash.replace(/^#/, '');
+          }
+          saveTodayNotification({
+            title: notif.title || 'Notification',
+            body: notif.body || '',
+            time: timeStr,
+            target: target
+          });
+        });
+
+        OneSignal.Notifications.addEventListener('click', (event) => {
+          try {
+            const notif = event.notification;
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            let target = '';
+            if(notif.launchURL){
+              const urlObj = new URL(notif.launchURL, window.location.href);
+              if(urlObj.hash){
+                window.location.hash = urlObj.hash;
+                target = urlObj.hash.replace(/^#/, '');
+              }
+            }
+            saveTodayNotification({
+              title: notif.title || 'Notification',
+              body: notif.body || '',
+              time: timeStr,
+              target: target
+            });
+            checkAndOpenTargetOrder();
+          } catch(e) {}
+        });
+      }catch(err){
+        $('pushDebug').textContent = 'Init error: ' + err;
+      }
+    });
+  }
+
+  async function checkPushStatus(){
+    const lines = [];
+    lines.push('Notification permission (browser): ' + (typeof Notification !== 'undefined' ? Notification.permission : 'Notification API unsupported'));
+    lines.push('Running as installed app (standalone): ' + (window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches ? 'yes' : 'no'));
+    try{
+      if('serviceWorker' in navigator){
+        const regs = await navigator.serviceWorker.getRegistrations();
+        lines.push('Service workers registered: ' + regs.length);
+        regs.forEach(r=> lines.push('  scope: ' + r.scope + (r.active ? ' (not active)')));
+      } else {
+        lines.push('Service workers: unsupported in this browser');
+      }
+    }catch(err){ lines.push('Service worker check failed: ' + err); }
+    const osId = loadOneSignalId();
+    lines.push('Saved OneSignal App ID: ' + (osId || '(none saved yet)'));
+    if(osId && window.OneSignal){
+      try{
+        lines.push('OneSignal subscribed: ' + window.OneSignal.User.PushSubscription.optedIn);
+        lines.push('OneSignal subscription id: ' + (window.OneSignal.User.PushSubscription.id || '(none)'));
+      }catch(err){ lines.push('OneSignal state check failed: ' + err); }
+    } else {
+      lines.push('OneSignal SDK: not initialized yet on this page load');
+    }
+    $('pushDebug').innerHTML = lines.map(escapeHtml).join('<br>');
+  }
+  $('checkPushBtn').addEventListener('click', checkPushStatus);
+
+  // Modal open for AWB
+  function promptLocationSelection(btn, serial){
+    currentTargetBtn = btn;
+    currentOrderSerial = serial;
+    const isReplace = btn.classList.contains('replace-mode');
+    $('modalTitle').textContent = (isReplace ? 'Replace AWB #' : 'Create AWB #') + serial;
+    $('locationModal').classList.add('active');
+  }
+
+  function hideModal(){
+    $('locationModal').classList.remove('active');
+    currentTargetBtn = null;
+    currentOrderSerial = '';
+  }
+
+  $('closeModalBtn').addEventListener('click', hideModal);
+  $('locationModal').addEventListener('click', (e)=>{
+    if(e.target === $('locationModal')) hideModal();
+  });
+
+  // Modal selection for AWB (Exact matching working structure from Source 22)
+  document.querySelectorAll('#locationModal .modal-opt-btn').forEach(optBtn => {
+    optBtn.addEventListener('click', async () => {
+      const selectedLocation = optBtn.getAttribute('data-loc');
+      const btn = currentTargetBtn;
+      const serial = currentOrderSerial;
+      hideModal();
+
+      if(!btn || !serial) return;
+      await sendAwbWebhook(btn, serial, selectedLocation);
+    });
+  });
+
+  // Modal open for Send Mail
+  function promptMailSelection(btn, orderId){
+    currentTargetBtn = btn;
+    currentOrderId = orderId;
+    $('mailModalTitle').textContent = 'Send Mail: ' + (orderId || 'Order');
+    $('mailModal').classList.add('active');
+  }
+
+  function hideMailModal(){
+    $('mailModal').classList.remove('active');
+    currentTargetBtn = null;
+    currentOrderId = '';
+  }
+
+  $('closeMailModalBtn').addEventListener('click', hideMailModal);
+  $('mailModal').addEventListener('click', (e)=>{
+    if(e.target === $('mailModal')) hideMailModal();
+  });
+
+  // Modal selection for Send Mail
+  document.querySelectorAll('#mailModal .modal-opt-btn').forEach(optBtn => {
+    optBtn.addEventListener('click', async () => {
+      const selectedMailStatus = optBtn.getAttribute('data-mail');
+      const btn = currentTargetBtn;
+      const orderId = currentOrderId;
+      hideMailModal();
+
+      if(!btn || !orderId) return;
+      await sendMailWebhook(btn, orderId, selectedMailStatus);
+    });
+  });
+
+  // EXACT ORIGINAL WORKING DISPATCH FOR AWB (from Source 22)
+  async function sendAwbWebhook(btn, orderSerial, locationChoice){
+    const origText = btn.innerHTML;
+    btn.classList.add('sending');
+    btn.innerHTML = `Sending...`;
+
+    try {
+      const payload = {
+        "order serial": orderSerial,
+        "pickup location": locationChoice
+      };
+
+      await fetch(MAKE_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      btn.classList.add('success');
+      btn.innerHTML = `✓ AWB (${escapeHtml(locationChoice)})`;
+      setTimeout(()=>{
+        btn.classList.remove('sending', 'success');
+        btn.innerHTML = origText;
+      }, 3500);
+    } catch (err) {
+      alert('Error: ' + err);
+      btn.classList.remove('sending');
+      btn.innerHTML = origText;
+    }
+  }
+
+  // EXACT ORIGINAL WORKING DISPATCH FOR SEND MAIL
+  async function sendMailWebhook(btn, orderId, mailStatus){
+    const origText = btn.innerHTML;
+    btn.classList.add('sending');
+    btn.innerHTML = `Sending...`;
+
+    try {
+      const payload = {
+        "order ID": orderId,
+        "mail status": mailStatus
+      };
+
+      await fetch(MAKE_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      btn.classList.add('success');
+      btn.innerHTML = `✓ Mail Sent (${escapeHtml(mailStatus)})`;
+      setTimeout(()=>{
+        btn.classList.remove('sending', 'success');
+        btn.innerHTML = origText;
+      }, 3500);
+    } catch (err) {
+      alert('Error: ' + err);
+      btn.classList.remove('sending');
+      btn.innerHTML = origText;
+    }
+  }
+
+  async function init(){
+    const saved = loadStorageUrl();
+    const osId = loadOneSignalId();
+    renderNotificationList();
+    if(osId){
+      $('oneSignalInput').value = osId;
+      initOneSignal(osId);
+    }
+    if(saved){
+      $('urlInput').value = saved;
+      API_URL = saved;
+      showApp();
+      fetchOrders();
+    }
+  }
+
+  function showApp(){
+    $('setup').style.display = 'none';
+    $('app').style.display = 'block';
+  }
+
+  $('connectBtn').addEventListener('click', async ()=>{
+    let url = $('urlInput').value.trim().replace(/^["']|["']$/g, '');
+    $('setup-error').textContent = '';
+    if(!url.startsWith('https://script.google.com/')){
+      $('setup-error').textContent = 'The URL should start with https://script.google.com/ — check the deploy steps above.';
+      return;
+    }
+    API_URL = url;
+    $('connectBtn').disabled = true;
+    $('connectBtn').textContent = 'Connecting...';
+    try {
+      const ok = await fetchOrders();
+      if(ok){
+        saveStorageUrl(url);
+        const osId = $('oneSignalInput').value.trim();
+        if(osId){
+          saveOneSignalId(osId);
+          initOneSignal(osId);
+        }
+        showApp();
+      }
+    } catch(err) {
+      $('setup-error').textContent = 'Connection error: ' + err.message;
+    } finally {
+      $('connectBtn').disabled = false;
+      $('connectBtn').textContent = 'Connect & Load Orders';
+    }
+  });
+
+  $('settingsBtn').addEventListener('click', ()=>{
+    $('app').style.display = 'none';
+    $('setup').style.display = 'flex';
+  });
+
+  $('refreshBtn').addEventListener('click', ()=> fetchOrders());
+
+  window.addEventListener('hashchange', checkAndOpenTargetOrder);
+
+  async function fetchOrders(){
+    $('statusDot').classList.add('stale');
+    if($('loadingSpinner')) $('loadingSpinner').style.display = 'block';
+    if($('list')) $('list').innerHTML = '';
+    try{
+      const sep = API_URL.includes('?') ? '&' : '?';
+      const res = await fetch(API_URL + sep + 'action=list', {
+        method: 'GET',
+        redirect: 'follow'
+      });
+      
+      if (!res.ok) {
+        throw new Error('HTTP status ' + res.status);
+      }
+      
+      const data = await res.json();
+      if(data.error){
+        $('setup-error').textContent = 'Sheet error: ' + data.error;
+        if($('loadingSpinner')) $('loadingSpinner').style.display = 'none';
+        return false;
+      }
+      
+      allOrders = Array.isArray(data.orders) ? data.orders : [];
+      headers = Array.isArray(data.headers) ? data.headers : [];
+
+      // Sort from newest to oldest by Order Serial (descending)
+      allOrders.sort((a, b) => {
+        const sA = parseFloat(a['Order Serial']) || 0;
+        const sB = parseFloat(b['Order Serial']) || 0;
+        if (sB !== sA) return sB - sA;
+        return String(b['Order Serial'] || '').localeCompare(String(a['Order Serial'] || ''));
+      });
+
+      $('statusDot').classList.remove('stale');
+      renderStats();
+      buildPills();
+      applyFilters();
+      checkAndOpenTargetOrder();
+      return true;
+    }catch(err){
+      console.error('fetchOrders error:', err);
+      $('setup-error').textContent = 'Could not reach Google Sheet URL (' + err.message + '). Check: 1) Deploy -> Access: Anyone. 2) URL is correct.';
+      if($('loadingSpinner')) $('loadingSpinner').style.display = 'none';
+      return false;
+    }
+  }
+
+  function renderStats(){
+    const total = allOrders.length;
+    const delivered = allOrders.filter(o=>o.shipping_status==='delivered').length;
+    const cancelled = allOrders.filter(o=> o.shipping_status==='cancelled' || o.shipping_status==='returned').length;
+    const pendingShip = allOrders.filter(o=> !['delivered','cancelled','returned'].includes(o.shipping_status)).length;
+    const paid = allOrders.filter(o=>o.payment_status==='PAID').length;
+    const pendingPay = allOrders.filter(o=>o.payment_status==='PENDING').length;
+    const revenue = allOrders.reduce((sum,o)=>{
+      const t = parseFloat(o.total);
+      return sum + (isNaN(t)?0:t);
+    },0);
+
+    const stats = [
+      {n: total, l:'Total orders', c:'accent'},
+      {n: delivered, l:'Delivered', c:'sage'},
+      {n: pendingShip, l:'In progress', c:'amber'},
+      {n: cancelled, l:'Cancelled / returned', c:'rust'},
+      {n: paid, l:'Paid', c:'sage'},
+      {n: pendingPay, l:'Payment pending', c:'amber'},
+      {n: revenue.toLocaleString('en-US',{maximumFractionDigits:0}), l:'Total recorded value', c:'accent'},
+    ];
+    $('statScroll').innerHTML = stats.map(s=>`
+      <div class="stat-card ${s.c}">
+        <div class="stat-num display">${s.n}</div>
+        <div class="stat-label">${s.l}</div>
+      </div>`).join('');
+  }
+
+  function buildPills(){
+    const shipCounts = {};
+    allOrders.forEach(o=>{ const k=o.shipping_status||''; shipCounts[k]=(shipCounts[k]||0)+1; });
+
+    // Primary requested order: request needed -> pending pickup -> rescheduled -> in transit -> out for delivery -> delivered -> all -> others
+    const otherKeys = Object.keys(shipCounts).filter(k => k !== '' && !ORDERED_PRIMARY_SHIP_STATUSES.includes(k));
+    const finalShipPills = [...ORDERED_PRIMARY_SHIP_STATUSES, 'all', ...otherKeys];
+
+    $('shipPills').innerHTML = finalShipPills.map(k=>{
+      const label = k==='all' ? 'All shipping' : (SHIP_LABELS[k]||k);
+      const count = k==='all' ? allOrders.length : (shipCounts[k]||0);
+      return `<div class="pill ${k===activeShip?'active':''}" data-ship="${escapeAttr(k)}">${label} (${count})</div>`;
+    }).join('');
+
+    const payCounts = {};
+    allOrders.forEach(o=>{ const k=o.payment_status||''; payCounts[k]=(payCounts[k]||0)+1; });
+    const payKeys = Object.keys(payCounts).sort((a,b)=>payCounts[b]-payCounts[a]);
+    $('payPills').innerHTML = ['all', ...payKeys].map(k=>{
+      const label = k==='all' ? 'All payment' : (PAY_LABELS[k]||k);
+      const count = k==='all' ? allOrders.length : payCounts[k];
+      return `<div class="pill ${k===activePay?'active':''}" data-pay="${escapeAttr(k)}">${label} (${count})</div>`;
+    }).join('');
+
+    document.querySelectorAll('[data-ship]').forEach(el=>{
+      el.addEventListener('click', ()=>{ activeShip = el.getAttribute('data-ship'); buildPills(); applyFilters(); });
+    });
+    document.querySelectorAll('[data-pay]').forEach(el=>{
+      el.addEventListener('click', ()=>{ activePay = el.getAttribute('data-pay'); buildPills(); applyFilters(); });
+    });
+  }
+
+  $('searchInput').addEventListener('input', (e)=>{
+    searchTerm = e.target.value.trim().toLowerCase();
+    applyFilters();
+  });
+
+  function applyFilters(){
+    filteredOrders = allOrders.filter(o=>{
+      if(activeShip !== 'all' && (o.shipping_status||'') !== activeShip) return false;
+      if(activePay !== 'all' && (o.payment_status||'') !== activePay) return false;
+      if(searchTerm){
+        const hay = [pk(o), o['Order Serial'], o['Customer Name'], o['Phone'], o['Phone2']].join(' ').toLowerCase();
+        if(!hay.includes(searchTerm)) return false;
+      }
+      return true;
+    });
+    shownCount = 0;
+    $('list').innerHTML = '';
+    renderMore();
+  }
+
+  function renderMore(){
+    $('loadingSpinner').style.display = 'none';
+    const next = filteredOrders.slice(shownCount, shownCount + PAGE_SIZE);
+    if(shownCount === 0 && next.length === 0){
+      $('list').innerHTML = '<div class="empty">No orders match these filters</div>';
+      $('loadMoreBtn').style.display = 'none';
+      return;
+    }
+    next.forEach(o=> $('list').insertAdjacentHTML('beforeend', orderCard(o)));
+    shownCount += next.length;
+    attachCardHandlers();
+    $('loadMoreBtn').style.display = shownCount < filteredOrders.length ? 'block' : 'none';
+  }
+  $('loadMoreBtn').addEventListener('click', renderMore);
+
+  function trackUrl(trackingNumber){
+    return 'https://www.aramex.com/eg/en/track/track-results-new?source=aramex&ShipmentNumber=' + encodeURIComponent(trackingNumber);
+  }
+
+  function fmtDate(iso){
+    if(!iso) return '';
+    const d = new Date(iso);
+    if(isNaN(d)) return '';
+    return d.toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'});
+  }
+
+  function orderCard(o){
+    const drip = dripState(o.shipping_status);
+    const ship = o.shipping_status || '';
+    const pay = o.payment_status || '';
+    const total = o.total ? (parseFloat(o.total)||o.total) + ' EGP' : '—';
+    const city = [o.Gov, o.city].filter(Boolean).join(' - ');
+    const hasOrderId = o['order ID'] !== undefined && o['order ID'] !== null && o['order ID'] !== '';
+    const serial = o['Order Serial'] || '';
+    const orderId = o['order ID'] || serial;
+
+    // Logic for button type
+    const isRequestNeeded = (ship === 'request needed');
+    const isPendingPickup = (ship === 'pending pickup');
+    const isDelivered = (ship === 'delivered');
+
+    let actionBtnHtml = '';
+    if (isRequestNeeded) {
+      actionBtnHtml = `
+        <button class="card-btn create-awb-btn" data-awb data-serial="${escapeAttr(serial)}">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Create AWB
+        </button>`;
+    } else if (isPendingPickup) {
+      actionBtnHtml = `
+        <button class="card-btn create-awb-btn replace-mode" data-awb data-serial="${escapeAttr(serial)}">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Replace AWB
+        </button>`;
+    } else if (!isDelivered) {
+      actionBtnHtml = `
+        <button class="card-btn send-mail-btn" data-mail-btn data-orderid="${escapeAttr(orderId)}">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Send mail
+        </button>`;
+    }
+
+    return `
+    <div class="order-card" id="order-${escapeAttr(serial)}" data-row="${o._row}">
+      <div class="order-top">
+        <div>
+          <div class="order-id display">${escapeHtml(pkLabel(o))}</div>
+          ${hasOrderId ? `<div class="order-id-sub">${escapeHtml(o['order ID'])}</div>` : ''}
+          <div class="order-name">${escapeHtml(o['Customer Name']||'No name')}</div>
+          <div class="order-sub">
+            <span>${escapeHtml(o.Phone||'')}</span>
+            ${city? `<span>${escapeHtml(city)}</span>`:''}
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <div class="order-total">${total}</div>
+          <div class="order-date">${fmtDate(o.Updated)}</div>
+        </div>
+      </div>
+
+      <div class="drip-line">
+        ${drip.map(s=>`<div class="drip-seg ${s}"></div>`).join('')}
+      </div>
+
+      <div class="badges">
+        <span class="badge ${shipClass(ship)}">Shipping: ${SHIP_LABELS[ship]||ship||'No status'}</span>
+        <span class="badge ${payClass(pay)}">Payment: ${PAY_LABELS[pay]||pay||'Unspecified'}</span>
+      </div>
+      ${o.note ? `<div class="note-line">📝 ${escapeHtml(o.note)}</div>` : ''}
+
+      <!-- Direct Action Buttons on Every Order Card -->
+      <div class="card-actions">
+        ${actionBtnHtml}
+        <button class="expand-btn" data-toggle>View details</button>
+      </div>
+
+      <div class="edit-panel" data-panel>
+        <div class="action-row">
+          ${o.tracking_number ? `
+          <a class="action-link" href="${escapeAttr(trackUrl(o.tracking_number))}" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+            Track shipment
+          </a>` : ''}
+          ${o.label_url ? `
+          <a class="action-link" href="${escapeAttr(o.label_url)}" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Print label
+          </a>` : ''}
+        </div>
+        <div class="detail-grid">
+          ${detailRow('Order Serial', o['Order Serial'])}
+          ${detailRow('Order ID', o['order ID'])}
+          ${detailRow('Phone', o.Phone)}
+          ${detailRow('Phone 2', o.Phone2)}
+          ${detailRow('Governorate', o.Gov)}
+          ${detailRow('City', o.city)}
+          ${detailRow('Address line 1', o.Address_line1)}
+          ${detailRow('Address line 2', o.Address_line2)}
+          ${detailRow('Address', o.Address)}
+          ${detailRow('Items', o.items)}
+          ${detailRow('Pieces', o.pieces)}
+          ${detailRow('Weight', o.weight)}
+          ${detailRow('Total', o.total)}
+          ${detailRow('COD', o.COD)}
+          ${detailRow('Tracking number', o.tracking_number)}
+          ${detailRow('Pickup reference', o.pickup_reference)}
+          ${detailRow('Pickup location', o.pickup_location)}
+          ${detailRow('Open package', o['open package'])}
+          ${detailRow('Language', o.Lang)}
+          ${detailRow('Date', fmtDate(o.date))}
+          ${detailRow('Last updated', fmtDate(o.Updated))}
+        </div>
+        ${o.note ? `<div class="note-line" style="margin-top:10px;">📝 ${escapeHtml(o.note)}</div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  function detailRow(label, value){
+    if(value === undefined || value === null || value === '') return '';
+    return `<div class="detail-row"><span class="detail-label">${escapeHtml(label)}</span><span class="detail-value">${escapeHtml(value)}</span></div>`;
+  }
+
+  function attachCardHandlers(){
+    document.querySelectorAll('[data-toggle]').forEach(btn=>{
+      if(btn._bound) return; btn._bound = true;
+      btn.addEventListener('click', ()=>{
+        const panel = btn.closest('.order-card').querySelector('[data-panel]');
+        if(!panel) return;
+        panel.classList.toggle('open');
+        btn.textContent = panel.classList.contains('open') ? 'Hide details' : 'View details';
+      });
+    });
+
+    // AWB button listener
+    document.querySelectorAll('[data-awb]').forEach(btn=>{
+      if(btn._boundAwb) return; btn._boundAwb = true;
+      btn.addEventListener('click', ()=>{
+        const serial = btn.getAttribute('data-serial');
+        promptLocationSelection(btn, serial);
+      });
+    });
+
+    // Send Mail button listener
+    document.querySelectorAll('[data-mail-btn]').forEach(btn=>{
+      if(btn._boundMail) return; btn._boundMail = true;
+      btn.addEventListener('click', ()=>{
+        const orderId = btn.getAttribute('data-orderid');
+        promptMailSelection(btn, orderId);
+      });
+    });
+  }
+
+  function escapeHtml(s){
+    if(s===undefined||s===null) return '';
+    return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function escapeAttr(s){ return escapeHtml(s); }
+
+  init();
+})();
+</script>
+</body>
+</html>
