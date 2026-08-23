@@ -195,39 +195,37 @@
     gap:8px;
     margin-top:12px;
   }
-  .create-awb-btn{
+  .card-btn{
     flex:1;
     display:flex;
     align-items:center;
     justify-content:center;
     gap:7px;
     padding:10px 14px;
-    background:linear-gradient(180deg, #ff7a3d, #fe4f00);
     border:none;
     border-radius:10px;
-    color:#1c1409;
     font-family:'Cairo', sans-serif;
     font-weight:800;
     font-size:13px;
     cursor:pointer;
     transition:transform 0.1s, opacity 0.2s, background 0.3s;
   }
+  .create-awb-btn{
+    background:linear-gradient(180deg, #ff7a3d, #fe4f00);
+    color:#1c1409;
+  }
   .create-awb-btn.replace-mode{
     background:linear-gradient(180deg, #e6b04b, #d9a441);
     color:#1c1409;
   }
-  .create-awb-btn:active:not(:disabled){transform:scale(0.98);}
-  .create-awb-btn:disabled{
-    background:var(--panel-2);
-    color:var(--cream-dim);
-    border:1px solid var(--line);
-    opacity:0.4;
-    cursor:not-allowed;
-    filter:grayscale(1);
+  .send-mail-btn{
+    background:linear-gradient(180deg, #3d8bff, #0056fe);
+    color:#ffffff;
   }
-  .create-awb-btn.sending{opacity:0.7;pointer-events:none;}
-  .create-awb-btn.success{background:var(--sage) !important;color:#1c1409 !important;border:none !important;opacity:1 !important;}
-  .create-awb-btn.error{background:var(--rust) !important;color:#fff !important;border:none !important;opacity:1 !important;}
+  .card-btn:active{transform:scale(0.98);}
+  .card-btn.sending{opacity:0.7;pointer-events:none;}
+  .card-btn.success{background:var(--sage) !important;color:#1c1409 !important;border:none !important;opacity:1 !important;}
+  .card-btn.error{background:var(--rust) !important;color:#fff !important;border:none !important;opacity:1 !important;}
 
   .expand-btn{
     flex:1;
@@ -393,7 +391,7 @@
   <button class="loadmore" id="loadMoreBtn" style="display:none;">Load more</button>
 </div>
 
-<!-- ============ MODAL ============ -->
+<!-- ============ MODAL (For AWB Pickup Location) ============ -->
 <div class="modal-overlay" id="locationModal">
   <div class="modal-card">
     <div class="modal-title" id="modalTitle">Create AWB</div>
@@ -401,9 +399,22 @@
     <div class="modal-options">
       <button class="modal-opt-btn" data-loc="Menya">Menya</button>
       <button class="modal-opt-btn" data-loc="Mahalla">Mahalla</button>
-      <button class="modal-opt-btn" data-loc="Mshaya">Mshaya</button>
+      <button class="modal-opt-btn" data-loc="Mashaya">Mashaya</button>
     </div>
     <button class="modal-cancel" id="closeModalBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ MODAL (For Send Mail) ============ -->
+<div class="modal-overlay" id="mailModal">
+  <div class="modal-card">
+    <div class="modal-title" id="mailModalTitle">Send Mail</div>
+    <div class="modal-sub">Select email type:</div>
+    <div class="modal-options">
+      <button class="modal-opt-btn" data-mail="urgent">urgent</button>
+      <button class="modal-opt-btn" data-mail="any update">any update</button>
+    </div>
+    <button class="modal-cancel" id="closeMailModalBtn">Cancel</button>
   </div>
 </div>
 
@@ -432,6 +443,7 @@
 
   let currentTargetBtn = null;
   let currentOrderSerial = '';
+  let currentOrderId = '';
 
   const $ = id => document.getElementById(id);
 
@@ -604,7 +616,7 @@
     });
   });
 
-  // Open modal for location selection
+  // Open modal for location selection (AWB)
   function promptLocationSelection(btn, serial){
     currentTargetBtn = btn;
     currentOrderSerial = serial;
@@ -625,7 +637,7 @@
   });
 
   // Handle location button clicks inside modal
-  document.querySelectorAll('.modal-opt-btn').forEach(optBtn => {
+  document.querySelectorAll('#locationModal .modal-opt-btn').forEach(optBtn => {
     optBtn.addEventListener('click', async () => {
       const selectedLocation = optBtn.getAttribute('data-loc');
       const btn = currentTargetBtn;
@@ -633,21 +645,54 @@
       hideModal();
 
       if(!btn || !serial) return;
-      await sendMakeWebhook(btn, serial, selectedLocation);
+      await sendMakeWebhook(btn, {
+        "order serial": serial,
+        "pickup location": selectedLocation
+      }, `AWB Created (${selectedLocation})`);
     });
   });
 
-  async function sendMakeWebhook(btn, orderSerial, locationChoice){
+  // Open modal for Send Mail selection
+  function promptMailSelection(btn, orderId){
+    currentTargetBtn = btn;
+    currentOrderId = orderId;
+    $('mailModalTitle').textContent = 'Send Mail: ' + (orderId || 'Order');
+    $('mailModal').classList.add('active');
+  }
+
+  function hideMailModal(){
+    $('mailModal').classList.remove('active');
+    currentTargetBtn = null;
+    currentOrderId = '';
+  }
+
+  $('closeMailModalBtn').addEventListener('click', hideMailModal);
+  $('mailModal').addEventListener('click', (e)=>{
+    if(e.target === $('mailModal')) hideMailModal();
+  });
+
+  // Handle mail options click
+  document.querySelectorAll('#mailModal .modal-opt-btn').forEach(optBtn => {
+    optBtn.addEventListener('click', async () => {
+      const selectedMailStatus = optBtn.getAttribute('data-mail');
+      const btn = currentTargetBtn;
+      const orderId = currentOrderId;
+      hideMailModal();
+
+      if(!btn || !orderId) return;
+      await sendMakeWebhook(btn, {
+        "order ID": orderId,
+        "mail status": selectedMailStatus
+      }, `Mail Sent (${selectedMailStatus})`);
+    });
+  });
+
+  async function sendMakeWebhook(btn, payload, successDefaultMsg){
     const origText = btn.innerHTML;
     btn.classList.add('sending');
     btn.innerHTML = `<svg class="spinner" style="width:14px;height:14px;border-width:2px;margin:0 4px 0 0;display:inline-block;vertical-align:middle;"></svg> Waiting for Make...`;
 
     try {
-      const payload = {
-        "order serial": orderSerial,
-        "pickup location": locationChoice
-      };
-
       const response = await fetch(MAKE_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -659,7 +704,7 @@
       }
 
       const resText = await response.text();
-      let resMsg = `AWB Created (${locationChoice})`;
+      let resMsg = successDefaultMsg;
       try {
         const json = JSON.parse(resText);
         if (json.message) resMsg = json.message;
@@ -884,13 +929,32 @@
     const city = [o.Gov, o.city].filter(Boolean).join(' - ');
     const hasOrderId = o['order ID'] !== undefined && o['order ID'] !== null && o['order ID'] !== '';
     const serial = o['Order Serial'] || '';
+    const orderId = o['order ID'] || serial;
 
-    // Logic for button state & label
+    // Logic for button type
     const isRequestNeeded = (ship === 'request needed');
     const isPendingPickup = (ship === 'pending pickup');
-    const isAwbActive = (isRequestNeeded || isPendingPickup);
-    const awbButtonLabel = isPendingPickup ? 'Replace AWB' : 'Create AWB';
-    const replaceClass = isPendingPickup ? 'replace-mode' : '';
+
+    let actionBtnHtml = '';
+    if (isRequestNeeded) {
+      actionBtnHtml = `
+        <button class="card-btn create-awb-btn" data-awb data-serial="${escapeAttr(serial)}">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Create AWB
+        </button>`;
+    } else if (isPendingPickup) {
+      actionBtnHtml = `
+        <button class="card-btn create-awb-btn replace-mode" data-awb data-serial="${escapeAttr(serial)}">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Replace AWB
+        </button>`;
+    } else {
+      actionBtnHtml = `
+        <button class="card-btn send-mail-btn" data-mail-btn data-orderid="${escapeAttr(orderId)}">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Send mail
+        </button>`;
+    }
 
     return `
     <div class="order-card" id="order-${escapeAttr(serial)}" data-row="${o._row}">
@@ -920,12 +984,9 @@
       </div>
       ${o.note ? `<div class="note-line">📝 ${escapeHtml(o.note)}</div>` : ''}
 
-      <!-- Direct Visible Buttons on Every Order Card -->
+      <!-- Direct Action Buttons on Every Order Card -->
       <div class="card-actions">
-        <button class="create-awb-btn ${replaceClass}" data-webhook data-serial="${escapeAttr(serial)}" ${!isAwbActive ? 'disabled' : ''}>
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          ${escapeHtml(awbButtonLabel)}
-        </button>
+        ${actionBtnHtml}
         <button class="expand-btn" data-toggle>View details</button>
       </div>
 
@@ -986,12 +1047,21 @@
       });
     });
 
-    document.querySelectorAll('[data-webhook]').forEach(btn=>{
-      if(btn._boundWebhook) return; btn._boundWebhook = true;
+    // AWB button listener
+    document.querySelectorAll('[data-awb]').forEach(btn=>{
+      if(btn._boundAwb) return; btn._boundAwb = true;
       btn.addEventListener('click', ()=>{
-        if(btn.disabled) return;
         const serial = btn.getAttribute('data-serial');
         promptLocationSelection(btn, serial);
+      });
+    });
+
+    // Send Mail button listener
+    document.querySelectorAll('[data-mail-btn]').forEach(btn=>{
+      if(btn._boundMail) return; btn._boundMail = true;
+      btn.addEventListener('click', ()=>{
+        const orderId = btn.getAttribute('data-orderid');
+        promptMailSelection(btn, orderId);
       });
     });
   }
