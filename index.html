@@ -321,6 +321,46 @@
   }
   .expand-btn:hover{background:#e2e8f0;border-color:var(--line-strong);}
 
+  .whatsapp-btn{
+    flex:0 0 auto;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:42px;
+    height:42px;
+    background:linear-gradient(180deg, #34d058, #22a848);
+    color:#fff;
+    border:none;
+    border-radius:11px;
+    cursor:pointer;
+    box-shadow:var(--shadow-sm);
+    transition:transform 0.1s, opacity 0.2s;
+    text-decoration:none;
+  }
+  .whatsapp-btn:active{transform:scale(0.94);}
+
+  .log-section{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);}
+  .log-toggle{
+    display:flex;align-items:center;justify-content:space-between;
+    cursor:pointer;
+    font-size:12.5px;font-weight:700;color:#64748b;
+    user-select:none;
+  }
+  .log-toggle .chev{transition:transform 0.15s;}
+  .log-toggle.open .chev{transform:rotate(90deg);}
+  .log-list{display:none;margin-top:9px;max-height:190px;overflow-y:auto;}
+  .log-list.open{display:block;}
+  .log-row{
+    display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;
+    padding:6px 2px;font-size:12px;color:#475569;
+    border-bottom:1px dashed var(--line);
+  }
+  .log-row:last-child{border-bottom:none;}
+  .log-action{font-weight:700;color:#334155;}
+  .log-detail{color:#64748b;}
+  .log-time{margin-inline-start:auto;color:#94a3b8;font-size:11px;white-space:nowrap;}
+  .log-empty{font-size:12px;color:#94a3b8;padding:6px 2px;}
+
   .edit-panel{display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);}
   .edit-panel.open{display:block;}
   .action-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
@@ -498,7 +538,7 @@
     <div class="modal-options">
       <button class="modal-opt-btn" data-loc="Menya">Menya</button>
       <button class="modal-opt-btn" data-loc="Mahalla">Mahalla</button>
-      <button class="modal-opt-btn" data-loc="Mshaya">Mshaya</button>
+      <button class="modal-opt-btn" data-loc="Mashaya">Mashaya</button>
     </div>
     <button class="modal-cancel" id="closeModalBtn">Cancel</button>
   </div>
@@ -551,6 +591,7 @@
   let currentTargetBtn = null;
   let currentOrderSerial = '';
   let currentOrderId = '';
+  let currentMailSerial = '';
 
   const $ = id => document.getElementById(id);
 
@@ -830,6 +871,9 @@
 
       if(!btn || !serial) return;
 
+      const isReplace = btn.classList.contains('replace-mode');
+      logOrderAction(serial, isReplace ? 'Replace AWB requested' : 'Create AWB requested', selectedLocation);
+
       await sendMakeWebhook(btn, {
         "order serial": serial,
         "pickup location": selectedLocation
@@ -840,6 +884,7 @@
   function promptMailSelection(btn, orderId){
     currentTargetBtn = btn;
     currentOrderId = orderId;
+    currentMailSerial = btn.getAttribute('data-serial') || '';
     $('mailModalTitle').textContent = 'Send Mail: ' + (orderId || 'Order');
     $('mailModal').classList.add('active');
   }
@@ -848,6 +893,7 @@
     $('mailModal').classList.remove('active');
     currentTargetBtn = null;
     currentOrderId = '';
+    currentMailSerial = '';
   }
 
   $('closeMailModalBtn').addEventListener('click', hideMailModal);
@@ -863,6 +909,7 @@
       hideMailModal();
 
       if(!btn || !orderId) return;
+      logOrderAction(currentMailSerial || orderId, 'Mail sent', selectedMailStatus);
       await sendMakeWebhook(btn, {
         "order ID": orderId,
         "mail status": selectedMailStatus
@@ -987,20 +1034,25 @@
     $('statusDot').classList.add('stale');
     if($('loadingSpinner')) $('loadingSpinner').style.display = 'block';
     if($('list')) $('list').innerHTML = '';
-    const controller = new AbortController();
     // Without a timeout, a stuck/unresponsive network request leaves fetch()
     // pending forever — no error is ever thrown, so the button just stays on
-    // "Connecting..." with no feedback. Abort after 20s so the user always
-    // gets a clear error instead of an infinite hang.
-    const timeoutId = setTimeout(()=> controller.abort(), 20000);
+    // "Connecting..." with no feedback. We race the request against a plain
+    // timer (not AbortController — its signal can't be cloned by some
+    // browser fetch proxies/extensions, causing a DataCloneError) so the
+    // user always gets a clear error instead of an infinite hang.
+    let timedOut = false;
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => { timedOut = true; reject(new Error('TIMEOUT')); }, 20000);
+    });
     try{
       const sep = API_URL.includes('?') ? '&' : '?';
-      const res = await fetch(API_URL + sep + 'action=list', {
-        method: 'GET',
-        redirect: 'follow',
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
+      const res = await Promise.race([
+        fetch(API_URL + sep + 'action=list', {
+          method: 'GET',
+          redirect: 'follow'
+        }),
+        timeoutPromise
+      ]);
 
       if (!res.ok) {
         throw new Error('HTTP status ' + res.status);
@@ -1031,9 +1083,8 @@
       checkAndOpenTargetOrder();
       return true;
     }catch(err){
-      clearTimeout(timeoutId);
       console.error('fetchOrders error:', err);
-      const msg = (err.name === 'AbortError')
+      const msg = timedOut
         ? 'Request timed out after 20s — the Google Sheet URL is not responding. Check: 1) Deploy -> Access: Anyone. 2) URL is correct. 3) Your internet connection.'
         : 'Could not reach Google Sheet URL (' + err.message + '). Check: 1) Deploy -> Access: Anyone. 2) URL is correct.';
       $('setup-error').textContent = msg;
@@ -1148,6 +1199,74 @@
     return d.toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'});
   }
 
+  // ---- Lightweight per-order activity log (stored locally, no server calls) ----
+  function getOrderLogs(serial){
+    try{ return JSON.parse(localStorage.getItem('order_log_' + serial) || '[]'); }catch(e){ return []; }
+  }
+  function logOrderAction(serial, action, detail){
+    if(!serial) return;
+    try{
+      const logs = getOrderLogs(serial);
+      logs.unshift({ action: action, detail: detail || '', time: new Date().toISOString() });
+      localStorage.setItem('order_log_' + serial, JSON.stringify(logs.slice(0, 25)));
+      const list = document.querySelector(`#order-${CSS.escape(String(serial))} [data-log-list]`);
+      if(list) list.outerHTML = renderLogRows(serial);
+      const toggle = document.querySelector(`#order-${CSS.escape(String(serial))} [data-log-toggle]`);
+      if(toggle){
+        const countEl = toggle.querySelector('[data-log-count]');
+        if(countEl) countEl.textContent = getOrderLogs(serial).length;
+      }
+    }catch(e){}
+  }
+  function fmtLogTime(iso){
+    try{
+      const d = new Date(iso);
+      return d.toLocaleString(undefined, {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+    }catch(e){ return ''; }
+  }
+  function renderLogRows(serial){
+    const logs = getOrderLogs(serial);
+    if(!logs.length) return `<div class="log-list" data-log-list><div class="log-empty">No activity yet</div></div>`;
+    return `<div class="log-list" data-log-list>${logs.map(l => `
+      <div class="log-row">
+        <span class="log-action">${escapeHtml(l.action)}</span>
+        ${l.detail ? `<span class="log-detail">${escapeHtml(l.detail)}</span>` : ''}
+        <span class="log-time">${fmtLogTime(l.time)}</span>
+      </div>`).join('')}</div>`;
+  }
+  function renderLogSection(serial){
+    const count = getOrderLogs(serial).length;
+    return `
+    <div class="log-section">
+      <div class="log-toggle" data-log-toggle>
+        <span>📋 Activity log (<span data-log-count>${count}</span>)</span>
+        <span class="chev">›</span>
+      </div>
+      ${renderLogRows(serial)}
+    </div>`;
+  }
+  document.addEventListener('click', (e)=>{
+    const toggle = e.target.closest('[data-log-toggle]');
+    if(!toggle) return;
+    toggle.classList.toggle('open');
+    const list = toggle.parentElement.querySelector('[data-log-list]');
+    if(list) list.classList.toggle('open');
+  });
+
+  // ---- WhatsApp helper ----
+  function waPhoneDigits(phone){
+    if(!phone) return '';
+    let p = String(phone).replace(/[^\d]/g,'');
+    if(!p) return '';
+    if(p.startsWith('0')) p = '20' + p.slice(1);      // local Egyptian format -> country code
+    else if(!p.startsWith('20')) p = '20' + p;         // no country code present -> assume Egypt
+    return p;
+  }
+  function waLink(phone){
+    const p = waPhoneDigits(phone);
+    return p ? ('https://wa.me/' + p) : '';
+  }
+
   function orderCard(o){
     const drip = dripState(o.shipping_status);
     const ship = o.shipping_status || '';
@@ -1178,7 +1297,7 @@
         </button>`;
     } else if (!isDelivered) {
       actionBtnHtml = `
-        <button class="card-btn send-mail-btn" data-mail-btn data-orderid="${escapeAttr(orderId)}">
+        <button class="card-btn send-mail-btn" data-mail-btn data-orderid="${escapeAttr(orderId)}" data-serial="${escapeAttr(serial)}">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
           Send mail
         </button>`;
@@ -1215,6 +1334,9 @@
       <!-- Direct Action Buttons on Every Order Card -->
       <div class="card-actions">
         ${actionBtnHtml}
+        ${o.Phone ? `<a class="whatsapp-btn" href="${escapeAttr(waLink(o.Phone))}" target="_blank" rel="noopener" title="Chat on WhatsApp" onclick="logOrderAction('${escapeAttr(serial)}','WhatsApp opened')">
+          <svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.29-1.39c1.44.79 3.06 1.2 4.7 1.2h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 18.15h-.01c-1.47 0-2.91-.39-4.17-1.14l-.3-.18-3.14.82.84-3.06-.19-.31a8.18 8.18 0 0 1-1.25-4.37c0-4.53 3.69-8.22 8.23-8.22 2.2 0 4.26.86 5.82 2.41a8.17 8.17 0 0 1 2.41 5.82c0 4.54-3.69 8.23-8.24 8.23zm4.51-6.16c-.25-.12-1.46-.72-1.68-.8-.23-.08-.39-.12-.56.12-.16.25-.64.8-.78.96-.14.16-.29.18-.54.06-.25-.12-1.04-.38-1.98-1.22-.73-.65-1.23-1.46-1.37-1.7-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.12-.14.16-.25.24-.41.08-.16.04-.31-.02-.43-.06-.12-.56-1.35-.77-1.85-.2-.48-.41-.42-.56-.43-.14-.01-.31-.01-.47-.01a.9.9 0 0 0-.65.31c-.23.25-.86.84-.86 2.05 0 1.21.88 2.38 1 2.54.12.16 1.73 2.64 4.19 3.7.59.25 1.04.4 1.4.52.59.19 1.12.16 1.54.1.47-.07 1.46-.6 1.66-1.18.21-.58.21-1.07.14-1.18-.06-.1-.22-.16-.47-.28z"/></svg>
+        </a>` : ''}
         <button class="expand-btn" data-toggle>View details</button>
       </div>
 
@@ -1255,6 +1377,7 @@
           ${detailRow('Last updated', fmtDate(o.Updated))}
         </div>
         ${o.note ? `<div class="note-line" style="margin-top:10px;">📝 ${escapeHtml(o.note)}</div>` : ''}
+        ${renderLogSection(serial)}
       </div>
     </div>`;
   }
