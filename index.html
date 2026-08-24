@@ -971,10 +971,58 @@
     }
   }
 
+  // ===== Reconcile notifications the OS already displayed =====
+  // foregroundWillDisplay only fires while the site is open; the 'click' listener
+  // only fires if the user taps the notification itself. If a push arrives while
+  // the site is fully closed and the user later just reopens the tab normally,
+  // neither fires — so the bell stays empty even though the push was received.
+  // This reads any notifications still sitting in the OS tray via the Notifications
+  // API and logs the ones we haven't recorded yet.
+  async function reconcileDisplayedNotifications(){
+    try{
+      if(!('serviceWorker' in navigator)) return;
+      const regs = await navigator.serviceWorker.getRegistrations();
+      let seen = [];
+      try{ seen = JSON.parse(localStorage.getItem('notifs_seen_tags') || '[]'); }catch(e){ seen = []; }
+      let changed = false;
+      for(const reg of regs){
+        let notifs = [];
+        try{ notifs = await reg.getNotifications(); }catch(e){ continue; }
+        for(const n of notifs){
+          const id = n.tag || (n.title + '|' + n.body);
+          if(seen.includes(id)) continue;
+          seen.push(id);
+          changed = true;
+          let target = '';
+          try{
+            const data = n.data || {};
+            const launchURL = data.launchURL || data.url || '';
+            if(launchURL){
+              target = new URL(launchURL, window.location.href).hash.replace(/^#/, '');
+            }
+          }catch(e){}
+          saveTodayNotification({
+            title: n.title || 'Notification',
+            body: n.body || '',
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            target: target
+          });
+        }
+      }
+      if(changed){
+        try{ localStorage.setItem('notifs_seen_tags', JSON.stringify(seen.slice(-100))); }catch(e){}
+      }
+    }catch(e){ console.error('reconcileDisplayedNotifications error:', e); }
+  }
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.visibilityState === 'visible') reconcileDisplayedNotifications();
+  });
+
   async function init(){
     const saved = loadStorageUrl();
     const osId = loadOneSignalId();
     renderNotificationList();
+    reconcileDisplayedNotifications();
     if(osId){
       $('oneSignalInput').value = osId;
       initOneSignal(osId);
@@ -1077,6 +1125,7 @@
       });
 
       $('statusDot').classList.remove('stale');
+      reconcileOrderStatusLogs(allOrders);
       renderStats();
       buildPills();
       applyFilters();
@@ -1265,6 +1314,48 @@
   function waLink(phone){
     const p = waPhoneDigits(phone);
     return p ? ('https://wa.me/' + p) : '';
+  }
+
+  // ---- Auto-log real order lifecycle events pulled from the sheet itself ----
+  // Detects "Order placed", shipping/payment status changes, and AWB/tracking
+  // creation by comparing each fetch against the last known snapshot per order.
+  function reconcileOrderStatusLogs(orders){
+    orders.forEach(o=>{
+      const serial = o['Order Serial'];
+      if(!serial) return;
+      const snapKey = 'order_snap_' + serial;
+      let prev = null;
+      try{ prev = JSON.parse(localStorage.getItem(snapKey) || 'null'); }catch(e){ prev = null; }
+
+      const ship = o.shipping_status || '';
+      const pay = o.payment_status || '';
+      const tracking = o.tracking_number || '';
+      const pickupRef = o.pickup_reference || '';
+
+      if(!prev){
+        // First time we've ever seen this order on this device
+        logOrderAction(serial, 'Order placed', SHIP_LABELS[ship] || ship || 'No status');
+      } else {
+        if(prev.ship !== ship){
+          logOrderAction(serial, 'Status changed', (SHIP_LABELS[prev.ship] || prev.ship || 'No status') + ' → ' + (SHIP_LABELS[ship] || ship || 'No status'));
+        }
+        if(prev.pay !== pay){
+          logOrderAction(serial, 'Payment status changed', (PAY_LABELS[prev.pay] || prev.pay || 'Unspecified') + ' → ' + (PAY_LABELS[pay] || pay || 'Unspecified'));
+        }
+        if(!prev.tracking && tracking){
+          logOrderAction(serial, 'AWB created', tracking);
+        } else if(prev.tracking && tracking && prev.tracking !== tracking){
+          logOrderAction(serial, 'AWB replaced', tracking);
+        }
+        if(!prev.pickupRef && pickupRef){
+          logOrderAction(serial, 'Pickup reference assigned', pickupRef);
+        }
+      }
+
+      try{
+        localStorage.setItem(snapKey, JSON.stringify({ ship, pay, tracking, pickupRef }));
+      }catch(e){}
+    });
   }
 
   function orderCard(o){
