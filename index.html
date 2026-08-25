@@ -1168,8 +1168,9 @@
     const returned = allOrders.filter(o=> normStatus(o.shipping_status)==='returned').length;
     const pendingShip = allOrders.filter(o=> !['delivered','cancelled','returned'].includes(normStatus(o.shipping_status))).length;
     const paid = allOrders.filter(o=>o.payment_status==='PAID').length;
-    // Payment status "cancelled" is its own outcome and should never count as pending.
-    const pendingPay = allOrders.filter(o=> normStatus(o.payment_status) === 'pending').length;
+    // Payment status "cancelled" is its own outcome, and returned orders' payments
+    // don't count as pending either — both are excluded here.
+    const pendingPay = allOrders.filter(o=> normStatus(o.payment_status) === 'pending' && normStatus(o.shipping_status) !== 'returned').length;
     // Delivered to the customer but Aramex hasn't paid us back the COD yet
     const pendingAramexOrders = allOrders.filter(o=> o.payment_status==='PENDING' && o.shipping_status==='delivered');
     const pendingAramex = pendingAramexOrders.length;
