@@ -1160,9 +1160,9 @@
 
   function renderStats(){
     const total = allOrders.length;
-    const delivered = allOrders.filter(o=>o.shipping_status==='delivered').length;
-    const cancelled = allOrders.filter(o=> o.shipping_status==='cancelled' || o.shipping_status==='returned').length;
-    const pendingShip = allOrders.filter(o=> !['delivered','cancelled','returned'].includes(o.shipping_status)).length;
+    const delivered = allOrders.filter(o=>normStatus(o.shipping_status)==='delivered').length;
+    const cancelled = allOrders.filter(o=> normStatus(o.shipping_status)==='cancelled' || normStatus(o.shipping_status)==='returned').length;
+    const pendingShip = allOrders.filter(o=> !['delivered','cancelled','returned'].includes(normStatus(o.shipping_status))).length;
     const paid = allOrders.filter(o=>o.payment_status==='PAID').length;
     const pendingPay = allOrders.filter(o=>o.payment_status==='PENDING').length;
     // Delivered to the customer but Aramex hasn't paid us back the COD yet
@@ -1216,18 +1216,19 @@
   }
 
   function buildPills(){
+    // Cancelled orders are hidden from the whole app (see applyFilters), so they're
+    // excluded here too — pill counts and "All shipping" should match what's visible.
+    const visibleOrders = allOrders.filter(o=> normStatus(o.shipping_status) !== 'cancelled');
     const shipCounts = {};
-    allOrders.forEach(o=>{ const k=o.shipping_status||''; shipCounts[k]=(shipCounts[k]||0)+1; });
+    visibleOrders.forEach(o=>{ const k=o.shipping_status||''; shipCounts[k]=(shipCounts[k]||0)+1; });
 
     // Primary requested order: request needed -> pending pickup -> rescheduled -> in transit -> out for delivery -> delivered -> all -> others
-    // "cancelled" is intentionally excluded as its own filter pill per business request —
-    // cancelled orders are still counted under "All shipping" but don't get a dedicated pill.
-    const otherKeys = Object.keys(shipCounts).filter(k => k !== '' && k !== 'cancelled' && !ORDERED_PRIMARY_SHIP_STATUSES.includes(k));
+    const otherKeys = Object.keys(shipCounts).filter(k => k !== '' && !ORDERED_PRIMARY_SHIP_STATUSES.includes(k));
     const finalShipPills = [...ORDERED_PRIMARY_SHIP_STATUSES, 'all', ...otherKeys];
 
     $('shipPills').innerHTML = finalShipPills.map(k=>{
       const label = k==='all' ? 'All shipping' : (SHIP_LABELS[k]||k);
-      const count = k==='all' ? allOrders.length : (shipCounts[k]||0);
+      const count = k==='all' ? visibleOrders.length : (shipCounts[k]||0);
       return `<div class="pill ${k===activeShip?'active':''}" data-ship="${escapeAttr(k)}">${label} (${count})</div>`;
     }).join('');
 
@@ -1253,9 +1254,15 @@
     applyFilters();
   });
 
+  // Normalize a status string for comparisons — trims whitespace and
+  // lowercases so "Cancelled", " cancelled ", "CANCELLED" all match.
+  function normStatus(s){ return String(s||'').trim().toLowerCase(); }
+
   function applyFilters(){
     filteredOrders = allOrders.filter(o=>{
-      if(activeShip !== 'all' && (o.shipping_status||'') !== activeShip) return false;
+      // Cancelled orders are hidden from the app entirely, regardless of the active filter.
+      if(normStatus(o.shipping_status) === 'cancelled') return false;
+      if(activeShip !== 'all' && normStatus(o.shipping_status) !== activeShip) return false;
       if(activePay !== 'all' && (o.payment_status||'') !== activePay) return false;
       if(searchTerm){
         const hay = [pk(o), o['Order Serial'], o['Customer Name'], o['Phone'], o['Phone2']].join(' ').toLowerCase();
