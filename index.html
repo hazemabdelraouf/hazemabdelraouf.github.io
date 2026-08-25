@@ -1131,6 +1131,10 @@
       allOrders = Array.isArray(data.orders) ? data.orders : [];
       headers = Array.isArray(data.headers) ? data.headers : [];
 
+      // Orders with no pickup location assigned yet are ignored entirely —
+      // not shown in the list, not counted in totals, not included in any stat.
+      allOrders = allOrders.filter(o => String(o.pickup_location || '').trim() !== '');
+
       // Sort from newest to oldest by Order Serial (descending)
       allOrders.sort((a, b) => {
         const sA = parseFloat(a['Order Serial']) || 0;
