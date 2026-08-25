@@ -1165,7 +1165,7 @@
   function renderStats(){
     const total = allOrders.length;
     const delivered = allOrders.filter(o=>normStatus(o.shipping_status)==='delivered').length;
-    const cancelled = allOrders.filter(o=> normStatus(o.shipping_status)==='cancelled' || normStatus(o.shipping_status)==='returned').length;
+    const returned = allOrders.filter(o=> normStatus(o.shipping_status)==='returned').length;
     const pendingShip = allOrders.filter(o=> !['delivered','cancelled','returned'].includes(normStatus(o.shipping_status))).length;
     const paid = allOrders.filter(o=>o.payment_status==='PAID').length;
     const pendingPay = allOrders.filter(o=>o.payment_status==='PENDING').length;
@@ -1186,7 +1186,7 @@
       {n: total, l:'Total orders', c:'accent'},
       {n: delivered, l:'Delivered', c:'sage'},
       {n: pendingShip, l:'In progress', c:'amber'},
-      {n: cancelled, l:'Cancelled / returned', c:'rust'},
+      {n: returned, l:'Returned', c:'rust'},
       {n: paid, l:'Paid', c:'sage'},
       {n: pendingPay, l:'Payment pending', c:'amber'},
       {n: revenue.toLocaleString('en-US',{maximumFractionDigits:0}), l:'Total recorded value', c:'accent'},
