@@ -202,6 +202,7 @@
     box-shadow:var(--shadow-sm);
   }
   .stat-num{font-family:'Cairo';font-weight:800;font-size:21px;line-height:1;}
+  .stat-suffix{font-family:'Cairo';font-weight:600;font-size:12px;color:var(--cream-dim);}
   .stat-label{color:var(--cream-dim);font-size:11.5px;margin-top:6px;}
   .stat-sub{color:var(--rust);font-size:11px;font-weight:700;margin-top:3px;}
   .stat-card.accent .stat-num{color:var(--gold);}
@@ -1167,19 +1168,19 @@
     },0);
 
     const stats = [
+      {n: pendingAramex, l:'Pending Aramex', c:'rust', filter:'pendingAramex', suffix:'orders', sub: pendingAramexCOD.toLocaleString('en-US',{maximumFractionDigits:0}) + ' EGP COD'},
       {n: total, l:'Total orders', c:'accent'},
       {n: delivered, l:'Delivered', c:'sage'},
       {n: pendingShip, l:'In progress', c:'amber'},
       {n: cancelled, l:'Cancelled / returned', c:'rust'},
       {n: paid, l:'Paid', c:'sage'},
       {n: pendingPay, l:'Payment pending', c:'amber'},
-      {n: pendingAramex, l:'Pending Aramex', c:'rust', filter:'pendingAramex', sub: pendingAramexCOD.toLocaleString('en-US',{maximumFractionDigits:0}) + ' EGP COD'},
       {n: revenue.toLocaleString('en-US',{maximumFractionDigits:0}), l:'Total recorded value', c:'accent'},
     ];
     const isPendingAramexActive = (activeShip==='delivered' && activePay==='PENDING');
     $('statScroll').innerHTML = stats.map(s=>`
       <div class="stat-card ${s.c}${s.filter==='pendingAramex' && isPendingAramexActive ? ' active-filter' : ''}" ${s.filter ? `data-stat-filter="${s.filter}"` : ''}>
-        <div class="stat-num display">${s.n}</div>
+        <div class="stat-num display">${s.n}${s.suffix ? ` <span class="stat-suffix">${s.suffix}</span>` : ''}</div>
         <div class="stat-label">${s.l}</div>
         ${s.sub ? `<div class="stat-sub">${s.sub}</div>` : ''}
       </div>`).join('');
