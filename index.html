@@ -1239,7 +1239,12 @@
     }).join('');
 
     const payCounts = {};
-    allOrders.forEach(o=>{ const k=o.payment_status||''; payCounts[k]=(payCounts[k]||0)+1; });
+    allOrders.forEach(o=>{
+      const k=o.payment_status||'';
+      // Same rule as the stat card: cancelled/returned orders never count toward "Pending".
+      if(k === 'PENDING' && ['cancelled','returned'].includes(normStatus(o.shipping_status))) return;
+      payCounts[k]=(payCounts[k]||0)+1;
+    });
     const payKeys = Object.keys(payCounts).sort((a,b)=>payCounts[b]-payCounts[a]);
     $('payPills').innerHTML = ['all', ...payKeys].map(k=>{
       const label = k==='all' ? 'All payment' : (PAY_LABELS[k]||k);
@@ -1270,6 +1275,8 @@
       if(normStatus(o.shipping_status) === 'cancelled') return false;
       if(activeShip !== 'all' && normStatus(o.shipping_status) !== activeShip) return false;
       if(activePay !== 'all' && (o.payment_status||'') !== activePay) return false;
+      // Returned orders never count as "Pending" payment, even if the sheet still says PENDING.
+      if(activePay === 'PENDING' && normStatus(o.shipping_status) === 'returned') return false;
       if(searchTerm){
         const hay = [pk(o), o['Order Serial'], o['Customer Name'], o['Phone'], o['Phone2']].join(' ').toLowerCase();
         if(!hay.includes(searchTerm)) return false;
