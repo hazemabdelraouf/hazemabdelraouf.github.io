@@ -207,6 +207,9 @@
   .stat-card.sage .stat-num{color:var(--sage);}
   .stat-card.amber .stat-num{color:var(--amber);}
   .stat-card.rust .stat-num{color:var(--rust);}
+  .stat-card[data-stat-filter]{cursor:pointer;transition:transform 0.1s, box-shadow 0.15s;}
+  .stat-card[data-stat-filter]:active{transform:scale(0.96);}
+  .stat-card[data-stat-filter].active-filter{outline:2px solid var(--rust);outline-offset:1px;}
 
   /* ===== filters ===== */
   .filters{padding:8px 16px 4px;}
@@ -1150,6 +1153,8 @@
     const pendingShip = allOrders.filter(o=> !['delivered','cancelled','returned'].includes(o.shipping_status)).length;
     const paid = allOrders.filter(o=>o.payment_status==='PAID').length;
     const pendingPay = allOrders.filter(o=>o.payment_status==='PENDING').length;
+    // Delivered to the customer but Aramex hasn't paid us back the COD yet
+    const pendingAramex = allOrders.filter(o=> o.payment_status==='PENDING' && o.shipping_status==='delivered').length;
     const revenue = allOrders.reduce((sum,o)=>{
       const t = parseFloat(o.total);
       return sum + (isNaN(t)?0:t);
@@ -1162,13 +1167,34 @@
       {n: cancelled, l:'Cancelled / returned', c:'rust'},
       {n: paid, l:'Paid', c:'sage'},
       {n: pendingPay, l:'Payment pending', c:'amber'},
+      {n: pendingAramex, l:'Pending Aramex', c:'rust', filter:'pendingAramex'},
       {n: revenue.toLocaleString('en-US',{maximumFractionDigits:0}), l:'Total recorded value', c:'accent'},
     ];
+    const isPendingAramexActive = (activeShip==='delivered' && activePay==='PENDING');
     $('statScroll').innerHTML = stats.map(s=>`
-      <div class="stat-card ${s.c}">
+      <div class="stat-card ${s.c}${s.filter==='pendingAramex' && isPendingAramexActive ? ' active-filter' : ''}" ${s.filter ? `data-stat-filter="${s.filter}"` : ''}>
         <div class="stat-num display">${s.n}</div>
         <div class="stat-label">${s.l}</div>
       </div>`).join('');
+
+    document.querySelectorAll('[data-stat-filter]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        const f = el.getAttribute('data-stat-filter');
+        if(f === 'pendingAramex'){
+          // Toggle: clicking again while already active clears back to "all"
+          if(activeShip==='delivered' && activePay==='PENDING'){
+            activeShip = 'all';
+            activePay = 'all';
+          } else {
+            activeShip = 'delivered';
+            activePay = 'PENDING';
+          }
+          buildPills();
+          applyFilters();
+          renderStats();
+        }
+      });
+    });
   }
 
   function buildPills(){
