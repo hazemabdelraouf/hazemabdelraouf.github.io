@@ -976,52 +976,62 @@
     }
   }
 
-  // ===== Reconcile notifications the OS already displayed =====
-  // foregroundWillDisplay only fires while the site is open; the 'click' listener
-  // only fires if the user taps the notification itself. If a push arrives while
-  // the site is fully closed and the user later just reopens the tab normally,
-  // neither fires — so the bell stays empty even though the push was received.
-  // This reads any notifications still sitting in the OS tray via the Notifications
-  // API and logs the ones we haven't recorded yet.
+  // ===== Read notifications logged directly by the service worker's 'push' =====
+  // handler (stored in IndexedDB the instant they arrive). This is reliable
+  // even if the OS has already dismissed/cleared the visible notification —
+  // unlike reading from the notification tray, which many devices clear
+  // automatically as soon as the app/tab is opened.
+  function idbReadAndClearPendingNotifs(){
+    return new Promise((resolve)=>{
+      try{
+        const req = indexedDB.open('pending-notifs-db', 1);
+        req.onupgradeneeded = ()=>{ req.result.createObjectStore('queue', { autoIncrement: true }); };
+        req.onsuccess = ()=>{
+          try{
+            const db = req.result;
+            const tx = db.transaction('queue', 'readwrite');
+            const store = tx.objectStore('queue');
+            const getAllReq = store.getAll();
+            getAllReq.onsuccess = ()=>{
+              const items = getAllReq.result || [];
+              store.clear();
+              resolve(items);
+            };
+            getAllReq.onerror = ()=> resolve([]);
+          }catch(e){ resolve([]); }
+        };
+        req.onerror = ()=> resolve([]);
+      }catch(e){ resolve([]); }
+    });
+  }
+
   async function reconcileDisplayedNotifications(){
     try{
-      if(!('serviceWorker' in navigator)) return;
-      const regs = await navigator.serviceWorker.getRegistrations();
-      let seen = [];
-      try{ seen = JSON.parse(localStorage.getItem('notifs_seen_tags') || '[]'); }catch(e){ seen = []; }
-      let changed = false;
-      for(const reg of regs){
-        let notifs = [];
-        try{ notifs = await reg.getNotifications(); }catch(e){ continue; }
-        for(const n of notifs){
-          const id = n.tag || (n.title + '|' + n.body);
-          if(seen.includes(id)) continue;
-          seen.push(id);
-          changed = true;
+      const items = await idbReadAndClearPendingNotifs();
+      items
+        .sort((a,b)=> (a.time||0) - (b.time||0))
+        .forEach(n=>{
           let target = '';
           try{
-            const data = n.data || {};
-            const launchURL = data.launchURL || data.url || '';
-            if(launchURL){
-              target = new URL(launchURL, window.location.href).hash.replace(/^#/, '');
-            }
+            if(n.launchURL) target = new URL(n.launchURL, window.location.href).hash.replace(/^#/, '');
           }catch(e){}
           saveTodayNotification({
             title: n.title || 'Notification',
             body: n.body || '',
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            time: new Date(n.time || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             target: target
           });
-        }
-      }
-      if(changed){
-        try{ localStorage.setItem('notifs_seen_tags', JSON.stringify(seen.slice(-100))); }catch(e){}
-      }
+        });
     }catch(e){ console.error('reconcileDisplayedNotifications error:', e); }
   }
   document.addEventListener('visibilitychange', ()=>{
     if(document.visibilityState === 'visible') reconcileDisplayedNotifications();
   });
+  // Safety-net poll while the tab is open and visible, in case a push arrives
+  // but foregroundWillDisplay doesn't fire for some reason.
+  setInterval(()=>{
+    if(document.visibilityState === 'visible') reconcileDisplayedNotifications();
+  }, 20000);
 
   async function init(){
     const saved = loadStorageUrl();
@@ -1210,7 +1220,9 @@
     allOrders.forEach(o=>{ const k=o.shipping_status||''; shipCounts[k]=(shipCounts[k]||0)+1; });
 
     // Primary requested order: request needed -> pending pickup -> rescheduled -> in transit -> out for delivery -> delivered -> all -> others
-    const otherKeys = Object.keys(shipCounts).filter(k => k !== '' && !ORDERED_PRIMARY_SHIP_STATUSES.includes(k));
+    // "cancelled" is intentionally excluded as its own filter pill per business request —
+    // cancelled orders are still counted under "All shipping" but don't get a dedicated pill.
+    const otherKeys = Object.keys(shipCounts).filter(k => k !== '' && k !== 'cancelled' && !ORDERED_PRIMARY_SHIP_STATUSES.includes(k));
     const finalShipPills = [...ORDERED_PRIMARY_SHIP_STATUSES, 'all', ...otherKeys];
 
     $('shipPills').innerHTML = finalShipPills.map(k=>{
