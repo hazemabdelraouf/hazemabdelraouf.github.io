@@ -450,6 +450,14 @@
   }
   .modal-cancel:hover{color:var(--rust);}
 
+  .reschedule-date-input{
+    width:100%;padding:12px;border-radius:12px;
+    background:var(--panel-2);border:1px solid var(--line);
+    color:var(--cream);font-family:'Cairo',sans-serif;font-weight:600;
+    font-size:14px;box-sizing:border-box;
+    color-scheme:light;
+  }
+
   ::selection{background:var(--gold-soft);color:#ffffff;}
 </style>
 </head>
@@ -557,8 +565,22 @@
     <div class="modal-options">
       <button class="modal-opt-btn" data-mail="urgent">urgent</button>
       <button class="modal-opt-btn" data-mail="any update">any update</button>
+      <button class="modal-opt-btn" id="rescheduleOptBtn">reschedule</button>
     </div>
     <button class="modal-cancel" id="closeMailModalBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ RESCHEDULE DATE MODAL ============ -->
+<div class="modal-overlay" id="rescheduleModal">
+  <div class="modal-card">
+    <div class="modal-title" id="rescheduleModalTitle">Reschedule</div>
+    <div class="modal-sub">Pick the new delivery date:</div>
+    <input type="date" id="rescheduleDateInput" class="reschedule-date-input">
+    <div class="modal-options" style="margin-top:14px;">
+      <button class="modal-opt-btn" id="confirmRescheduleBtn">Confirm</button>
+    </div>
+    <button class="modal-cancel" id="closeRescheduleModalBtn">Cancel</button>
   </div>
 </div>
 
@@ -907,7 +929,7 @@
     if(e.target === $('mailModal')) hideMailModal();
   });
 
-  document.querySelectorAll('#mailModal .modal-opt-btn').forEach(optBtn => {
+  document.querySelectorAll('#mailModal .modal-opt-btn[data-mail]').forEach(optBtn => {
     optBtn.addEventListener('click', async () => {
       const selectedMailStatus = optBtn.getAttribute('data-mail');
       const btn = currentTargetBtn;
@@ -921,6 +943,48 @@
         "mail status": selectedMailStatus
       }, `Mail Sent (${selectedMailStatus})`);
     });
+  });
+
+  // ---- Reschedule flow: pick a date, send a webhook with order serial + date ----
+  function hideRescheduleModal(){
+    $('rescheduleModal').classList.remove('active');
+  }
+  $('rescheduleOptBtn').addEventListener('click', () => {
+    const btn = currentTargetBtn;
+    const serial = currentMailSerial;
+    const orderId = currentOrderId;
+    hideMailModal();
+    if(!btn || !serial) return;
+    // Stash the button/order back so the confirm handler can use them
+    currentTargetBtn = btn;
+    currentMailSerial = serial;
+    currentOrderId = orderId;
+    $('rescheduleModalTitle').textContent = 'Reschedule: ' + (orderId || 'Order');
+    $('rescheduleDateInput').value = '';
+    // Don't allow picking a date in the past
+    $('rescheduleDateInput').min = new Date().toISOString().split('T')[0];
+    $('rescheduleModal').classList.add('active');
+  });
+  $('closeRescheduleModalBtn').addEventListener('click', hideRescheduleModal);
+  $('rescheduleModal').addEventListener('click', (e)=>{
+    if(e.target === $('rescheduleModal')) hideRescheduleModal();
+  });
+  $('confirmRescheduleBtn').addEventListener('click', async () => {
+    const btn = currentTargetBtn;
+    const serial = currentMailSerial;
+    const date = $('rescheduleDateInput').value;
+    if(!date){
+      $('rescheduleDateInput').focus();
+      return;
+    }
+    hideRescheduleModal();
+    if(!btn || !serial) return;
+    logOrderAction(serial, 'Reschedule requested', date);
+    await sendMakeWebhook(btn, {
+      "order serial": serial,
+      "date": date,
+      "event": "reschedule"
+    }, `Reschedule requested (${date})`);
   });
 
     async function sendMakeWebhook(btn, payload, successDefaultMsg){
