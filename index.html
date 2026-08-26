@@ -792,6 +792,7 @@
             time: timeStr,
             target: target
           });
+          playNotificationSound();
         });
 
         OneSignal.Notifications.addEventListener('click', (event) => {
@@ -1033,6 +1034,19 @@
     if(document.visibilityState === 'visible') reconcileDisplayedNotifications();
   }, 20000);
 
+  // ===== Custom in-app notification sound =====
+  // Plays a soft chime when a push arrives while this tab is open/foreground.
+  // (Browsers don't allow custom sounds for the OS-level push notification
+  // itself when the site is fully closed — this is the in-app equivalent.)
+  let notifAudio = null;
+  function playNotificationSound(){
+    try{
+      if(!notifAudio) notifAudio = new Audio('notification.mp3');
+      notifAudio.currentTime = 0;
+      notifAudio.play().catch(()=>{ /* blocked until user interacts with the page at least once — harmless */ });
+    }catch(e){}
+  }
+
   async function init(){
     const saved = loadStorageUrl();
     const osId = loadOneSignalId();
@@ -1166,11 +1180,16 @@
     const total = allOrders.length;
     const delivered = allOrders.filter(o=>normStatus(o.shipping_status)==='delivered').length;
     const returned = allOrders.filter(o=> normStatus(o.shipping_status)==='returned').length;
-    const pendingShip = allOrders.filter(o=> !['delivered','cancelled','returned'].includes(normStatus(o.shipping_status))).length;
+    const inProgressOrders = allOrders.filter(o=> !['delivered','cancelled','returned'].includes(normStatus(o.shipping_status)));
+    const pendingShip = inProgressOrders.length;
     const paid = allOrders.filter(o=>o.payment_status==='PAID').length;
     // Payment status "cancelled" is its own outcome, and returned orders' payments
     // don't count as pending either — both are excluded here.
-    const pendingPay = allOrders.filter(o=> normStatus(o.payment_status) === 'pending' && normStatus(o.shipping_status) !== 'returned').length;
+    const pendingPayOrders = allOrders.filter(o=> normStatus(o.payment_status) === 'pending' && normStatus(o.shipping_status) !== 'returned');
+    const pendingPayAmount = pendingPayOrders.reduce((sum,o)=>{
+      const t = parseFloat(o.total);
+      return sum + (isNaN(t)?0:t);
+    },0);
     // Delivered to the customer but Aramex hasn't paid us back the COD yet
     const pendingAramexOrders = allOrders.filter(o=> o.payment_status==='PENDING' && o.shipping_status==='delivered');
     const pendingAramex = pendingAramexOrders.length;
@@ -1187,19 +1206,23 @@
       {n: pendingAramex, l:'Pending Aramex', c:'rust', filter:'pendingAramex', suffix:'orders', sub: pendingAramexCOD.toLocaleString('en-US',{maximumFractionDigits:0}) + ' EGP COD'},
       {n: total, l:'Total orders', c:'accent'},
       {n: delivered, l:'Delivered', c:'sage'},
-      {n: pendingShip, l:'In progress', c:'amber'},
+      {n: pendingShip, l:'In progress', c:'amber', filter:'inProgress', suffix:'orders'},
       {n: returned, l:'Returned', c:'rust'},
       {n: paid, l:'Paid', c:'sage'},
-      {n: pendingPay, l:'Payment pending', c:'amber'},
+      {n: pendingPayAmount.toLocaleString('en-US',{maximumFractionDigits:0}), l:'Payment pending', c:'amber', suffix:'EGP'},
       {n: revenue.toLocaleString('en-US',{maximumFractionDigits:0}), l:'Total recorded value', c:'accent'},
     ];
     const isPendingAramexActive = (activeShip==='delivered' && activePay==='PENDING');
-    $('statScroll').innerHTML = stats.map(s=>`
-      <div class="stat-card ${s.c}${s.filter==='pendingAramex' && isPendingAramexActive ? ' active-filter' : ''}" ${s.filter ? `data-stat-filter="${s.filter}"` : ''}>
+    const isInProgressActive = (activeShip==='inProgress');
+    $('statScroll').innerHTML = stats.map(s=>{
+      const isActive = (s.filter==='pendingAramex' && isPendingAramexActive) || (s.filter==='inProgress' && isInProgressActive);
+      return `
+      <div class="stat-card ${s.c}${isActive ? ' active-filter' : ''}" ${s.filter ? `data-stat-filter="${s.filter}"` : ''}>
         <div class="stat-num display">${s.n}${s.suffix ? ` <span class="stat-suffix">${s.suffix}</span>` : ''}</div>
         <div class="stat-label">${s.l}</div>
         ${s.sub ? `<div class="stat-sub">${s.sub}</div>` : ''}
-      </div>`).join('');
+      </div>`;
+    }).join('');
 
     document.querySelectorAll('[data-stat-filter]').forEach(el=>{
       el.addEventListener('click', ()=>{
@@ -1213,6 +1236,17 @@
             activeShip = 'delivered';
             activePay = 'PENDING';
           }
+          buildPills();
+          applyFilters();
+          renderStats();
+        } else if(f === 'inProgress'){
+          // Toggle: clicking again while already active clears back to "all"
+          if(activeShip==='inProgress'){
+            activeShip = 'all';
+          } else {
+            activeShip = 'inProgress';
+          }
+          activePay = 'all';
           buildPills();
           applyFilters();
           renderStats();
@@ -1273,7 +1307,9 @@
     filteredOrders = allOrders.filter(o=>{
       // Cancelled orders are hidden from the app entirely, regardless of the active filter.
       if(normStatus(o.shipping_status) === 'cancelled') return false;
-      if(activeShip !== 'all' && normStatus(o.shipping_status) !== activeShip) return false;
+      if(activeShip === 'inProgress'){
+        if(['delivered','cancelled','returned'].includes(normStatus(o.shipping_status))) return false;
+      } else if(activeShip !== 'all' && normStatus(o.shipping_status) !== activeShip) return false;
       if(activePay !== 'all' && (o.payment_status||'') !== activePay) return false;
       // Returned orders never count as "Pending" payment, even if the sheet still says PENDING.
       if(activePay === 'PENDING' && normStatus(o.shipping_status) === 'returned') return false;
