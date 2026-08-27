@@ -315,6 +315,14 @@
   .card-btn.sending{opacity:0.75;pointer-events:none;}
   .card-btn.success{background:var(--sage) !important;color:#ffffff !important;border:none !important;opacity:1 !important;}
   .card-btn.error{background:var(--rust) !important;color:#fff !important;border:none !important;opacity:1 !important;}
+  .cancel-order-btn{
+    flex:none;
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--rust);
+    padding:10.5px 12px;
+  }
+  .cancel-order-btn:hover{background:rgba(220,38,38,0.06);border-color:var(--rust);}
 
   .expand-btn{
     flex:1;
@@ -609,6 +617,7 @@
 <script>
 (function(){
   const MAKE_WEBHOOK_URL = 'https://hook.eu1.make.com/cbsn3w2zotz94kq1kw5w988o34al5874';
+  const CANCEL_WEBHOOK_URL = 'https://hook.eu1.make.com/5wlzhqmoeu266mzqwoad9lfxwlsm8zmf';
 
   const ORDERED_PRIMARY_SHIP_STATUSES = [
     'request needed',
@@ -1022,12 +1031,13 @@
     }, `Reschedule requested (${date})`);
   });
 
-    async function sendMakeWebhook(btn, payload, successDefaultMsg){
+    async function sendMakeWebhook(btn, payload, successDefaultMsg, webhookUrl){
     const origText = btn.innerHTML;
     btn.classList.add('sending');
     btn.innerHTML = `<svg class="spinner" style="width:14px;height:14px;border-width:2px;margin:0 4px 0 0;display:inline-block;vertical-align:middle;"></svg> Sending...`;
 
     try {
+      const baseUrl = webhookUrl || MAKE_WEBHOOK_URL;
       // Build query string so Make captures variables directly from URL parameters
       const urlParams = new URLSearchParams();
       for (const key in payload) {
@@ -1036,7 +1046,7 @@
         }
       }
 
-      const targetUrl = MAKE_WEBHOOK_URL + (MAKE_WEBHOOK_URL.includes('?') ? '&' : '?') + urlParams.toString();
+      const targetUrl = baseUrl + (baseUrl.includes('?') ? '&' : '?') + urlParams.toString();
 
       // Send request using standard fetch
       try {
@@ -1583,8 +1593,18 @@
     else if(p.length === 11 && p.startsWith('0')) p = p.slice(1);
     return p;
   }
+  let ordersCountKey = null; // resolved lazily from the sheet's actual headers
+  function resolveOrdersCountKey(o){
+    if(ordersCountKey && Object.prototype.hasOwnProperty.call(o, ordersCountKey)) return ordersCountKey;
+    const keys = Object.keys(o);
+    const found = keys.find(k => k.trim().toLowerCase() === 'orders count');
+    ordersCountKey = found || null;
+    return ordersCountKey;
+  }
   function deliveredCountBadge(o){
-    const count = parseInt(o['orders count'], 10);
+    const key = resolveOrdersCountKey(o);
+    if(!key) return '';
+    const count = parseInt(o[key], 10);
     if(!count || count <= 0) return '';
     return ` <span class="customer-delivered-count">${count} orders</span>`;
   }
@@ -1660,6 +1680,10 @@
         ${o.Phone ? `<a class="whatsapp-btn" href="${escapeAttr(waLink(o.Phone))}" target="_blank" rel="noopener" title="Chat on WhatsApp" onclick="logOrderAction('${escapeAttr(serial)}','WhatsApp opened')">
           <svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.29-1.39c1.44.79 3.06 1.2 4.7 1.2h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 18.15h-.01c-1.47 0-2.91-.39-4.17-1.14l-.3-.18-3.14.82.84-3.06-.19-.31a8.18 8.18 0 0 1-1.25-4.37c0-4.53 3.69-8.22 8.23-8.22 2.2 0 4.26.86 5.82 2.41a8.17 8.17 0 0 1 2.41 5.82c0 4.54-3.69 8.23-8.24 8.23zm4.51-6.16c-.25-.12-1.46-.72-1.68-.8-.23-.08-.39-.12-.56.12-.16.25-.64.8-.78.96-.14.16-.29.18-.54.06-.25-.12-1.04-.38-1.98-1.22-.73-.65-1.23-1.46-1.37-1.7-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.12-.14.16-.25.24-.41.08-.16.04-.31-.02-.43-.06-.12-.56-1.35-.77-1.85-.2-.48-.41-.42-.56-.43-.14-.01-.31-.01-.47-.01a.9.9 0 0 0-.65.31c-.23.25-.86.84-.86 2.05 0 1.21.88 2.38 1 2.54.12.16 1.73 2.64 4.19 3.7.59.25 1.04.4 1.4.52.59.19 1.12.16 1.54.1.47-.07 1.46-.6 1.66-1.18.21-.58.21-1.07.14-1.18-.06-.1-.22-.16-.47-.28z"/></svg>
         </a>` : ''}
+        <button class="card-btn cancel-order-btn" data-cancel-order data-serial="${escapeAttr(serial)}" title="Cancel order">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          Cancel order
+        </button>
         <button class="expand-btn" data-toggle>View details</button>
       </div>
 
@@ -1748,6 +1772,21 @@
       btn.addEventListener('click', ()=>{
         const orderId = btn.getAttribute('data-orderid');
         promptMailSelection(btn, orderId);
+      });
+    });
+
+    // Cancel Order button listener
+    document.querySelectorAll('[data-cancel-order]').forEach(btn=>{
+      if(btn._boundCancel) return; btn._boundCancel = true;
+      btn.addEventListener('click', async ()=>{
+        const serial = btn.getAttribute('data-serial');
+        if(!serial) return;
+        if(!confirm('Cancel this order (' + serial + ')?')) return;
+        logOrderAction(serial, 'Cancel order requested');
+        await sendMakeWebhook(btn, {
+          "order serial": serial,
+          "event": "cancel order"
+        }, 'Cancel requested', CANCEL_WEBHOOK_URL);
       });
     });
   }
