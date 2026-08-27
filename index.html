@@ -390,6 +390,11 @@
   .detail-label{color:var(--cream-dim);flex:0 0 auto;}
   .detail-value{color:var(--cream);font-weight:500;text-align:right;word-break:break-word;}
   .note-line{font-size:12px;color:#334155;margin-top:8px;background:var(--panel-2);border:1px solid var(--line);padding:9px 12px;border-radius:9px;line-height:1.5;}
+  .mail-warning{
+    font-size:12px;color:#92400e;margin-top:8px;
+    background:#fef3c7;border:1px solid #fde68a;
+    padding:9px 12px;border-radius:9px;line-height:1.5;font-weight:600;
+  }
 
   .empty{text-align:center;padding:60px 20px;color:var(--cream-dim);font-size:13.5px;}
   .loadmore{
@@ -449,6 +454,11 @@
     color:var(--cream-dim);font-size:13px;font-weight:600;cursor:pointer;padding:6px;
   }
   .modal-cancel:hover{color:var(--rust);}
+
+  .mail-sent-count{
+    display:block;font-size:10.5px;font-weight:600;
+    color:var(--cream-dim);margin-top:3px;
+  }
 
   .reschedule-date-input{
     width:100%;padding:12px;border-radius:12px;
@@ -563,9 +573,9 @@
     <div class="modal-title" id="mailModalTitle">Send Mail</div>
     <div class="modal-sub">Select email type:</div>
     <div class="modal-options">
-      <button class="modal-opt-btn" data-mail="urgent">urgent</button>
-      <button class="modal-opt-btn" data-mail="any update">any update</button>
-      <button class="modal-opt-btn" id="rescheduleOptBtn">reschedule</button>
+      <button class="modal-opt-btn" data-mail="urgent">urgent <span class="mail-sent-count" id="sentCount_urgent"></span></button>
+      <button class="modal-opt-btn" data-mail="any update">any update <span class="mail-sent-count" id="sentCount_anyupdate"></span></button>
+      <button class="modal-opt-btn" id="rescheduleOptBtn">reschedule <span class="mail-sent-count" id="sentCount_reschedule"></span></button>
     </div>
     <button class="modal-cancel" id="closeMailModalBtn">Cancel</button>
   </div>
@@ -914,6 +924,19 @@
     currentOrderId = orderId;
     currentMailSerial = btn.getAttribute('data-serial') || '';
     $('mailModalTitle').textContent = 'Send Mail: ' + (orderId || 'Order');
+
+    // Show how many times each mail type has already been sent for this order,
+    // read straight from the sheet columns (urgent / any update / reschedule)
+    // so the count is shared across the whole team, not just this device.
+    const orderRecord = allOrders.find(o => String(o['Order Serial']) === String(currentMailSerial)) || {};
+    const fmtCount = (v)=>{
+      const n = parseInt(v, 10);
+      return (!isNaN(n) && n > 0) ? `Sent ${n}×` : '';
+    };
+    $('sentCount_urgent').textContent = fmtCount(orderRecord['urgent']);
+    $('sentCount_anyupdate').textContent = fmtCount(orderRecord['any update']);
+    $('sentCount_reschedule').textContent = fmtCount(orderRecord['reschedule']);
+
     $('mailModal').classList.add('active');
   }
 
@@ -1421,6 +1444,16 @@
   function getOrderLogs(serial){
     try{ return JSON.parse(localStorage.getItem('order_log_' + serial) || '[]'); }catch(e){ return []; }
   }
+  function getLastMailSent(serial){
+    const logs = getOrderLogs(serial);
+    // logs are stored newest-first (unshift on save)
+    return logs.find(l => l.action === 'Mail sent') || null;
+  }
+  function renderMailWarning(serial){
+    const last = getLastMailSent(serial);
+    if(!last) return '';
+    return `<div class="mail-warning">✉️ Mail already sent — <b>${escapeHtml(last.detail || '')}</b> · ${escapeHtml(fmtLogTime(last.time))} — check before sending again</div>`;
+  }
   function logOrderAction(serial, action, detail){
     if(!serial) return;
     try{
@@ -1434,6 +1467,8 @@
         const countEl = toggle.querySelector('[data-log-count]');
         if(countEl) countEl.textContent = getOrderLogs(serial).length;
       }
+      const warningEl = document.querySelector(`#order-${CSS.escape(String(serial))} [data-mail-warning]`);
+      if(warningEl) warningEl.innerHTML = renderMailWarning(serial);
     }catch(e){}
   }
   function fmtLogTime(iso){
@@ -1590,6 +1625,7 @@
         <span class="badge ${payClass(pay)}">Payment: ${PAY_LABELS[pay]||pay||'Unspecified'}</span>
       </div>
       ${o.note ? `<div class="note-line">📝 ${escapeHtml(o.note)}</div>` : ''}
+      <div data-mail-warning>${renderMailWarning(serial)}</div>
 
       <!-- Direct Action Buttons on Every Order Card -->
       <div class="card-actions">
