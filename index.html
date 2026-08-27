@@ -1650,7 +1650,6 @@
     const pay = o.payment_status || '';
     const total = o.total ? (parseFloat(o.total)||o.total) + ' EGP' : '—';
     const city = [o.Gov, o.city].filter(Boolean).join(' - ');
-    const hasOrderId = o['order ID'] !== undefined && o['order ID'] !== null && o['order ID'] !== '';
     const serial = o['Order Serial'] || '';
     const orderId = o['order ID'] || serial;
 
@@ -1685,7 +1684,6 @@
       <div class="order-top">
         <div>
           <div class="order-id display">${escapeHtml(pkLabel(o))}</div>
-          ${hasOrderId ? `<div class="order-id-sub">${escapeHtml(o['order ID'])}</div>` : ''}
           <div class="order-name">${escapeHtml(o['Customer Name']||'No name')}${deliveredCountBadge(o)}</div>
           <div class="order-sub">
             <span>${escapeHtml(o.Phone||'')}</span>
@@ -1695,6 +1693,7 @@
         <div style="text-align:right;">
           <div class="order-total">${total}</div>
           <div class="order-date">${fmtDate(o.Updated)}</div>
+          ${o.pickup_location ? `<div class="order-date">Shipped from ${escapeHtml(o.pickup_location)}</div>` : ''}
         </div>
       </div>
 
