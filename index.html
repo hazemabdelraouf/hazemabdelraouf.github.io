@@ -1472,6 +1472,12 @@
     if(isNaN(d)) return '';
     return d.toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'});
   }
+  function fmtDateShort(iso){
+    if(!iso) return '';
+    const d = new Date(iso);
+    if(isNaN(d)) return '';
+    return d.toLocaleDateString('en-US',{day:'numeric',month:'short'});
+  }
 
   // ---- Lightweight per-order activity log (stored locally, no server calls) ----
   function getOrderLogs(serial){
@@ -1612,6 +1618,23 @@
     ordersCountKey = found || null;
     return ordersCountKey;
   }
+  let aramexCollectionKey = null; // resolved lazily from the sheet's actual headers
+  function resolveAramexCollectionKey(o){
+    if(aramexCollectionKey && Object.prototype.hasOwnProperty.call(o, aramexCollectionKey)) return aramexCollectionKey;
+    const keys = Object.keys(o);
+    const found = keys.find(k => k.trim().toLowerCase() === 'aramex collection');
+    aramexCollectionKey = found || null;
+    return aramexCollectionKey;
+  }
+  function paidDateSuffix(o){
+    const key = resolveAramexCollectionKey(o);
+    if(!key) return '';
+    return dateSuffix(o[key]);
+  }
+  function dateSuffix(iso){
+    const short = fmtDateShort(iso);
+    return short ? ` (${short})` : '';
+  }
   function deliveredCountBadge(o){
     const key = resolveOrdersCountKey(o);
     if(!key) return '';
@@ -1680,8 +1703,8 @@
       </div>
 
       <div class="badges">
-        <span class="badge ${shipClass(ship)}">Shipping: ${SHIP_LABELS[ship]||ship||'No status'}</span>
-        <span class="badge ${payClass(pay)}">Payment: ${PAY_LABELS[pay]||pay||'Unspecified'}</span>
+        <span class="badge ${shipClass(ship)}">Shipping: ${SHIP_LABELS[ship]||ship||'No status'}${ship==='delivered' ? dateSuffix(o.Updated) : ''}</span>
+        <span class="badge ${payClass(pay)}">Payment: ${PAY_LABELS[pay]||pay||'Unspecified'}${pay==='PAID' ? paidDateSuffix(o) : ''}</span>
       </div>
       ${o.note ? `<div class="note-line">📝 ${escapeHtml(o.note)}</div>` : ''}
       <div data-mail-warning>${renderMailWarning(serial)}</div>
