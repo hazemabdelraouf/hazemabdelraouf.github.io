@@ -394,6 +394,13 @@
   .detail-row:last-child{border-bottom:none;}
   .detail-label{color:var(--cream-dim);flex:0 0 auto;}
   .detail-value{color:var(--cream);font-weight:500;text-align:right;word-break:break-word;}
+  .items-row{
+    display:flex;justify-content:space-between;gap:14px;
+    padding:7px 0;border-bottom:1px solid var(--line);
+    font-size:12.5px;
+  }
+  .items-row:last-child{border-bottom:none;}
+  .items-list{color:var(--cream);font-weight:500;text-align:right;display:flex;flex-direction:column;gap:2px;}
   .note-line{font-size:12px;color:#334155;margin-top:8px;background:var(--panel-2);border:1px solid var(--line);padding:9px 12px;border-radius:9px;line-height:1.5;}
   .mail-warning{
     font-size:12px;color:#92400e;margin-top:8px;
@@ -1675,7 +1682,7 @@
           ${detailRow('Address line 1', o.Address_line1)}
           ${detailRow('Address line 2', o.Address_line2)}
           ${detailRow('Address', o.Address)}
-          ${detailRow('Items', o['dashboard items'])}
+          ${itemsRow('Items', o['dashboard items'])}
           ${detailRow('Pieces', o.pieces)}
           ${detailRow('Weight', o.weight)}
           ${detailRow('Total', o.total)}
@@ -1697,6 +1704,18 @@
   function detailRow(label, value){
     if(value === undefined || value === null || value === '') return '';
     return `<div class="detail-row"><span class="detail-label">${escapeHtml(label)}</span><span class="detail-value">${escapeHtml(value)}</span></div>`;
+  }
+  function itemsRow(label, value){
+    if(value === undefined || value === null || value === '') return '';
+    // Split on newlines (as they appear in the sheet cell) and, as a fallback
+    // for single-line cells, on commas — each item then renders on its own line.
+    const raw = String(value);
+    let lines = raw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    if(lines.length <= 1){
+      lines = raw.split(',').map(s=>s.trim()).filter(Boolean);
+    }
+    if(lines.length === 0) return '';
+    return `<div class="items-row"><span class="detail-label">${escapeHtml(label)}</span><span class="items-list">${lines.map(l=>escapeHtml(l)).join('<br>')}</span></div>`;
   }
 
   function attachCardHandlers(){
