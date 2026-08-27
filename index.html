@@ -1588,7 +1588,7 @@
     if(!phone) return '';
     const p = normPhone(phone);
     if(!p) return '';
-    const count = allOrders.filter(x => normPhone(x['Phone']) === p && normStatus(x.shipping_status) === 'delivered').length;
+    function deliveredCountBadge(o){   const count = parseInt(o['Orders Count'], 10);   if(isNaN(count) || count <= 0) return '';   return ` <span class="customer-delivered-count">${count} delivered</span>`; }
     if(count <= 0) return '';
     return ` <span class="customer-delivered-count">${count} delivered</span>`;
   }
