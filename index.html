@@ -1211,7 +1211,10 @@
 
       // Orders with no pickup location assigned yet are ignored entirely —
       // not shown in the list, not counted in totals, not included in any stat.
-      allOrders = allOrders.filter(o => String(o.pickup_location || '').trim() !== '');
+      // Orders with no pickup location assigned yet are ignored — except "request needed"
+      // orders, which by definition haven't had a pickup requested/assigned yet, so they
+      // naturally have no pickup location and must still show up.
+      allOrders = allOrders.filter(o => normStatus(o.shipping_status) === 'request needed' || String(o.pickup_location || '').trim() !== '');
 
       // Sort from newest to oldest by Order Serial (descending)
       allOrders.sort((a, b) => {
