@@ -1574,7 +1574,15 @@
     });
   }
 
-  function normPhone(s){ return String(s||'').replace(/\D/g,''); }
+  function normPhone(s){
+    let p = String(s||'').replace(/\D/g,'');
+    // Different order rows for the same customer sometimes mix local (0xxxxxxxxx)
+    // and international (20xxxxxxxxx) formats — normalize both to the same
+    // 10-digit local subscriber number so they match up correctly.
+    if(p.length === 12 && p.startsWith('20')) p = p.slice(2);
+    else if(p.length === 11 && p.startsWith('0')) p = p.slice(1);
+    return p;
+  }
   function deliveredCountBadge(o){
     const phone = o['Phone'];
     if(!phone) return '';
@@ -1682,7 +1690,7 @@
           ${detailRow('Address line 1', o.Address_line1)}
           ${detailRow('Address line 2', o.Address_line2)}
           ${detailRow('Address', o.Address)}
-          ${itemsRow('Items', o['dashboard items'])}
+          ${itemsRow('Items', o.items)}
           ${detailRow('Pieces', o.pieces)}
           ${detailRow('Weight', o.weight)}
           ${detailRow('Total', o.total)}
