@@ -1607,6 +1607,7 @@
     if(!key) return '';
     const count = parseInt(o[key], 10);
     if(!count || count <= 0) return '';
+    if(count === 1) return ` <span class="customer-delivered-count">New Customer</span>`;
     return ` <span class="customer-delivered-count">${count} orders</span>`;
   }
 
