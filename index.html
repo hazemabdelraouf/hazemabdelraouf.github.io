@@ -1584,13 +1584,9 @@
     return p;
   }
   function deliveredCountBadge(o){
-    const phone = o['Phone'];
-    if(!phone) return '';
-    const p = normPhone(phone);
-    if(!p) return '';
-    const count = allOrders.filter(x => normPhone(x['Phone']) === p && normStatus(x.shipping_status) === 'delivered').length;
-    if(count <= 0) return '';
-    return ` <span class="customer-delivered-count">${count} delivered</span>`;
+    const count = parseInt(o['orders count'], 10);
+    if(!count || count <= 0) return '';
+    return ` <span class="customer-delivered-count">${count} orders</span>`;
   }
 
   function orderCard(o){
