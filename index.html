@@ -271,9 +271,12 @@
     padding:4px 11px;border-radius:999px;
     border:1px solid transparent;
   }
+  /* 5 shipping stages, each with a distinct color so the stage is recognizable at a glance */
+  .badge.ship-request-needed{color:#7c3aed;border-color:#ddd6fe;background:#f5f3ff;}
+  .badge.ship-pending-pickup{color:#b45309;border-color:#fde68a;background:#fffbeb;}
+  .badge.ship-other{color:#2563eb;border-color:#bfdbfe;background:#eff6ff;}
+  .badge.ship-out-for-delivery{color:#0d9488;border-color:#99f6e4;background:#f0fdfa;}
   .badge.ship-delivered{color:#15803d;border-color:#bbf7d0;background:#f0fdf4;}
-  .badge.ship-cancelled,.badge.ship-returned{color:#b91c1c;border-color:#fecaca;background:#fef2f2;}
-  .badge.ship-pending{color:#b45309;border-color:#fde68a;background:#fffbeb;}
   .badge.pay-paid{color:#15803d;border-color:#bbf7d0;background:#f0fdf4;}
   .badge.pay-pending{color:#b45309;border-color:#fde68a;background:#fffbeb;}
 
@@ -662,10 +665,13 @@
   }
 
   function shipClass(s){
+    // 5 visually distinct stages: request needed -> pending pickup -> (everything else,
+    // except out for delivery/delivered) -> out for delivery -> delivered.
     if(s==='delivered') return 'ship-delivered';
-    if(s==='cancelled'||s==='returned') return 'ship-cancelled';
-    if(!s) return '';
-    return 'ship-pending';
+    if(s==='out for delivery') return 'ship-out-for-delivery';
+    if(s==='request needed') return 'ship-request-needed';
+    if(s==='pending pickup') return 'ship-pending-pickup';
+    return 'ship-other';
   }
   function payClass(s){
     if(s==='PAID') return 'pay-paid';
@@ -673,11 +679,15 @@
     return '';
   }
   function dripState(s){
-    if(s==='delivered') return ['on','on','on','on done'];
-    if(s==='cancelled'||s==='returned') return ['on','on bad','on bad','on bad'];
-    if(s==='out for delivery'||s==='in transit') return ['on','on','on',''];
-    if(s==='pending pickup'||s==='request needed'||s==='wuilt'||s==='rescheduled') return ['on','on','',''];
-    return ['on','','',''];
+    // 5 segments matching the 5 shipping stages:
+    // 1 request needed, 2 pending pickup, 3 everything else, 4 out for delivery, 5 delivered
+    if(s==='delivered') return ['on','on','on','on','on done'];
+    if(s==='out for delivery') return ['on','on','on','on',''];
+    if(s==='cancelled'||s==='returned') return ['on','on','on bad','',''];
+    if(s==='request needed') return ['on','','','',''];
+    if(s==='pending pickup') return ['on','on','','',''];
+    // everything else (rescheduled, in transit, wuilt, no status, etc.)
+    return ['on','on','on','',''];
   }
 
   function loadStorageUrl(){
