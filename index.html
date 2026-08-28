@@ -491,6 +491,11 @@
     font-size:14px;box-sizing:border-box;
     color-scheme:light;
   }
+  .modal-field-error{
+    color:var(--rust);font-size:12px;font-weight:600;
+    margin-top:8px;display:none;
+  }
+  .modal-field-error.show{display:block;}
 
   ::selection{background:var(--gold-soft);color:#ffffff;}
 </style>
@@ -588,6 +593,20 @@
       <button class="modal-opt-btn" data-loc="Mashaya">Mashaya</button>
     </div>
     <button class="modal-cancel" id="closeModalBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ MODAL (For AWB Pickup Date) ============ -->
+<div class="modal-overlay" id="pickupDateModal">
+  <div class="modal-card">
+    <div class="modal-title" id="pickupDateModalTitle">Create AWB</div>
+    <div class="modal-sub">Select pickup date:</div>
+    <input type="date" id="pickupDateInput" class="reschedule-date-input">
+    <div class="modal-field-error" id="pickupDateError">Fridays aren't available for pickup — please choose another day.</div>
+    <div class="modal-options" style="margin-top:14px;">
+      <button class="modal-opt-btn" id="confirmPickupDateBtn">Confirm</button>
+    </div>
+    <button class="modal-cancel" id="closePickupDateModalBtn">Cancel</button>
   </div>
 </div>
 
@@ -933,22 +952,82 @@
   });
 
   document.querySelectorAll('#locationModal .modal-opt-btn').forEach(optBtn => {
-    optBtn.addEventListener('click', async () => {
+    optBtn.addEventListener('click', () => {
       const selectedLocation = optBtn.getAttribute('data-loc');
       const btn = currentTargetBtn;
       const serial = currentOrderSerial;
       hideModal();
 
       if(!btn || !serial) return;
-
-      const isReplace = btn.classList.contains('replace-mode');
-      logOrderAction(serial, isReplace ? 'Replace AWB requested' : 'Create AWB requested', selectedLocation);
-
-      await sendMakeWebhook(btn, {
-        "order serial": serial,
-        "pickup location": selectedLocation
-      }, `AWB Created (${selectedLocation})`);
+      promptPickupDateSelection(btn, serial, selectedLocation);
     });
+  });
+
+  // ---- Pickup date flow: pick a date (no Fridays), compute Aramex timestamps, send webhook ----
+  let pendingPickupLocation = '';
+  function promptPickupDateSelection(btn, serial, location){
+    currentTargetBtn = btn;
+    currentOrderSerial = serial;
+    pendingPickupLocation = location;
+    const isReplace = btn.classList.contains('replace-mode');
+    $('pickupDateModalTitle').textContent = (isReplace ? 'Replace AWB #' : 'Create AWB #') + serial;
+    $('pickupDateInput').value = '';
+    $('pickupDateError').classList.remove('show');
+    // Don't allow picking a date before today
+    $('pickupDateInput').min = ymd(new Date());
+    $('pickupDateModal').classList.add('active');
+  }
+  function hidePickupDateModal(){
+    $('pickupDateModal').classList.remove('active');
+  }
+  $('closePickupDateModalBtn').addEventListener('click', hidePickupDateModal);
+  $('pickupDateModal').addEventListener('click', (e)=>{
+    if(e.target === $('pickupDateModal')) hidePickupDateModal();
+  });
+  $('pickupDateInput').addEventListener('input', () => {
+    const val = $('pickupDateInput').value;
+    const isFri = val && isFriday(parseDateOnly(val));
+    $('pickupDateError').classList.toggle('show', !!isFri);
+  });
+  $('confirmPickupDateBtn').addEventListener('click', async () => {
+    const btn = currentTargetBtn;
+    const serial = currentOrderSerial;
+    const location = pendingPickupLocation;
+    const val = $('pickupDateInput').value;
+
+    if(!val){
+      $('pickupDateInput').focus();
+      return;
+    }
+    const pickupDate = parseDateOnly(val);
+    if(isFriday(pickupDate)){
+      $('pickupDateError').classList.add('show');
+      $('pickupDateInput').focus();
+      return;
+    }
+    hidePickupDateModal();
+    if(!btn || !serial) return;
+
+    // Ready/LastPickup/Closing all land on the chosen pickup day, at fixed times.
+    const readyTs = atTime(pickupDate, 11, 0);
+    const lastPickupTs = atTime(pickupDate, 12, 0);
+    const closingTs = atTime(pickupDate, 13, 0);
+    // "from": the day after pickup (skipping Friday). "to": two valid days after "from".
+    const from = nextValidDay(pickupDate);
+    const to = nextValidDay(nextValidDay(from));
+
+    const isReplace = btn.classList.contains('replace-mode');
+    logOrderAction(serial, isReplace ? 'Replace AWB requested' : 'Create AWB requested', `${location} — pickup ${val}`);
+
+    await sendMakeWebhook(btn, {
+      "order serial": serial,
+      "pickup location": location,
+      "ReadyTimestamp": toAramexDate(readyTs),
+      "LastPickupTimestamp": toAramexDate(lastPickupTs),
+      "ClosingTimestamp": toAramexDate(closingTs),
+      "from": toCustomerDate(from),
+      "to": toCustomerDate(to)
+    }, `AWB Created (${location})`);
   });
 
   function promptMailSelection(btn, orderId){
@@ -1477,6 +1556,46 @@
     const d = new Date(iso);
     if(isNaN(d)) return '';
     return d.toLocaleDateString('en-US',{day:'numeric',month:'short'});
+  }
+
+  // ---- Pickup date helpers (Aramex AWB creation) ----
+  // Aramex expects .NET-style JSON dates: /Date(epochMillis)/ — built the
+  // same way the old Make.com scenario did it (epoch seconds + "000").
+  function toAramexDate(dateObj){
+    const epochSeconds = Math.floor(dateObj.getTime() / 1000);
+    return `/Date(${epochSeconds}000)/`;
+  }
+  // Parses a <input type="date"> value ("YYYY-MM-DD") as a local-time date.
+  function parseDateOnly(dateStr){
+    const [y,m,d] = dateStr.split('-').map(Number);
+    return new Date(y, m-1, d);
+  }
+  function atTime(dateOnly, hh, mm){
+    const d = new Date(dateOnly);
+    d.setHours(hh, mm, 0, 0);
+    return d;
+  }
+  function isFriday(d){ return d.getDay() === 5; }
+  // Moves forward exactly one valid (non-Friday) day.
+  function nextValidDay(d){
+    const next = new Date(d);
+    next.setDate(next.getDate() + 1);
+    if(isFriday(next)) next.setDate(next.getDate() + 1);
+    return next;
+  }
+  function ymd(d){
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+  // Human-readable date for the customer-facing "from"/"to" fields, e.g. "الاثنين 31 اغسطس".
+  const AR_WEEKDAYS = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+  const AR_MONTHS = ['يناير','فبراير','مارس','ابريل','مايو','يونيو','يوليو','اغسطس','سبتمبر','اكتوبر','نوفمبر','ديسمبر'];
+  function toCustomerDate(d){
+    const dayName = AR_WEEKDAYS[d.getDay()];
+    const month = AR_MONTHS[d.getMonth()];
+    return `${dayName} ${d.getDate()} ${month}`;
   }
 
   // ---- Lightweight per-order activity log (stored locally, no server calls) ----
