@@ -937,7 +937,7 @@
         lines.push('OneSignal subscription id: ' + (window.OneSignal.User.PushSubscription.id || '(none)'));
       }catch(err){ lines.push('OneSignal state check failed: ' + err); }
     } else {
-      lines.push('OneSignal SDK: not initialized yet on this page load');
+      lines.push('OneSignal SDK: not loaded/initialized yet (if this stays true after tapping "Enable notifications", cdn.onesignal.com is likely blocked by an ad/privacy blocker or your network)');
     }
     $('pushDebug').innerHTML = lines.map(escapeHtml).join('<br>');
     updateSubscribeBtnLabel();
@@ -997,14 +997,53 @@
     const btn = $('subscribeBtn');
     btn.disabled = true;
     btn.textContent = 'Requesting...';
+
+    // Ask the browser directly FIRST. This shows the native permission popup
+    // immediately and never depends on the OneSignal script having finished
+    // loading — which is exactly what leaves the button stuck on "Requesting..."
+    // with no popup and no error when cdn.onesignal.com is blocked (ad blockers,
+    // some mobile networks/DNS filters, etc).
+    let permResult;
+    try{
+      permResult = await Notification.requestPermission();
+    }catch(err){
+      console.error('Notification.requestPermission error:', err);
+      permResult = Notification.permission;
+    }
+
+    if(permResult !== 'granted'){
+      updateSubscribeBtnLabel();
+      if(permResult === 'denied'){
+        alert('Notification permission was not granted. You can allow it later from your browser/site settings and try again.');
+      }
+      return;
+    }
+
+    // Browser-level permission is granted. Now get OneSignal to register the
+    // actual push subscription — but never let this hang forever if the SDK
+    // script is blocked or slow to respond.
     initOneSignal(osId);
+    let settled = false;
+    const timeoutId = setTimeout(()=>{
+      if(settled) return;
+      settled = true;
+      updateSubscribeBtnLabel();
+      alert(
+        'Browser permission is granted ✓ but the OneSignal service did not respond in time.\n\n' +
+        'This usually means cdn.onesignal.com is blocked (an ad blocker, a browser privacy setting, or your network). ' +
+        'Try disabling any ad/privacy blocker for this site and reload, or switch network, then tap "Check notification status" to confirm.'
+      );
+    }, 8000);
+
     window.OneSignalDeferred.push(async function(OneSignal){
+      if(settled) return;
       try{
         await OneSignal.Notifications.requestPermission();
       }catch(err){
-        console.error('Subscribe error:', err);
-        alert('Could not request permission: ' + err);
+        console.error('OneSignal requestPermission error:', err);
       }
+      settled = true;
+      clearTimeout(timeoutId);
       updateSubscribeBtnLabel();
     });
   });
