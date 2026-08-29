@@ -314,6 +314,14 @@
     background:linear-gradient(180deg, #60a5fa, #2563eb);
     color:#ffffff;
   }
+  .mark-delivered-btn{
+    background:linear-gradient(180deg, #4ade80, #16a34a);
+    color:#ffffff;
+  }
+  .mark-paid-btn{
+    background:linear-gradient(180deg, #2dd4bf, #0d9488);
+    color:#ffffff;
+  }
   .card-btn:active{transform:scale(0.98);}
   .card-btn.sending{opacity:0.75;pointer-events:none;}
   .card-btn.success{background:var(--sage) !important;color:#ffffff !important;border:none !important;opacity:1 !important;}
@@ -327,6 +335,7 @@
   }
   .cancel-order-btn:hover{background:rgba(220,38,38,0.06);border-color:var(--rust);}
   .cancel-order-row{margin-top:4px;margin-bottom:12px;}
+  .quick-status-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
 
   .expand-btn{
     flex:1;
@@ -524,7 +533,8 @@
   </div>
   <button class="btn" id="connectBtn">Connect & Load Orders</button>
   <div id="setup-error"></div>
-  <button class="btn ghost" id="checkPushBtn" style="margin-top:18px;">Check notification status</button>
+  <button class="btn" id="subscribeBtn" style="margin-top:18px;">🔔 Enable notifications</button>
+  <button class="btn ghost" id="checkPushBtn" style="margin-top:10px;">Check notification status</button>
   <div id="pushDebug" style="font-size:11.5px;color:var(--cream-dim);margin-top:10px;max-width:380px;text-align:left;line-height:1.8;"></div>
 </div>
 
@@ -641,6 +651,7 @@
 (function(){
   const MAKE_WEBHOOK_URL = 'https://hook.eu1.make.com/cbsn3w2zotz94kq1kw5w988o34al5874';
   const CANCEL_WEBHOOK_URL = 'https://hook.eu1.make.com/5wlzhqmoeu266mzqwoad9lfxwlsm8zmf';
+  const MARK_WEBHOOK_URL = 'https://hook.eu1.make.com/45hb9q9fcwpu6oym3271jufqba2pr7fk';
 
   const ORDERED_PRIMARY_SHIP_STATUSES = [
     'request needed',
@@ -929,8 +940,74 @@
       lines.push('OneSignal SDK: not initialized yet on this page load');
     }
     $('pushDebug').innerHTML = lines.map(escapeHtml).join('<br>');
+    updateSubscribeBtnLabel();
   }
   $('checkPushBtn').addEventListener('click', checkPushStatus);
+
+  // ===== Manual "Enable notifications" button =====
+  // OneSignal's own auto-prompt (the little bell/slide-down) is configured from
+  // the OneSignal dashboard and browsers throttle/hide it after it's been shown
+  // or dismissed once — that's usually why it "disappears". This button asks
+  // for permission directly, on a real tap, which browsers always allow.
+  function updateSubscribeBtnLabel(){
+    const btn = $('subscribeBtn');
+    if(!btn) return;
+    try{
+      if(typeof Notification === 'undefined'){
+        btn.textContent = '🔔 Not supported in this browser';
+        btn.disabled = true;
+        return;
+      }
+      btn.disabled = false;
+      const perm = Notification.permission;
+      if(perm === 'granted'){
+        btn.textContent = '🔔 Notifications enabled';
+      } else if(perm === 'denied'){
+        btn.textContent = '🔔 Blocked — tap for help';
+      } else {
+        btn.textContent = '🔔 Enable notifications';
+      }
+    }catch(e){}
+  }
+
+  $('subscribeBtn').addEventListener('click', async ()=>{
+    if(typeof Notification === 'undefined'){
+      alert('This browser does not support push notifications.');
+      return;
+    }
+    if(Notification.permission === 'denied'){
+      alert(
+        'Notifications are blocked for this site in your browser.\n\n' +
+        'To fix it:\n' +
+        '1) Tap the lock/info icon next to the address bar\n' +
+        '2) Find "Notifications" and set it to "Allow"\n' +
+        '3) Reload this page and tap this button again\n\n' +
+        'On iPhone: you must first tap Share -> "Add to Home Screen" and open the app from that home screen icon (iOS 16.4+) before notifications can work at all.'
+      );
+      return;
+    }
+    const osId = loadOneSignalId() || $('oneSignalInput').value.trim();
+    if(!osId){
+      alert('Paste your OneSignal App ID in the field above first, then tap this button again.');
+      $('oneSignalInput').focus();
+      return;
+    }
+    if(!loadOneSignalId()) saveOneSignalId(osId);
+
+    const btn = $('subscribeBtn');
+    btn.disabled = true;
+    btn.textContent = 'Requesting...';
+    initOneSignal(osId);
+    window.OneSignalDeferred.push(async function(OneSignal){
+      try{
+        await OneSignal.Notifications.requestPermission();
+      }catch(err){
+        console.error('Subscribe error:', err);
+        alert('Could not request permission: ' + err);
+      }
+      updateSubscribeBtnLabel();
+    });
+  });
 
   function promptLocationSelection(btn, serial){
     currentTargetBtn = btn;
@@ -1251,6 +1328,7 @@
     const osId = loadOneSignalId();
     renderNotificationList();
     reconcileDisplayedNotifications();
+    updateSubscribeBtnLabel();
     if(osId){
       $('oneSignalInput').value = osId;
       initOneSignal(osId);
@@ -1496,9 +1574,14 @@
     });
   }
 
+  let searchDebounceTimer = null;
   $('searchInput').addEventListener('input', (e)=>{
-    searchTerm = e.target.value.trim().toLowerCase();
-    applyFilters();
+    const val = e.target.value.trim().toLowerCase();
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(()=>{
+      searchTerm = val;
+      applyFilters();
+    }, 150);
   });
 
   // Normalize a status string for comparisons — trims whitespace and
@@ -1598,9 +1681,56 @@
     return `${dayName} ${d.getDate()} ${month}`;
   }
 
-  // ---- Lightweight per-order activity log (stored locally, no server calls) ----
+  // ---- Lightweight per-order activity log (consolidated into ONE localStorage
+  // key instead of one key per order, plus an in-memory cache, so reading/writing
+  // logs for hundreds of orders doesn't mean hundreds of separate localStorage
+  // calls on every render/fetch — this was the main cause of the slowdown). ----
+  const LOGS_STORAGE_KEY = 'order_logs_all_v1';
+  const SNAPS_STORAGE_KEY = 'order_snaps_all_v1';
+
+  function migrateLegacyPerKeyStorage(prefix, consolidatedKey){
+    const migrated = {};
+    try{
+      const keysToRemove = [];
+      for(let i=0;i<localStorage.length;i++){
+        const k = localStorage.key(i);
+        if(k && k.indexOf(prefix) === 0){
+          const serial = k.slice(prefix.length);
+          try{ migrated[serial] = JSON.parse(localStorage.getItem(k)); }catch(e){}
+          keysToRemove.push(k);
+        }
+      }
+      if(Object.keys(migrated).length){
+        localStorage.setItem(consolidatedKey, JSON.stringify(migrated));
+        keysToRemove.forEach(k=>{ try{ localStorage.removeItem(k); }catch(e){} });
+      }
+    }catch(e){}
+    return migrated;
+  }
+
+  function loadConsolidated(consolidatedKey, legacyPrefix){
+    try{
+      const raw = localStorage.getItem(consolidatedKey);
+      if(raw) return JSON.parse(raw) || {};
+    }catch(e){}
+    // Nothing consolidated yet — pull in any old per-order keys once, then
+    // never touch them individually again.
+    return migrateLegacyPerKeyStorage(legacyPrefix, consolidatedKey);
+  }
+
+  // In-memory caches, loaded once at startup.
+  let orderLogsCache = loadConsolidated(LOGS_STORAGE_KEY, 'order_log_');
+  let orderSnapsCache = loadConsolidated(SNAPS_STORAGE_KEY, 'order_snap_');
+
+  function persistLogsCache(){
+    try{ localStorage.setItem(LOGS_STORAGE_KEY, JSON.stringify(orderLogsCache)); }catch(e){}
+  }
+  function persistSnapsCache(){
+    try{ localStorage.setItem(SNAPS_STORAGE_KEY, JSON.stringify(orderSnapsCache)); }catch(e){}
+  }
+
   function getOrderLogs(serial){
-    try{ return JSON.parse(localStorage.getItem('order_log_' + serial) || '[]'); }catch(e){ return []; }
+    return orderLogsCache[serial] || [];
   }
   function getLastMailSent(serial){
     const logs = getOrderLogs(serial);
@@ -1615,9 +1745,10 @@
   function logOrderAction(serial, action, detail){
     if(!serial) return;
     try{
-      const logs = getOrderLogs(serial);
+      const logs = getOrderLogs(serial).slice();
       logs.unshift({ action: action, detail: detail || '', time: new Date().toISOString() });
-      localStorage.setItem('order_log_' + serial, JSON.stringify(logs.slice(0, 25)));
+      orderLogsCache[serial] = logs.slice(0, 25);
+      persistLogsCache();
       const list = document.querySelector(`#order-${CSS.escape(String(serial))} [data-log-list]`);
       if(list) list.outerHTML = renderLogRows(serial);
       const toggle = document.querySelector(`#order-${CSS.escape(String(serial))} [data-log-toggle]`);
@@ -1681,13 +1812,15 @@
   // ---- Auto-log real order lifecycle events pulled from the sheet itself ----
   // Detects "Order placed", shipping/payment status changes, and AWB/tracking
   // creation by comparing each fetch against the last known snapshot per order.
+  // All snapshot reads come from the in-memory cache (loaded once at startup)
+  // and all writes are batched into a single localStorage.setItem call at the
+  // end, instead of one localStorage get + set PER ORDER on every single fetch.
   function reconcileOrderStatusLogs(orders){
+    let changed = false;
     orders.forEach(o=>{
       const serial = o['Order Serial'];
       if(!serial) return;
-      const snapKey = 'order_snap_' + serial;
-      let prev = null;
-      try{ prev = JSON.parse(localStorage.getItem(snapKey) || 'null'); }catch(e){ prev = null; }
+      const prev = orderSnapsCache[serial] || null;
 
       const ship = o.shipping_status || '';
       const pay = o.payment_status || '';
@@ -1714,10 +1847,14 @@
         }
       }
 
-      try{
-        localStorage.setItem(snapKey, JSON.stringify({ ship, pay, tracking, pickupRef }));
-      }catch(e){}
+      const next = { ship, pay, tracking, pickupRef };
+      if(!prev || prev.ship!==ship || prev.pay!==pay || prev.tracking!==tracking || prev.pickupRef!==pickupRef){
+        orderSnapsCache[serial] = next;
+        changed = true;
+      }
     });
+    // One write for the whole batch, not one per order.
+    if(changed) persistSnapsCache();
   }
 
   function normPhone(s){
@@ -1776,6 +1913,7 @@
     const isRequestNeeded = (ship === 'request needed');
     const isPendingPickup = (ship === 'pending pickup');
     const isDelivered = (ship === 'delivered');
+    const isPaid = (pay === 'PAID');
 
     let actionBtnHtml = '';
     if (isRequestNeeded) {
@@ -1837,6 +1975,10 @@
       </div>
 
       <div class="edit-panel" data-panel>
+        <div class="quick-status-row">
+          ${!isDelivered ? `<button class="card-btn mark-delivered-btn" data-mark-delivered data-serial="${escapeAttr(serial)}">✅ Delivered locally</button>` : ''}
+          ${!isPaid ? `<button class="card-btn mark-paid-btn" data-mark-paid data-serial="${escapeAttr(serial)}">💰 Mark as paid</button>` : ''}
+        </div>
         <div class="action-row">
           ${o.tracking_number ? `
           <a class="action-link" href="${escapeAttr(trackUrl(o.tracking_number))}" target="_blank" rel="noopener">
@@ -1943,6 +2085,34 @@
           "order serial": serial,
           "event": "cancel order"
         }, 'Cancel requested', CANCEL_WEBHOOK_URL);
+      });
+    });
+
+    // Mark "Delivered locally" button listener
+    document.querySelectorAll('[data-mark-delivered]').forEach(btn=>{
+      if(btn._boundMarkDelivered) return; btn._boundMarkDelivered = true;
+      btn.addEventListener('click', async ()=>{
+        const serial = btn.getAttribute('data-serial');
+        if(!serial) return;
+        logOrderAction(serial, 'Marked delivered locally');
+        await sendMakeWebhook(btn, {
+          "order serial": serial,
+          "event": "delivered locally"
+        }, 'Marked delivered', MARK_WEBHOOK_URL);
+      });
+    });
+
+    // Mark "Paid" button listener
+    document.querySelectorAll('[data-mark-paid]').forEach(btn=>{
+      if(btn._boundMarkPaid) return; btn._boundMarkPaid = true;
+      btn.addEventListener('click', async ()=>{
+        const serial = btn.getAttribute('data-serial');
+        if(!serial) return;
+        logOrderAction(serial, 'Marked as paid');
+        await sendMakeWebhook(btn, {
+          "order serial": serial,
+          "event": "mark as paid"
+        }, 'Marked paid', MARK_WEBHOOK_URL);
       });
     });
   }
