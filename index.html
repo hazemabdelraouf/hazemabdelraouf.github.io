@@ -2015,8 +2015,8 @@
 
       <div class="edit-panel" data-panel>
         <div class="quick-status-row">
-          ${!isDelivered ? `<button class="card-btn mark-delivered-btn" data-mark-delivered data-serial="${escapeAttr(serial)}">✅ Delivered locally</button>` : ''}
-          ${!isPaid ? `<button class="card-btn mark-paid-btn" data-mark-paid data-serial="${escapeAttr(serial)}">💰 Mark as paid</button>` : ''}
+          ${(isRequestNeeded && !isDelivered) ? `<button class="card-btn mark-delivered-btn" data-mark-delivered data-serial="${escapeAttr(serial)}">✅ Delivered locally</button>` : ''}
+          ${(isRequestNeeded && !isPaid) ? `<button class="card-btn mark-paid-btn" data-mark-paid data-serial="${escapeAttr(serial)}">💰 Mark as paid</button>` : ''}
         </div>
         <div class="action-row">
           ${o.tracking_number ? `
