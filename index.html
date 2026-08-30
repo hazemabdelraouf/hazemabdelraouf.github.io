@@ -1468,7 +1468,18 @@
     }
     API_URL = url;
     $('connectBtn').disabled = true;
+
+    // A slow/cold Google Apps Script response (or a weaker network) can
+    // legitimately take many seconds. Without visible progress the button
+    // just says "Connecting..." the whole time and looks frozen — so show
+    // a live elapsed-seconds counter to make it clear it's still working.
+    const startedAt = Date.now();
     $('connectBtn').textContent = 'Connecting...';
+    const tickTimer = setInterval(()=>{
+      const secs = Math.floor((Date.now() - startedAt) / 1000);
+      $('connectBtn').textContent = `Connecting... (${secs}s)`;
+    }, 1000);
+
     try {
       const ok = await fetchOrders();
       if(ok){
@@ -1491,6 +1502,7 @@
     } catch(err) {
       $('setup-error').textContent = 'Connection error: ' + err.message;
     } finally {
+      clearInterval(tickTimer);
       $('connectBtn').disabled = false;
       $('connectBtn').textContent = 'Connect & Load Orders';
     }
@@ -1541,7 +1553,7 @@
     // user always gets a clear error instead of an infinite hang.
     let timedOut = false;
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => { timedOut = true; reject(new Error('TIMEOUT')); }, 20000);
+      setTimeout(() => { timedOut = true; reject(new Error('TIMEOUT')); }, 35000);
     });
     try{
       const sep = API_URL.includes('?') ? '&' : '?';
@@ -1601,7 +1613,7 @@
     }catch(err){
       console.error('fetchOrders error:', err);
       const msg = timedOut
-        ? 'Request timed out after 20s — the Google Sheet URL is not responding. Check: 1) Deploy -> Access: Anyone. 2) URL is correct. 3) Your internet connection.'
+        ? 'Request timed out after 35s — the Google Sheet URL is not responding. Check: 1) Deploy -> Access: Anyone. 2) URL is correct. 3) Your internet connection.'
         : 'Could not reach Google Sheet URL (' + err.message + '). Check: 1) Deploy -> Access: Anyone. 2) URL is correct.';
       $('setup-error').textContent = msg;
       if($('loadingSpinner')) $('loadingSpinner').style.display = 'none';
