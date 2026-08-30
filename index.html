@@ -734,6 +734,38 @@
   function saveOneSignalId(id){
     try{ localStorage.setItem('onesignal_app_id', id); }catch(e){}
   }
+  // A real OneSignal App ID is always a UUID: 8-4-4-4-12 hex characters,
+  // e.g. "12345678-abcd-1234-abcd-1234567890ab" (find it under OneSignal
+  // dashboard -> Settings -> Keys & IDs -> "OneSignal App ID"). Pasting the
+  // Google Apps Script deployment ID/URL here by mistake (it starts with
+  // "AKfycb...") is a common mix-up and silently breaks push notifications —
+  // OneSignal.init() fails quietly, no service worker ever registers, and
+  // the subscribe button just times out with no clear error.
+  function isValidOneSignalAppId(id){
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id||'').trim());
+  }
+
+  // ===== Cached orders (stale-while-revalidate) =====
+  // Google Apps Script web apps are notoriously slow to "cold start" — the
+  // first request after a period of idle can take several seconds just for
+  // the script engine to spin up, before it even reads the sheet. That's
+  // what makes the app feel slow to open. To fix the *perceived* speed, we
+  // keep a local copy of the last successfully loaded orders and render it
+  // immediately on open, then quietly refresh from the network in the
+  // background — the person sees their orders instantly instead of a blank
+  // spinner, and the list just updates in place once the real fetch lands.
+  const ORDERS_CACHE_KEY = 'cached_orders_v1';
+  function loadCachedOrders(){
+    try{
+      const raw = localStorage.getItem(ORDERS_CACHE_KEY);
+      if(!raw) return null;
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed && parsed.orders) ? parsed.orders : null;
+    }catch(e){ return null; }
+  }
+  function saveCachedOrders(orders){
+    try{ localStorage.setItem(ORDERS_CACHE_KEY, JSON.stringify({ orders, savedAt: Date.now() })); }catch(e){}
+  }
 
   // ===== Notification History Management (Filtered for Today) =====
   function getNotificationsKey(){
@@ -858,9 +890,11 @@
 
   window.OneSignalDeferred = window.OneSignalDeferred || [];
   let oneSignalInitialized = false;
+  let oneSignalInitializedAppId = null;
   function initOneSignal(appId){
     if(!appId || oneSignalInitialized) return;
     oneSignalInitialized = true;
+    oneSignalInitializedAppId = appId;
     
     const scope = location.pathname.replace(/[^/]*$/, '');
     window.OneSignalDeferred.push(async function(OneSignal){
@@ -986,13 +1020,39 @@
       );
       return;
     }
-    const osId = loadOneSignalId() || $('oneSignalInput').value.trim();
+    // Prefer whatever is currently typed in the field (so a corrected ID is
+    // picked up immediately) and fall back to the saved one.
+    const typedId = $('oneSignalInput').value.trim();
+    const osId = typedId || loadOneSignalId();
     if(!osId){
       alert('Paste your OneSignal App ID in the field above first, then tap this button again.');
       $('oneSignalInput').focus();
       return;
     }
-    if(!loadOneSignalId()) saveOneSignalId(osId);
+    if(!isValidOneSignalAppId(osId)){
+      alert(
+        'That doesn\'t look like a valid OneSignal App ID.\n\n' +
+        'A real OneSignal App ID is a UUID like:\n' +
+        '12345678-abcd-1234-abcd-1234567890ab\n\n' +
+        'You can find it in the OneSignal dashboard under Settings -> Keys & IDs -> "OneSignal App ID".\n\n' +
+        '(A common mistake is pasting the Google Apps Script URL/ID here instead — that one starts with "AKfycb...".)'
+      );
+      $('oneSignalInput').focus();
+      return;
+    }
+    if(loadOneSignalId() !== osId) saveOneSignalId(osId);
+
+    // OneSignal's SDK only supports being initialized once per page load.
+    // If a bad ID was already used to init it (e.g. the person just fixed a
+    // typo/mixup), calling initOneSignal() again silently does nothing —
+    // the only reliable fix is a reload so the corrected ID is used from
+    // the start.
+    if(oneSignalInitialized && oneSignalInitializedAppId && oneSignalInitializedAppId !== osId){
+      alert('OneSignal App ID updated ✓\n\nSince notifications already tried to start with the old ID on this page load, please reload the page once, then tap "Enable notifications" again.');
+      $('subscribeBtn').disabled = false;
+      $('subscribeBtn').textContent = '🔔 Enable notifications';
+      return;
+    }
 
     const btn = $('subscribeBtn');
     btn.disabled = true;
@@ -1376,6 +1436,18 @@
       $('urlInput').value = saved;
       API_URL = saved;
       showApp();
+
+      // Instant paint from the last known good data, if we have any —
+      // this is what makes the app feel fast to open even while the
+      // real Google Apps Script request is still cold-starting.
+      const cached = loadCachedOrders();
+      if(cached && cached.length){
+        allOrders = cached;
+        renderStats();
+        buildPills();
+        applyFilters();
+        checkAndOpenTargetOrder();
+      }
       fetchOrders();
     }
   }
@@ -1401,8 +1473,16 @@
         saveStorageUrl(url);
         const osId = $('oneSignalInput').value.trim();
         if(osId){
-          saveOneSignalId(osId);
-          initOneSignal(osId);
+          if(isValidOneSignalAppId(osId)){
+            saveOneSignalId(osId);
+            initOneSignal(osId);
+          } else {
+            alert(
+              'Connected ✓ but the OneSignal App ID doesn\'t look valid, so it was not saved.\n\n' +
+              'A real OneSignal App ID is a UUID like 12345678-abcd-1234-abcd-1234567890ab ' +
+              '(OneSignal dashboard -> Settings -> Keys & IDs). Fix it in Settings and tap "Enable notifications" when ready.'
+            );
+          }
         }
         showApp();
       }
@@ -1424,9 +1504,17 @@
   window.addEventListener('hashchange', checkAndOpenTargetOrder);
 
   async function fetchOrders(){
+    // If we already have orders on screen (from cache or a previous fetch),
+    // refresh quietly in the background instead of blanking the list and
+    // showing the big spinner — the status dot going amber is enough of a
+    // "refreshing" signal, and applyFilters() below will swap the list in
+    // place once the fresh data is ready.
+    const hasExistingData = allOrders.length > 0;
     $('statusDot').classList.add('stale');
-    if($('loadingSpinner')) $('loadingSpinner').style.display = 'block';
-    if($('list')) $('list').innerHTML = '';
+    if(!hasExistingData){
+      if($('loadingSpinner')) $('loadingSpinner').style.display = 'block';
+      if($('list')) $('list').innerHTML = '';
+    }
     // Without a timeout, a stuck/unresponsive network request leaves fetch()
     // pending forever — no error is ever thrown, so the button just stays on
     // "Connecting..." with no feedback. We race the request against a plain
@@ -1477,6 +1565,7 @@
       });
 
       $('statusDot').classList.remove('stale');
+      saveCachedOrders(allOrders);
       reconcileOrderStatusLogs(allOrders);
       renderStats();
       buildPills();
@@ -2015,8 +2104,8 @@
 
       <div class="edit-panel" data-panel>
         <div class="quick-status-row">
-          ${(isRequestNeeded && !isDelivered) ? `<button class="card-btn mark-delivered-btn" data-mark-delivered data-serial="${escapeAttr(serial)}">✅ Delivered locally</button>` : ''}
-          ${(isRequestNeeded && !isPaid) ? `<button class="card-btn mark-paid-btn" data-mark-paid data-serial="${escapeAttr(serial)}">💰 Mark as paid</button>` : ''}
+          ${!isDelivered ? `<button class="card-btn mark-delivered-btn" data-mark-delivered data-serial="${escapeAttr(serial)}">✅ Delivered locally</button>` : ''}
+          ${!isPaid ? `<button class="card-btn mark-paid-btn" data-mark-paid data-serial="${escapeAttr(serial)}">💰 Mark as paid</button>` : ''}
         </div>
         <div class="action-row">
           ${o.tracking_number ? `
