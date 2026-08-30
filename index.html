@@ -1403,13 +1403,31 @@
     }catch(e){ console.error('reconcileDisplayedNotifications error:', e); }
   }
   document.addEventListener('visibilitychange', ()=>{
-    if(document.visibilityState === 'visible') reconcileDisplayedNotifications();
+    if(document.visibilityState === 'visible'){
+      reconcileDisplayedNotifications();
+      // Also pull the latest sheet data whenever the person comes back to
+      // the tab/app (e.g. switching back from another app) — this way they
+      // never look at a stale screen without needing to tap the refresh
+      // button themselves.
+      if(API_URL) fetchOrders();
+    }
   });
   // Safety-net poll while the tab is open and visible, in case a push arrives
   // but foregroundWillDisplay doesn't fire for some reason.
   setInterval(()=>{
     if(document.visibilityState === 'visible') reconcileDisplayedNotifications();
   }, 20000);
+
+  // ===== Live sheet sync =====
+  // Polls the Google Sheet quietly in the background every 30s while the app
+  // is open and in view, so any edit made on the sheet (by this person or
+  // anyone else) shows up here on its own — nobody has to remember to tap
+  // the refresh button. Paused while the tab is hidden/minimized to avoid
+  // wasting requests and battery when nobody's looking at it.
+  const AUTO_REFRESH_INTERVAL_MS = 30000;
+  setInterval(()=>{
+    if(document.visibilityState === 'visible' && API_URL) fetchOrders();
+  }, AUTO_REFRESH_INTERVAL_MS);
 
   // ===== Custom in-app notification sound =====
   // Plays a soft chime when a push arrives while this tab is open/foreground.
@@ -1533,7 +1551,22 @@
 
   window.addEventListener('hashchange', checkAndOpenTargetOrder);
 
+  // Guards against overlapping calls when the periodic auto-refresh, the
+  // visibility-change refresh, and a manual tap on the refresh button all
+  // happen to land at once.
+  let isFetchingOrders = false;
+
   async function fetchOrders(){
+    if(isFetchingOrders) return false;
+    isFetchingOrders = true;
+    try{
+      return await fetchOrdersInner();
+    } finally {
+      isFetchingOrders = false;
+    }
+  }
+
+  async function fetchOrdersInner(){
     // If we already have orders on screen (from cache or a previous fetch),
     // refresh quietly in the background instead of blanking the list and
     // showing the big spinner — the status dot going amber is enough of a
@@ -1568,22 +1601,8 @@
       if (!res.ok) {
         throw new Error('HTTP status ' + res.status);
       }
-
-      let data;
-      try{
-        data = await res.json();
-      }catch(parseErr){
-        // Getting HTML/text back instead of JSON almost always means Google
-        // redirected the request to a login page instead of running the
-        // script. That most often shows up ONLY in an installed home-screen
-        // app (not the regular browser) because an installed app runs in
-        // its own isolated session with none of the browser's saved Google
-        // login — so it silently fails to authenticate where the browser
-        // succeeds. Fix: in Apps Script -> Deploy -> Manage deployments ->
-        // edit the deployment, set Access to "Anyone" (not "Anyone with
-        // Google account"), then deploy a new version.
-        throw new Error('Got an unexpected (non-JSON) response. This usually means the Apps Script deployment\'s Access isn\'t set to "Anyone" — installed home-screen apps don\'t share your browser\'s Google login, so they hit a login page instead of the script and fail here even though the regular browser still works fine.');
-      }
+      
+      const data = await res.json();
       if(data.error){
         $('setup-error').textContent = 'Sheet error: ' + data.error;
         if($('loadingSpinner')) $('loadingSpinner').style.display = 'none';
