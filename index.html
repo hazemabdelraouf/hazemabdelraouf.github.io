@@ -121,6 +121,15 @@
   .brand-text{font-family:'Cairo';font-weight:800;font-size:17px;color:var(--cream);}
   .status-dot{width:8px;height:8px;border-radius:50%;background:var(--sage);box-shadow:0 0 6px rgba(22,163,74,0.4);}
   .status-dot.stale{background:var(--amber);box-shadow:0 0 6px rgba(217,119,6,0.4);}
+  /* Brief green pulse the moment a refresh finishes successfully, so the
+     person actually notices the update landed instead of just seeing a
+     static dot that was already green. */
+  .status-dot.flash{animation:dotFlash 0.7s ease;}
+  @keyframes dotFlash{
+    0%{box-shadow:0 0 6px rgba(22,163,74,0.4);transform:scale(1);}
+    40%{box-shadow:0 0 14px 4px rgba(22,163,74,0.9);transform:scale(1.5);}
+    100%{box-shadow:0 0 6px rgba(22,163,74,0.4);transform:scale(1);}
+  }
   .icon-btn{
     position:relative;
     background:var(--panel);
@@ -1538,16 +1547,7 @@
     showApp();
   });
 
-  $('refreshBtn').addEventListener('click', async ()=>{
-    const btn = $('refreshBtn');
-    if(btn.classList.contains('spinning')) return; // already refreshing
-    btn.classList.add('spinning');
-    try{
-      await fetchOrders();
-    } finally {
-      btn.classList.remove('spinning');
-    }
-  });
+  $('refreshBtn').addEventListener('click', ()=>{ fetchOrders(); });
 
   window.addEventListener('hashchange', checkAndOpenTargetOrder);
 
@@ -1559,9 +1559,27 @@
   async function fetchOrders(){
     if(isFetchingOrders) return false;
     isFetchingOrders = true;
+    // Spin the refresh icon for the whole request, no matter what triggered
+    // it (manual tap, the 30s auto-poll, or coming back to the tab) — so
+    // there's always a visible "it's working" signal.
+    const btn = $('refreshBtn');
+    btn.classList.add('spinning');
     try{
-      return await fetchOrdersInner();
+      const ok = await fetchOrdersInner();
+      if(ok){
+        // Light the dot up green for a moment so a finished update is
+        // actually noticeable, not just "still green like before".
+        const dot = $('statusDot');
+        dot.classList.remove('flash');
+        // Force reflow so re-adding the class restarts the animation even
+        // if a previous flash hasn't finished yet.
+        void dot.offsetWidth;
+        dot.classList.add('flash');
+        setTimeout(()=> dot.classList.remove('flash'), 700);
+      }
+      return ok;
     } finally {
+      btn.classList.remove('spinning');
       isFetchingOrders = false;
     }
   }
