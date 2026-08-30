@@ -1584,11 +1584,19 @@
 
       $('statusDot').classList.remove('stale');
       saveCachedOrders(allOrders);
-      reconcileOrderStatusLogs(allOrders);
-      renderStats();
-      buildPills();
-      applyFilters();
-      checkAndOpenTargetOrder();
+      // Rendering is isolated from the network try/catch below: if something
+      // in here throws, the fetch itself still succeeded, so the status dot
+      // should stay green and the person shouldn't see a scary "could not
+      // reach Google Sheet" message for what's actually just a display bug.
+      try{
+        reconcileOrderStatusLogs(allOrders);
+        renderStats();
+        buildPills();
+        applyFilters();
+        checkAndOpenTargetOrder();
+      }catch(renderErr){
+        console.error('fetchOrders render error:', renderErr);
+      }
       return true;
     }catch(err){
       console.error('fetchOrders error:', err);
