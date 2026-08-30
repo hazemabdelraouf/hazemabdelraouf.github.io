@@ -1568,8 +1568,22 @@
       if (!res.ok) {
         throw new Error('HTTP status ' + res.status);
       }
-      
-      const data = await res.json();
+
+      let data;
+      try{
+        data = await res.json();
+      }catch(parseErr){
+        // Getting HTML/text back instead of JSON almost always means Google
+        // redirected the request to a login page instead of running the
+        // script. That most often shows up ONLY in an installed home-screen
+        // app (not the regular browser) because an installed app runs in
+        // its own isolated session with none of the browser's saved Google
+        // login — so it silently fails to authenticate where the browser
+        // succeeds. Fix: in Apps Script -> Deploy -> Manage deployments ->
+        // edit the deployment, set Access to "Anyone" (not "Anyone with
+        // Google account"), then deploy a new version.
+        throw new Error('Got an unexpected (non-JSON) response. This usually means the Apps Script deployment\'s Access isn\'t set to "Anyone" — installed home-screen apps don\'t share your browser\'s Google login, so they hit a login page instead of the script and fail here even though the regular browser still works fine.');
+      }
       if(data.error){
         $('setup-error').textContent = 'Sheet error: ' + data.error;
         if($('loadingSpinner')) $('loadingSpinner').style.display = 'none';
