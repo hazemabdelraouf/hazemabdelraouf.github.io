@@ -1209,6 +1209,7 @@
     await sendMakeWebhook(btn, {
       "order serial": serial,
       "pickup location": location,
+      "pickup date": toPickupDateLabel(pickupDate),
       "ReadyTimestamp": toAramexDate(readyTs),
       "LastPickupTimestamp": toAramexDate(lastPickupTs),
       "ClosingTimestamp": toAramexDate(closingTs),
@@ -1896,6 +1897,15 @@
     const dayName = AR_WEEKDAYS[d.getDay()];
     const month = AR_MONTHS[d.getMonth()];
     return `${dayName} ${d.getDate()} ${month}`;
+  }
+  // English label for the pickup date itself, e.g. "Monday 31-Aug-2026".
+  const EN_WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const EN_MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function toPickupDateLabel(d){
+    const dayName = EN_WEEKDAYS[d.getDay()];
+    const dd = String(d.getDate()).padStart(2,'0');
+    const month = EN_MONTHS_SHORT[d.getMonth()];
+    return `${dayName} ${dd}-${month}-${d.getFullYear()}`;
   }
 
   // ---- Lightweight per-order activity log (consolidated into ONE localStorage
