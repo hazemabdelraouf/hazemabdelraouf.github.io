@@ -289,6 +289,8 @@
   .badge.ship-delivered{color:#15803d;border-color:#bbf7d0;background:#f0fdf4;}
   .badge.pay-paid{color:#15803d;border-color:#bbf7d0;background:#f0fdf4;}
   .badge.pay-pending{color:#b45309;border-color:#fde68a;background:#fffbeb;}
+  .badge.ship-cost-paid{color:#0d9488;border-color:#99f6e4;background:#f0fdfa;}
+  .badge.ship-cost-unpaid{color:#6b7280;border-color:#e5e7eb;background:#f9fafb;}
 
   /* Direct Action Buttons on Card */
   .card-actions{
@@ -1415,11 +1417,9 @@
   document.addEventListener('visibilitychange', ()=>{
     if(document.visibilityState === 'visible'){
       reconcileDisplayedNotifications();
-      // Also pull the latest sheet data whenever the person comes back to
-      // the tab/app (e.g. switching back from another app) — this way they
-      // never look at a stale screen without needing to tap the refresh
-      // button themselves.
-      if(API_URL) fetchOrders();
+      // Sheet data is no longer re-fetched here — only on app open and after
+      // an action (mark as paid, create AWB, etc). Coming back to the tab no
+      // longer triggers a reload.
     }
   });
   // Safety-net poll while the tab is open and visible, in case a push arrives
@@ -1427,17 +1427,6 @@
   setInterval(()=>{
     if(document.visibilityState === 'visible') reconcileDisplayedNotifications();
   }, 20000);
-
-  // ===== Live sheet sync =====
-  // Polls the Google Sheet quietly in the background every 30s while the app
-  // is open and in view, so any edit made on the sheet (by this person or
-  // anyone else) shows up here on its own — nobody has to remember to tap
-  // the refresh button. Paused while the tab is hidden/minimized to avoid
-  // wasting requests and battery when nobody's looking at it.
-  const AUTO_REFRESH_INTERVAL_MS = 30000;
-  setInterval(()=>{
-    if(document.visibilityState === 'visible' && API_URL) fetchOrders();
-  }, AUTO_REFRESH_INTERVAL_MS);
 
   // ===== Custom in-app notification sound =====
   // Plays a soft chime when a push arrives while this tab is open/foreground.
@@ -2114,6 +2103,26 @@
     if(!key) return '';
     return dateSuffix(o[key]);
   }
+  let shippingCostKey = null; // resolved lazily from the sheet's actual headers
+  function resolveShippingCostKey(o){
+    if(shippingCostKey && Object.prototype.hasOwnProperty.call(o, shippingCostKey)) return shippingCostKey;
+    const keys = Object.keys(o);
+    const found = keys.find(k => k.trim().toLowerCase() === 'collection');
+    shippingCostKey = found || null;
+    return shippingCostKey;
+  }
+  // "collection" column: if it holds a number, we've paid Aramex the shipping
+  // cost for this order (the number is the amount paid). Empty = not paid yet.
+  function shippingCostBadge(o){
+    const key = resolveShippingCostKey(o);
+    if(!key) return '';
+    const raw = o[key];
+    const amount = parseFloat(raw);
+    if(raw !== undefined && raw !== null && String(raw).trim() !== '' && !isNaN(amount)){
+      return `<span class="badge ship-cost-paid">Shipping cost paid: ${amount} EGP</span>`;
+    }
+    return `<span class="badge ship-cost-unpaid">Shipping cost: not paid yet</span>`;
+  }
   function dateSuffix(iso){
     const short = fmtDateShort(iso);
     return short ? ` (${short})` : '';
@@ -2188,6 +2197,7 @@
       <div class="badges">
         <span class="badge ${shipClass(ship)}">Shipping: ${SHIP_LABELS[ship]||ship||'No status'}${ship==='delivered' ? dateSuffix(o.Updated) : ''}</span>
         <span class="badge ${payClass(pay)}">Payment: ${PAY_LABELS[pay]||pay||'Unspecified'}${pay==='PAID' ? paidDateSuffix(o) : ''}</span>
+        ${shippingCostBadge(o)}
       </div>
       ${o.note ? `<div class="note-line">📝 ${escapeHtml(o.note)}</div>` : ''}
       <div data-mail-warning>${renderMailWarning(serial)}</div>
@@ -2240,6 +2250,7 @@
           ${detailRow('Weight', o.weight)}
           ${detailRow('Total', o.total)}
           ${detailRow('COD', o.COD)}
+          ${detailRow('Shipping cost paid', o[resolveShippingCostKey(o)] || '')}
           ${detailRow('Tracking number', o.tracking_number)}
           ${detailRow('Pickup reference', o.pickup_reference)}
           ${detailRow('Pickup location', o.pickup_location)}
