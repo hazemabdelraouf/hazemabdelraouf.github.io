@@ -2190,16 +2190,16 @@
     ordersCountKey = found || null;
     return ordersCountKey;
   }
-  let aramexCollectionKey = null; // resolved lazily from the sheet's actual headers
-  function resolveAramexCollectionKey(o){
-    if(aramexCollectionKey && Object.prototype.hasOwnProperty.call(o, aramexCollectionKey)) return aramexCollectionKey;
+  let paymentPaidAtKey = null; // resolved lazily from the sheet's actual headers
+  function resolvePaymentPaidAtKey(o){
+    if(paymentPaidAtKey && Object.prototype.hasOwnProperty.call(o, paymentPaidAtKey)) return paymentPaidAtKey;
     const keys = Object.keys(o);
-    const found = keys.find(k => k.trim().toLowerCase() === 'aramex collection');
-    aramexCollectionKey = found || null;
-    return aramexCollectionKey;
+    const found = keys.find(k => k.trim().toLowerCase() === 'payment date');
+    paymentPaidAtKey = found || null;
+    return paymentPaidAtKey;
   }
   function paidDateSuffix(o){
-    const key = resolveAramexCollectionKey(o);
+    const key = resolvePaymentPaidAtKey(o);
     if(!key) return '';
     return dateSuffix(o[key]);
   }
@@ -2218,14 +2218,6 @@
     const found = keys.find(k => k.trim().toLowerCase() === 'created at');
     createdAtKey = found || null;
     return createdAtKey;
-  }
-  let deliveredDateKey = null; // resolved lazily from the sheet's actual headers
-  function resolveDeliveredDateKey(o){
-    if(deliveredDateKey && Object.prototype.hasOwnProperty.call(o, deliveredDateKey)) return deliveredDateKey;
-    const keys = Object.keys(o);
-    const found = keys.find(k => k.trim().toLowerCase() === 'payment date');
-    deliveredDateKey = found || null;
-    return deliveredDateKey;
   }
   // "collection" column: if it holds a number, we've paid Aramex the shipping
   // cost for this order (the number is the amount paid). Empty = not paid yet.
@@ -2312,7 +2304,7 @@
       </div>
 
       <div class="badges">
-        <span class="badge ${shipClass(ship)}">Shipping: ${SHIP_LABELS[ship]||ship||'No status'}${ship==='delivered' ? dateSuffix(o[resolveDeliveredDateKey(o)] || o.Updated) : ''}</span>
+        <span class="badge ${shipClass(ship)}">Shipping: ${SHIP_LABELS[ship]||ship||'No status'}${ship==='delivered' ? dateSuffix(o.Updated) : ''}</span>
         <span class="badge ${payClass(pay)}">Payment: ${PAY_LABELS[pay]||pay||'Unspecified'}${pay==='PAID' ? paidDateSuffix(o) : ''}</span>
         ${shippingCostBadge(o)}
       </div>
