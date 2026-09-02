@@ -2219,6 +2219,14 @@
     createdAtKey = found || null;
     return createdAtKey;
   }
+  let deliveredDateKey = null; // resolved lazily from the sheet's actual headers
+  function resolveDeliveredDateKey(o){
+    if(deliveredDateKey && Object.prototype.hasOwnProperty.call(o, deliveredDateKey)) return deliveredDateKey;
+    const keys = Object.keys(o);
+    const found = keys.find(k => k.trim().toLowerCase() === 'payment date');
+    deliveredDateKey = found || null;
+    return deliveredDateKey;
+  }
   // "collection" column: if it holds a number, we've paid Aramex the shipping
   // cost for this order (the number is the amount paid). Empty = not paid yet.
   function shippingCostBadge(o){
@@ -2304,7 +2312,7 @@
       </div>
 
       <div class="badges">
-        <span class="badge ${shipClass(ship)}">Shipping: ${SHIP_LABELS[ship]||ship||'No status'}${ship==='delivered' ? dateSuffix(o.Updated) : ''}</span>
+        <span class="badge ${shipClass(ship)}">Shipping: ${SHIP_LABELS[ship]||ship||'No status'}${ship==='delivered' ? dateSuffix(o[resolveDeliveredDateKey(o)] || o.Updated) : ''}</span>
         <span class="badge ${payClass(pay)}">Payment: ${PAY_LABELS[pay]||pay||'Unspecified'}${pay==='PAID' ? paidDateSuffix(o) : ''}</span>
         ${shippingCostBadge(o)}
       </div>
