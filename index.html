@@ -552,11 +552,27 @@
   }
   .items-editor-empty{font-size:12.5px;color:var(--cream-dim);padding:4px 2px 8px;}
   .items-editor-add{display:flex;gap:8px;}
-  .items-editor-add select{
-    flex:1;padding:10px;border-radius:10px;background:var(--panel-2);
+  .items-editor-search-wrap{flex:1;position:relative;}
+  .items-editor-search-wrap input{
+    width:100%;padding:10px;border-radius:10px;background:var(--panel-2);
     border:1px solid var(--line);color:var(--cream);font-family:'Cairo',sans-serif;
-    font-weight:600;font-size:13px;
+    font-weight:600;font-size:13px;box-sizing:border-box;
   }
+  .items-editor-search-results{
+    display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);
+    max-height:180px;overflow-y:auto;z-index:20;
+    background:var(--panel-2);border:1px solid var(--line);border-radius:10px;
+    box-shadow:var(--shadow-md);
+  }
+  .items-editor-search-results.show{display:block;}
+  .items-editor-search-result{
+    padding:9px 11px;font-size:13px;font-weight:600;color:var(--cream);
+    cursor:pointer;border-bottom:1px solid var(--line);
+  }
+  .items-editor-search-result:last-child{border-bottom:none;}
+  .items-editor-search-result:hover,.items-editor-search-result.active{background:rgba(255,255,255,0.06);}
+  .items-editor-search-result .ie-sr-price{color:var(--cream-dim);font-weight:500;font-size:11.5px;margin-top:1px;}
+  .items-editor-search-empty{padding:9px 11px;font-size:12.5px;color:var(--cream-dim);}
   .items-editor-add input{
     width:56px;padding:10px;border-radius:10px;text-align:center;
     background:var(--panel-2);border:1px solid var(--line);color:var(--cream);
@@ -726,7 +742,10 @@
       <label>Items</label>
       <div class="items-editor-list" id="itemsEditorList"></div>
       <div class="items-editor-add">
-        <select id="itemsEditorProductSelect"></select>
+        <div class="items-editor-search-wrap">
+          <input type="text" id="itemsEditorSearch" placeholder="Search product..." autocomplete="off">
+          <div class="items-editor-search-results" id="itemsEditorSearchResults"></div>
+        </div>
         <input type="number" id="itemsEditorQty" min="1" value="1">
         <button type="button" id="itemsEditorAddBtn">Add</button>
       </div>
@@ -1417,22 +1436,12 @@
   let currentEditBtn = null;
 
   // ---- Items editor: pick products from the "products" sheet, add/remove
-  // them with a quantity, and auto-total the weight/total/COD fields. ----
+  // them with a quantity, and auto-total the weight/total/COD/pieces fields. ----
   let editItemsList = []; // [{name, qty, salePrice, weight, custom}]
+  let selectedSearchProductIdx = null;
   function findProductByName(name){
     const norm = String(name || '').trim().toLowerCase();
     return allProducts.find(p => p.name.trim().toLowerCase() === norm);
-  }
-  function populateItemsProductSelect(){
-    const sel = $('itemsEditorProductSelect');
-    if(!sel) return;
-    if(!allProducts.length){
-      sel.innerHTML = '<option value="">No products loaded</option>';
-      return;
-    }
-    sel.innerHTML = allProducts.map((p,i) =>
-      `<option value="${i}">${escapeHtml(p.name)} — ${p.salePrice} EGP</option>`
-    ).join('');
   }
   function renderItemsEditor(){
     const list = $('itemsEditorList');
@@ -1466,11 +1475,12 @@
     recomputeItemsTotals();
   }
   function recomputeItemsTotals(){
-    let totalWeight = 0, totalPrice = 0;
+    let totalWeight = 0, totalPrice = 0, totalPieces = 0;
     const lines = [];
     editItemsList.forEach(it => {
       totalWeight += (it.weight || 0) * it.qty;
       totalPrice += (it.salePrice || 0) * it.qty;
+      totalPieces += it.qty;
       lines.push(`${it.qty} x ${it.name}`);
     });
     const rawEl = $('itemsEditorRaw');
@@ -1478,15 +1488,17 @@
     const weightEl = document.querySelector('#editOrderModal [data-field="weight"]');
     const totalEl = document.querySelector('#editOrderModal [data-field="total"]');
     const codEl = document.querySelector('#editOrderModal [data-field="COD"]');
+    const piecesEl = document.querySelector('#editOrderModal [data-field="pieces"]');
     if(weightEl) weightEl.value = totalWeight ? String(totalWeight) : weightEl.value;
     if(totalEl) totalEl.value = totalPrice ? String(totalPrice) : totalEl.value;
     if(codEl) codEl.value = totalPrice ? String(totalPrice) : codEl.value;
+    if(piecesEl) piecesEl.value = totalPieces ? String(totalPieces) : piecesEl.value;
   }
   // Best-effort parse of the existing "items" text ("2 x Product Name" per
   // line) back into the structured list, matching each line to a known
   // product so its price/weight feed the totals. Lines that don't match a
   // known product are kept as read-only "custom" rows so nothing is lost,
-  // but they don't contribute to the computed total/weight.
+  // but they don't contribute to the computed total/weight/pieces.
   function parseItemsText(raw){
     const text = String(raw || '').trim();
     if(!text) return [];
@@ -1502,17 +1514,65 @@
   }
   async function initItemsEditor(order){
     if(!allProducts.length) await fetchProducts();
-    populateItemsProductSelect();
+    $('itemsEditorSearch').value = '';
+    selectedSearchProductIdx = null;
+    hideItemsSearchResults();
     editItemsList = parseItemsText(order.items);
     renderItemsEditor();
   }
+
+  // ---- Product search (instead of scrolling a long dropdown) ----
+  function hideItemsSearchResults(){
+    $('itemsEditorSearchResults').classList.remove('show');
+  }
+  function renderItemsSearchResults(query){
+    const box = $('itemsEditorSearchResults');
+    const q = query.trim().toLowerCase();
+    if(!q){ hideItemsSearchResults(); return; }
+    const matches = allProducts
+      .map((p, i) => ({ p, i }))
+      .filter(({p}) => p.name.toLowerCase().includes(q))
+      .slice(0, 30);
+    if(!matches.length){
+      box.innerHTML = '<div class="items-editor-search-empty">No matching products</div>';
+    } else {
+      box.innerHTML = matches.map(({p, i}) => `
+        <div class="items-editor-search-result" data-idx="${i}">
+          ${escapeHtml(p.name)}
+          <div class="ie-sr-price">${p.salePrice} EGP · ${p.weight} kg</div>
+        </div>
+      `).join('');
+      box.querySelectorAll('.items-editor-search-result[data-idx]').forEach(el => {
+        el.addEventListener('click', () => {
+          const idx = parseInt(el.dataset.idx, 10);
+          selectedSearchProductIdx = idx;
+          $('itemsEditorSearch').value = allProducts[idx].name;
+          hideItemsSearchResults();
+        });
+      });
+    }
+    box.classList.add('show');
+  }
+  $('itemsEditorSearch').addEventListener('input', () => {
+    selectedSearchProductIdx = null;
+    renderItemsSearchResults($('itemsEditorSearch').value);
+  });
+  $('itemsEditorSearch').addEventListener('focus', () => {
+    if($('itemsEditorSearch').value.trim()) renderItemsSearchResults($('itemsEditorSearch').value);
+  });
+  document.addEventListener('click', (e) => {
+    if(!e.target.closest('.items-editor-search-wrap')) hideItemsSearchResults();
+  });
   $('itemsEditorAddBtn').addEventListener('click', () => {
-    const sel = $('itemsEditorProductSelect');
     const qtyInput = $('itemsEditorQty');
-    if(!sel.value && sel.value !== '0') return;
-    const idx = parseInt(sel.value, 10);
-    const product = allProducts[idx];
-    if(!product) return;
+    let product = selectedSearchProductIdx !== null ? allProducts[selectedSearchProductIdx] : null;
+    // Fall back to an exact (case-insensitive) name match if they typed the
+    // full name without picking a suggestion from the dropdown.
+    if(!product) product = findProductByName($('itemsEditorSearch').value);
+    if(!product){
+      $('itemsEditorSearch').focus();
+      return;
+    }
     const qty = Math.max(1, parseInt(qtyInput.value, 10) || 1);
     const existing = editItemsList.find(it => !it.custom && it.name === product.name);
     if(existing){
@@ -1521,6 +1581,9 @@
       editItemsList.push({ name: product.name, qty, salePrice: product.salePrice, weight: product.weight });
     }
     qtyInput.value = '1';
+    $('itemsEditorSearch').value = '';
+    selectedSearchProductIdx = null;
+    hideItemsSearchResults();
     renderItemsEditor();
   });
 
