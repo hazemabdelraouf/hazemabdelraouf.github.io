@@ -1563,10 +1563,21 @@
     const box = $('itemsEditorSearchResults');
     const q = query.trim().toLowerCase();
     if(!q){ hideItemsSearchResults(); return; }
+    // No cap on the number of matches — the results box already scrolls
+    // (max-height + overflow-y:auto), so capping at a fixed count just hid
+    // real matches when the sheet has more than that many products.
+    // Names that *start with* the query are ranked above ones that merely
+    // contain it, so the closest matches surface first even in a long list.
     const matches = allProducts
       .map((p, i) => ({ p, i }))
       .filter(({p}) => p.name.toLowerCase().includes(q))
-      .slice(0, 30);
+      .sort((a, b) => {
+        const an = a.p.name.toLowerCase(), bn = b.p.name.toLowerCase();
+        const aStarts = an.startsWith(q) ? 0 : 1;
+        const bStarts = bn.startsWith(q) ? 0 : 1;
+        if(aStarts !== bStarts) return aStarts - bStarts;
+        return an.localeCompare(bn);
+      });
     if(!matches.length){
       box.innerHTML = '<div class="items-editor-search-empty">No matching products</div>';
     } else {
