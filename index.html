@@ -1515,7 +1515,13 @@
   function parseItemsText(raw){
     const text = String(raw || '').trim();
     if(!text) return [];
-    const lines = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    // Items may be stored one-per-line (older edits) or comma-separated on a
+    // single line (current save format) — split on newlines first, and if
+    // that leaves just one line, fall back to splitting on commas.
+    let lines = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    if(lines.length <= 1){
+      lines = text.split(',').map(s=>s.trim()).filter(Boolean);
+    }
     return lines.map(line => {
       const m = line.match(/^(\d+)\s*x\s*(.+)$/i);
       const qty = m ? Math.max(1, parseInt(m[1], 10) || 1) : 1;
