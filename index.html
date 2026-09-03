@@ -1649,6 +1649,13 @@
       if(el) payload[key] = el.value;
     });
     payload['event'] = 'update order';
+    // The editor keeps items one-per-line (for the on-screen list/textarea),
+    // but the webhook/sheet expects them comma-separated on a single line —
+    // convert just for the outgoing payload, without touching the editor's
+    // own newline-based representation.
+    if(payload.items){
+      payload.items = String(payload.items).split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(', ');
+    }
 
     hideEditOrderModal();
     logOrderAction(serial, 'Order edited');
