@@ -533,6 +533,40 @@
   }
   .edit-field-group textarea{min-height:60px;font-weight:500;}
 
+  .items-editor-list{display:flex;flex-direction:column;gap:6px;margin-bottom:8px;}
+  .items-editor-row{
+    display:flex;align-items:center;gap:8px;
+    background:var(--panel-2);border:1px solid var(--line);
+    border-radius:10px;padding:8px 10px;
+  }
+  .items-editor-row .ie-name{flex:1;font-size:13px;font-weight:700;color:var(--cream);}
+  .items-editor-row .ie-name .ie-sub{display:block;font-size:11px;font-weight:500;color:var(--cream-dim);margin-top:1px;}
+  .items-editor-row .ie-qty{
+    width:52px;padding:6px;border-radius:8px;text-align:center;
+    background:var(--panel);border:1px solid var(--line);color:var(--cream);
+    font-family:'Cairo',sans-serif;font-weight:700;font-size:13px;
+  }
+  .items-editor-row .ie-remove{
+    background:none;border:none;color:#dc2626;font-size:18px;line-height:1;
+    cursor:pointer;padding:2px 4px;
+  }
+  .items-editor-empty{font-size:12.5px;color:var(--cream-dim);padding:4px 2px 8px;}
+  .items-editor-add{display:flex;gap:8px;}
+  .items-editor-add select{
+    flex:1;padding:10px;border-radius:10px;background:var(--panel-2);
+    border:1px solid var(--line);color:var(--cream);font-family:'Cairo',sans-serif;
+    font-weight:600;font-size:13px;
+  }
+  .items-editor-add input{
+    width:56px;padding:10px;border-radius:10px;text-align:center;
+    background:var(--panel-2);border:1px solid var(--line);color:var(--cream);
+    font-family:'Cairo',sans-serif;font-weight:700;font-size:13px;
+  }
+  .items-editor-add button{
+    padding:10px 14px;border-radius:10px;border:none;
+    background:var(--gold);color:#1a1208;font-weight:800;font-size:13px;cursor:pointer;
+  }
+
   ::selection{background:var(--gold-soft);color:#ffffff;}
 </style>
 </head>
@@ -688,7 +722,16 @@
     <div class="edit-field-group"><label>Address line 1</label><input type="text" data-field="Address_line1"></div>
     <div class="edit-field-group"><label>Address line 2</label><input type="text" data-field="Address_line2"></div>
     <div class="edit-field-group"><label>Address</label><textarea data-field="Address"></textarea></div>
-    <div class="edit-field-group"><label>Items</label><textarea data-field="items"></textarea></div>
+    <div class="edit-field-group">
+      <label>Items</label>
+      <div class="items-editor-list" id="itemsEditorList"></div>
+      <div class="items-editor-add">
+        <select id="itemsEditorProductSelect"></select>
+        <input type="number" id="itemsEditorQty" min="1" value="1">
+        <button type="button" id="itemsEditorAddBtn">Add</button>
+      </div>
+      <textarea data-field="items" id="itemsEditorRaw" style="display:none;"></textarea>
+    </div>
     <div class="edit-field-group"><label>Pieces</label><input type="text" data-field="pieces"></div>
     <div class="edit-field-group"><label>Weight</label><input type="text" data-field="weight"></div>
     <div class="edit-field-group"><label>Total</label><input type="text" data-field="total"></div>
@@ -727,6 +770,7 @@
 
   let API_URL = '';
   let allOrders = [];
+  let allProducts = [];
   let headers = [];
   let filteredOrders = [];
   let shownCount = 0;
@@ -1371,6 +1415,115 @@
   const EDIT_FIELDS = ['Customer Name','Phone','Phone2','Gov','city','Address_line1','Address_line2','Address','items','pieces','weight','total','COD','note'];
   let currentEditOrder = null;
   let currentEditBtn = null;
+
+  // ---- Items editor: pick products from the "products" sheet, add/remove
+  // them with a quantity, and auto-total the weight/total/COD fields. ----
+  let editItemsList = []; // [{name, qty, salePrice, weight, custom}]
+  function findProductByName(name){
+    const norm = String(name || '').trim().toLowerCase();
+    return allProducts.find(p => p.name.trim().toLowerCase() === norm);
+  }
+  function populateItemsProductSelect(){
+    const sel = $('itemsEditorProductSelect');
+    if(!sel) return;
+    if(!allProducts.length){
+      sel.innerHTML = '<option value="">No products loaded</option>';
+      return;
+    }
+    sel.innerHTML = allProducts.map((p,i) =>
+      `<option value="${i}">${escapeHtml(p.name)} — ${p.salePrice} EGP</option>`
+    ).join('');
+  }
+  function renderItemsEditor(){
+    const list = $('itemsEditorList');
+    if(!list) return;
+    if(!editItemsList.length){
+      list.innerHTML = '<div class="items-editor-empty">No items added yet.</div>';
+    } else {
+      list.innerHTML = editItemsList.map((it, i) => `
+        <div class="items-editor-row">
+          <span class="ie-name">${escapeHtml(it.name)}${it.custom ? '' : `<span class="ie-sub">${it.salePrice} EGP · ${it.weight} kg each</span>`}</span>
+          <input type="number" class="ie-qty" min="1" value="${it.qty}" data-idx="${i}">
+          <button type="button" class="ie-remove" data-idx="${i}" title="Remove">×</button>
+        </div>
+      `).join('');
+      list.querySelectorAll('.ie-qty').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const idx = parseInt(inp.dataset.idx, 10);
+          const qty = Math.max(1, parseInt(inp.value, 10) || 1);
+          editItemsList[idx].qty = qty;
+          recomputeItemsTotals();
+        });
+      });
+      list.querySelectorAll('.ie-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx, 10);
+          editItemsList.splice(idx, 1);
+          renderItemsEditor();
+        });
+      });
+    }
+    recomputeItemsTotals();
+  }
+  function recomputeItemsTotals(){
+    let totalWeight = 0, totalPrice = 0;
+    const lines = [];
+    editItemsList.forEach(it => {
+      totalWeight += (it.weight || 0) * it.qty;
+      totalPrice += (it.salePrice || 0) * it.qty;
+      lines.push(`${it.qty} x ${it.name}`);
+    });
+    const rawEl = $('itemsEditorRaw');
+    if(rawEl) rawEl.value = lines.join('\n');
+    const weightEl = document.querySelector('#editOrderModal [data-field="weight"]');
+    const totalEl = document.querySelector('#editOrderModal [data-field="total"]');
+    const codEl = document.querySelector('#editOrderModal [data-field="COD"]');
+    if(weightEl) weightEl.value = totalWeight ? String(totalWeight) : weightEl.value;
+    if(totalEl) totalEl.value = totalPrice ? String(totalPrice) : totalEl.value;
+    if(codEl) codEl.value = totalPrice ? String(totalPrice) : codEl.value;
+  }
+  // Best-effort parse of the existing "items" text ("2 x Product Name" per
+  // line) back into the structured list, matching each line to a known
+  // product so its price/weight feed the totals. Lines that don't match a
+  // known product are kept as read-only "custom" rows so nothing is lost,
+  // but they don't contribute to the computed total/weight.
+  function parseItemsText(raw){
+    const text = String(raw || '').trim();
+    if(!text) return [];
+    const lines = text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    return lines.map(line => {
+      const m = line.match(/^(\d+)\s*x\s*(.+)$/i);
+      const qty = m ? Math.max(1, parseInt(m[1], 10) || 1) : 1;
+      const name = m ? m[2].trim() : line;
+      const product = findProductByName(name);
+      if(product) return { name: product.name, qty, salePrice: product.salePrice, weight: product.weight };
+      return { name, qty, salePrice: 0, weight: 0, custom: true };
+    });
+  }
+  async function initItemsEditor(order){
+    if(!allProducts.length) await fetchProducts();
+    populateItemsProductSelect();
+    editItemsList = parseItemsText(order.items);
+    renderItemsEditor();
+  }
+  $('itemsEditorAddBtn').addEventListener('click', () => {
+    const sel = $('itemsEditorProductSelect');
+    const qtyInput = $('itemsEditorQty');
+    if(!sel.value && sel.value !== '0') return;
+    const idx = parseInt(sel.value, 10);
+    const product = allProducts[idx];
+    if(!product) return;
+    const qty = Math.max(1, parseInt(qtyInput.value, 10) || 1);
+    const existing = editItemsList.find(it => !it.custom && it.name === product.name);
+    if(existing){
+      existing.qty += qty;
+    } else {
+      editItemsList.push({ name: product.name, qty, salePrice: product.salePrice, weight: product.weight });
+    }
+    qtyInput.value = '1';
+    renderItemsEditor();
+  });
+
   function hideEditOrderModal(){
     $('editOrderModal').classList.remove('active');
   }
@@ -1384,6 +1537,7 @@
       const el = document.querySelector('#editOrderModal [data-field="' + key + '"]');
       if(el) el.value = order[key] !== undefined && order[key] !== null ? order[key] : '';
     });
+    initItemsEditor(order);
     $('editOrderModal').classList.add('active');
   }
   $('closeEditOrderModalBtn').addEventListener('click', hideEditOrderModal);
@@ -1760,6 +1914,26 @@
       if($('loadingSpinner')) $('loadingSpinner').style.display = 'none';
       $('statusDot').classList.add('stale');
       return false;
+    }
+  }
+
+  // Fetches the products sheet (name / sale price / weight) used to build
+  // the item picker in the Edit order form. Fetched lazily — once, the
+  // first time someone opens Edit order — and cached in allProducts.
+  let isFetchingProducts = false;
+  async function fetchProducts(){
+    if(isFetchingProducts || !API_URL) return;
+    isFetchingProducts = true;
+    try{
+      const sep = API_URL.includes('?') ? '&' : '?';
+      const res = await fetch(API_URL + sep + 'action=listProducts', { method:'GET', redirect:'follow' });
+      if(!res.ok) throw new Error('HTTP status ' + res.status);
+      const data = await res.json();
+      allProducts = Array.isArray(data.products) ? data.products : [];
+    }catch(err){
+      console.error('fetchProducts error:', err);
+    } finally {
+      isFetchingProducts = false;
     }
   }
 
