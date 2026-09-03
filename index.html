@@ -1438,6 +1438,7 @@
   // ---- Items editor: pick products from the "products" sheet, add/remove
   // them with a quantity, and auto-total the weight/total/COD/pieces fields. ----
   let editItemsList = []; // [{name, qty, salePrice, weight, custom}]
+  let editItemsBase = { total: 0, weight: 0 }; // pre-existing (legacy/unmatched) amount to add matched items on top of
   let selectedSearchProductIdx = null;
   function findProductByName(name){
     const norm = String(name || '').trim().toLowerCase();
@@ -1474,31 +1475,43 @@
     }
     recomputeItemsTotals();
   }
+  // Totals = the pre-existing (legacy/unmatched) base amount, PLUS the price/
+  // weight of every item in the list that's matched to a real product. This
+  // way, adding a new product always adds its price/weight on top of what
+  // was already on the order, instead of replacing it — even when the
+  // order's original items text can't be parsed back into known products
+  // (older free-text items). Pieces has no such problem since every item's
+  // quantity is known regardless of whether it matched a product.
   function recomputeItemsTotals(){
-    let totalWeight = 0, totalPrice = 0, totalPieces = 0;
+    let matchedWeight = 0, matchedPrice = 0, totalPieces = 0;
     const lines = [];
     editItemsList.forEach(it => {
-      totalWeight += (it.weight || 0) * it.qty;
-      totalPrice += (it.salePrice || 0) * it.qty;
+      if(!it.custom){
+        matchedWeight += (it.weight || 0) * it.qty;
+        matchedPrice += (it.salePrice || 0) * it.qty;
+      }
       totalPieces += it.qty;
       lines.push(`${it.qty} x ${it.name}`);
     });
+    const finalTotal = editItemsBase.total + matchedPrice;
+    const finalWeight = editItemsBase.weight + matchedWeight;
     const rawEl = $('itemsEditorRaw');
     if(rawEl) rawEl.value = lines.join('\n');
     const weightEl = document.querySelector('#editOrderModal [data-field="weight"]');
     const totalEl = document.querySelector('#editOrderModal [data-field="total"]');
     const codEl = document.querySelector('#editOrderModal [data-field="COD"]');
     const piecesEl = document.querySelector('#editOrderModal [data-field="pieces"]');
-    if(weightEl) weightEl.value = totalWeight ? String(totalWeight) : weightEl.value;
-    if(totalEl) totalEl.value = totalPrice ? String(totalPrice) : totalEl.value;
-    if(codEl) codEl.value = totalPrice ? String(totalPrice) : codEl.value;
-    if(piecesEl) piecesEl.value = totalPieces ? String(totalPieces) : piecesEl.value;
+    if(weightEl) weightEl.value = String(finalWeight);
+    if(totalEl) totalEl.value = String(finalTotal);
+    if(codEl) codEl.value = String(finalTotal);
+    if(piecesEl) piecesEl.value = String(totalPieces);
   }
   // Best-effort parse of the existing "items" text ("2 x Product Name" per
   // line) back into the structured list, matching each line to a known
   // product so its price/weight feed the totals. Lines that don't match a
-  // known product are kept as read-only "custom" rows so nothing is lost,
-  // but they don't contribute to the computed total/weight/pieces.
+  // known product are kept as read-only "custom" rows for reference — their
+  // original price/weight contribution lives in editItemsBase instead (see
+  // initItemsEditor), so the order's existing total/weight isn't lost.
   function parseItemsText(raw){
     const text = String(raw || '').trim();
     if(!text) return [];
@@ -1518,6 +1531,21 @@
     selectedSearchProductIdx = null;
     hideItemsSearchResults();
     editItemsList = parseItemsText(order.items);
+    // Whatever the order's total/weight already were, minus what we can
+    // now attribute to matched products, is the "base" contributed by
+    // items we couldn't match (or by shipping/rounding on the original
+    // order) — keep it untouched so newly added products add on top of it.
+    let matchedPrice = 0, matchedWeight = 0;
+    editItemsList.forEach(it => {
+      if(!it.custom){
+        matchedPrice += (it.salePrice || 0) * it.qty;
+        matchedWeight += (it.weight || 0) * it.qty;
+      }
+    });
+    editItemsBase = {
+      total: (parseFloat(order.total) || 0) - matchedPrice,
+      weight: (parseFloat(order.weight) || 0) - matchedWeight
+    };
     renderItemsEditor();
   }
 
