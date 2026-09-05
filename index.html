@@ -584,6 +584,66 @@
   }
 
   ::selection{background:var(--gold-soft);color:#ffffff;}
+
+  /* ===== Expenses module ===== */
+  #expensesView{display:none;padding-bottom:100px;}
+  #expensesView .brand-text{font-family:'Cairo';}
+  .exp-tabs{display:flex;gap:8px;padding:10px 16px 0;}
+  .exp-tab{
+    flex:1;text-align:center;padding:10px 8px;border-radius:12px;
+    background:var(--panel);border:1px solid var(--line);
+    color:var(--cream-dim);font-weight:700;font-size:13px;cursor:pointer;
+    box-shadow:var(--shadow-sm);transition:all .15s ease;
+  }
+  .exp-tab.active{background:var(--gold);border-color:var(--gold);color:#fff;}
+  .exp-section{display:none;padding:0 16px;}
+  .exp-section.active{display:block;}
+  .balance-card{
+    flex:0 0 auto;min-width:128px;background:var(--panel);
+    border:1px solid var(--line);border-radius:14px;padding:12px 14px;
+    box-shadow:var(--shadow-sm);
+  }
+  .balance-card .stat-num{font-family:'Cairo';font-weight:800;font-size:19px;line-height:1;}
+  .balance-card .stat-num.pos{color:var(--sage);}
+  .balance-card .stat-num.neg{color:var(--rust);}
+  .balance-card .stat-num.zero{color:var(--cream-dim);}
+  .balance-card .stat-label{color:var(--cream-dim);font-size:11px;margin-top:6px;}
+  .balance-card .stat-hint{font-size:10.5px;color:var(--cream-dim);margin-top:2px;}
+  .exp-row, .debt-row{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:13px 14px;box-shadow:var(--shadow-sm);margin-top:10px;
+  }
+  .exp-row-top, .debt-row-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .exp-desc{font-size:14px;font-weight:700;color:var(--cream);}
+  .exp-meta{font-size:11.5px;color:var(--cream-dim);margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;}
+  .exp-amount{font-family:'Cairo';font-weight:800;font-size:15px;white-space:nowrap;}
+  .exp-amount.pos{color:var(--sage);}
+  .exp-amount.neg{color:var(--rust);}
+  .exp-badge{
+    font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;
+    background:var(--panel-2);color:var(--cream-dim);border:1px solid var(--line);
+  }
+  .exp-empty{text-align:center;color:var(--cream-dim);font-size:13px;padding:30px 10px;}
+  .debt-status-open{color:var(--amber);}
+  .debt-status-settled{color:var(--sage);}
+  .debt-settle-btn{
+    margin-top:9px;background:var(--panel-2);border:1px solid var(--line);
+    color:var(--cream);font-size:12px;font-weight:700;padding:7px 12px;
+    border-radius:10px;cursor:pointer;
+  }
+  .debt-settle-btn:hover{background:var(--sage);border-color:var(--sage);color:#fff;}
+  .exp-fab{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    background:linear-gradient(180deg, var(--gold-soft), var(--gold));
+    color:#fff;border:none;border-radius:999px;padding:14px 26px;
+    font-family:'Cairo';font-weight:800;font-size:14px;cursor:pointer;
+    box-shadow:0 6px 16px rgba(234,88,12,0.35);z-index:50;
+  }
+  .edit-field-group select{
+    width:100%;background:var(--panel-2);border:1px solid var(--line);
+    color:var(--cream);padding:11px 12px;border-radius:10px;
+    font-family:inherit;font-size:14px;outline:none;
+  }
 </style>
 </head>
 <body>
@@ -636,6 +696,9 @@
         <div class="icon-btn" id="refreshBtn" title="Refresh">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg>
         </div>
+        <div class="icon-btn" id="expensesBtn" title="Expenses">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="16" cy="14.5" r="1.6"/></svg>
+        </div>
         <div class="icon-btn" id="settingsBtn" title="Settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"/></svg>
         </div>
@@ -658,6 +721,44 @@
   <div id="list"></div>
   <div id="loadingSpinner" class="spinner" style="display:none;"></div>
   <button class="loadmore" id="loadMoreBtn" style="display:none;">Load more</button>
+</div>
+
+<!-- ============ EXPENSES MODULE ============ -->
+<div id="expensesView">
+  <header class="topbar">
+    <div class="topbar-row">
+      <div class="brand">
+        <div class="icon-btn" id="expensesBackBtn" title="Back">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+        </div>
+        <span class="brand-text">Expenses</span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <div class="icon-btn" id="expensesRefreshBtn" title="Refresh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="stat-scroll" id="balanceScroll"></div>
+
+  <div class="exp-tabs">
+    <div class="exp-tab active" id="expTabInternal" data-exp-tab="internal">Internal transactions</div>
+    <div class="exp-tab" id="expTabExternal" data-exp-tab="external">External debts</div>
+  </div>
+
+  <div class="exp-section active" id="expSectionInternal">
+    <div id="expensesList"></div>
+    <div class="exp-empty" id="expensesEmpty" style="display:none;">No transactions yet. Tap + to add one.</div>
+  </div>
+
+  <div class="exp-section" id="expSectionExternal">
+    <div id="debtsList"></div>
+    <div class="exp-empty" id="debtsEmpty" style="display:none;">No external debts recorded.</div>
+  </div>
+
+  <button class="exp-fab" id="expensesFab">+ Add transaction</button>
 </div>
 
 <!-- ============ NOTIFICATIONS DRAWER ============ -->
@@ -760,6 +861,94 @@
       <button class="modal-opt-btn" id="confirmEditOrderBtn">Save & send</button>
     </div>
     <button class="modal-cancel" id="closeEditOrderModalBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ ADD EXPENSE MODAL ============ -->
+<div class="modal-overlay" id="addExpenseModal">
+  <div class="modal-card edit-card">
+    <div class="modal-title">Add transaction</div>
+    <div class="modal-sub">Log an expense, advance, or purchase for Bedir, Hazem, or the company account.</div>
+
+    <div class="edit-field-group">
+      <label>Account</label>
+      <select id="expAccount">
+        <option value="Bedir">Bedir</option>
+        <option value="Hazem">Hazem</option>
+        <option value="UVA">UVA (company account)</option>
+      </select>
+    </div>
+    <div class="edit-field-group">
+      <label>Direction</label>
+      <select id="expDirection"></select>
+    </div>
+    <div class="edit-field-group">
+      <label>Amount (EGP)</label>
+      <input type="number" id="expAmount" min="0" step="0.01" inputmode="decimal">
+    </div>
+    <div class="edit-field-group">
+      <label>Category</label>
+      <select id="expCategory">
+        <option value="Purchase">Purchase (cost of goods)</option>
+        <option value="Ads">Ads</option>
+        <option value="Subscription">Subscription</option>
+        <option value="Order collection">Order collection</option>
+        <option value="Deposit">Deposit to company account</option>
+        <option value="Debt settlement">Debt settlement</option>
+        <option value="General expense">General expense</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <div class="edit-field-group">
+      <label>Description</label>
+      <input type="text" id="expDescription" placeholder="e.g. Bought a bags order">
+    </div>
+    <div class="edit-field-group">
+      <label>Date</label>
+      <input type="date" id="expDate">
+    </div>
+    <div class="modal-field-error" id="expError"></div>
+    <div class="modal-options" style="margin-top:6px;">
+      <button class="modal-opt-btn" id="confirmAddExpenseBtn">Save transaction</button>
+    </div>
+    <button class="modal-cancel" id="closeAddExpenseModalBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ ADD EXTERNAL DEBT MODAL ============ -->
+<div class="modal-overlay" id="addDebtModal">
+  <div class="modal-card edit-card">
+    <div class="modal-title">Add external debt</div>
+    <div class="modal-sub">For a supplier or customer — not Bedir, Hazem, or UVA.</div>
+
+    <div class="edit-field-group">
+      <label>Party name (supplier/customer)</label>
+      <input type="text" id="debtParty" placeholder="e.g. Shipping supplier">
+    </div>
+    <div class="edit-field-group">
+      <label>Direction</label>
+      <select id="debtDirection">
+        <option value="positive">They owe the company (they'll pay us)</option>
+        <option value="negative">The company owes them (we'll pay them)</option>
+      </select>
+    </div>
+    <div class="edit-field-group">
+      <label>Amount (EGP)</label>
+      <input type="number" id="debtAmount" min="0" step="0.01" inputmode="decimal">
+    </div>
+    <div class="edit-field-group">
+      <label>Description</label>
+      <input type="text" id="debtDescription" placeholder="Optional">
+    </div>
+    <div class="edit-field-group">
+      <label>Date</label>
+      <input type="date" id="debtDate">
+    </div>
+    <div class="modal-field-error" id="debtError"></div>
+    <div class="modal-options" style="margin-top:6px;">
+      <button class="modal-opt-btn" id="confirmAddDebtBtn">Save debt</button>
+    </div>
+    <button class="modal-cancel" id="closeAddDebtModalBtn">Cancel</button>
   </div>
 </div>
 
@@ -2773,6 +2962,308 @@
     return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
   function escapeAttr(s){ return escapeHtml(s); }
+
+  /* ================= EXPENSES MODULE ================= */
+  let allExpenses = [];
+  let expenseBalances = { Bedir:0, Hazem:0, UVA:0 };
+  let allDebts = [];
+  let debtTotals = { owedToUs:0, weOwe:0 };
+  let expActiveTab = 'internal';
+  let isFetchingExpenses = false;
+  let isFetchingDebts = false;
+
+  function fmtEGP(n){
+    const v = Number(n)||0;
+    return v.toLocaleString('en-US',{maximumFractionDigits:0}) + ' EGP';
+  }
+  function todayISO(){
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+  function fmtShortDate(v){
+    if(!v) return '';
+    const d = new Date(v);
+    if(isNaN(d.getTime())) return String(v);
+    return d.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
+  }
+
+  function showExpensesView(){
+    $('app').style.display = 'none';
+    $('expensesView').style.display = 'block';
+    fetchExpenses();
+    fetchDebts();
+  }
+  function hideExpensesView(){
+    $('expensesView').style.display = 'none';
+    $('app').style.display = 'block';
+  }
+  $('expensesBtn').addEventListener('click', showExpensesView);
+  $('expensesBackBtn').addEventListener('click', hideExpensesView);
+  $('expensesRefreshBtn').addEventListener('click', ()=>{ fetchExpenses(); fetchDebts(); });
+
+  document.querySelectorAll('[data-exp-tab]').forEach(tab=>{
+    tab.addEventListener('click', ()=>{
+      expActiveTab = tab.getAttribute('data-exp-tab');
+      document.querySelectorAll('[data-exp-tab]').forEach(t=>t.classList.toggle('active', t===tab));
+      $('expSectionInternal').classList.toggle('active', expActiveTab==='internal');
+      $('expSectionExternal').classList.toggle('active', expActiveTab==='external');
+      $('expensesFab').textContent = expActiveTab==='internal' ? '+ Add transaction' : '+ Add debt';
+    });
+  });
+
+  async function fetchExpenses(){
+    if(isFetchingExpenses || !API_URL) return;
+    isFetchingExpenses = true;
+    try{
+      const sep = API_URL.includes('?') ? '&' : '?';
+      const res = await fetch(API_URL + sep + 'action=listExpenses', { method:'GET', redirect:'follow' });
+      const data = await res.json();
+      allExpenses = Array.isArray(data.expenses) ? data.expenses : [];
+      expenseBalances = data.balances || { Bedir:0, Hazem:0, UVA:0 };
+      renderBalances();
+      renderExpensesList();
+    } catch(err){
+      console.error('fetchExpenses error:', err);
+    } finally {
+      isFetchingExpenses = false;
+    }
+  }
+
+  async function fetchDebts(){
+    if(isFetchingDebts || !API_URL) return;
+    isFetchingDebts = true;
+    try{
+      const sep = API_URL.includes('?') ? '&' : '?';
+      const res = await fetch(API_URL + sep + 'action=listDebts', { method:'GET', redirect:'follow' });
+      const data = await res.json();
+      allDebts = Array.isArray(data.debts) ? data.debts : [];
+      debtTotals = { owedToUs: data.owedToUs||0, weOwe: data.weOwe||0 };
+      renderBalances();
+      renderDebtsList();
+    } catch(err){
+      console.error('fetchDebts error:', err);
+    } finally {
+      isFetchingDebts = false;
+    }
+  }
+
+  function balanceClass(n){
+    if(n > 0.5) return 'pos';
+    if(n < -0.5) return 'neg';
+    return 'zero';
+  }
+
+  function renderBalances(){
+    const b = expenseBalances;
+    const cards = [
+      { label:'Bedir balance', val:b.Bedir||0, hint: (b.Bedir||0) >= 0 ? 'Company owes him' : 'He owes the company' },
+      { label:'Hazem balance', val:b.Hazem||0, hint: (b.Hazem||0) >= 0 ? 'Company owes him' : 'He owes the company' },
+      { label:'UVA balance (company)', val:b.UVA||0, hint:'Net company account movement' },
+      { label:'Owed to us', val:debtTotals.owedToUs||0, hint:'From external customers/parties', forcePos:true },
+      { label:'We owe', val:debtTotals.weOwe||0, hint:'To external suppliers/parties', forceNeg:true },
+    ];
+    $('balanceScroll').innerHTML = cards.map(c=>{
+      const cls = c.forcePos ? 'pos' : (c.forceNeg ? 'neg' : balanceClass(c.val));
+      return `<div class="balance-card">
+        <div class="stat-num ${cls}">${fmtEGP(Math.abs(c.val))}</div>
+        <div class="stat-label">${escapeHtml(c.label)}</div>
+        <div class="stat-hint">${escapeHtml(c.hint)}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderExpensesList(){
+    const list = $('expensesList');
+    if(!allExpenses.length){
+      list.innerHTML = '';
+      $('expensesEmpty').style.display = 'block';
+      return;
+    }
+    $('expensesEmpty').style.display = 'none';
+    list.innerHTML = allExpenses.map(row=>{
+      let account = null, amount = 0;
+      ['Bedir','Hazem','UVA'].forEach(p=>{
+        const n = Number(row[p]);
+        if(row[p] !== '' && row[p] !== null && row[p] !== undefined && !isNaN(n) && n !== 0){
+          account = p; amount = n;
+        }
+      });
+      const accountLabel = account === 'UVA' ? 'UVA (company)' : (account || '');
+      const cls = amount >= 0 ? 'pos' : 'neg';
+      const sign = amount >= 0 ? '+' : '−';
+      return `<div class="exp-row">
+        <div class="exp-row-top">
+          <div>
+            <div class="exp-desc">${escapeHtml(row['Description'] || 'No description')}</div>
+            <div class="exp-meta">
+              <span>${escapeHtml(accountLabel)}</span>
+              ${row['Category'] ? `<span class="exp-badge">${escapeHtml(row['Category'])}</span>` : ''}
+              <span>${escapeHtml(fmtShortDate(row['Date']))}</span>
+            </div>
+          </div>
+          <div class="exp-amount ${cls}">${sign} ${fmtEGP(Math.abs(amount))}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderDebtsList(){
+    const list = $('debtsList');
+    if(!allDebts.length){
+      list.innerHTML = '';
+      $('debtsEmpty').style.display = 'block';
+      return;
+    }
+    $('debtsEmpty').style.display = 'none';
+    list.innerHTML = allDebts.map(row=>{
+      const amt = Number(row['Amount']) || 0;
+      const cls = amt >= 0 ? 'pos' : 'neg';
+      const dirLabel = amt >= 0 ? 'Owes the company' : 'Company owes them';
+      const isSettled = String(row['Status']||'').trim() === 'Settled';
+      return `<div class="debt-row">
+        <div class="debt-row-top">
+          <div>
+            <div class="exp-desc">${escapeHtml(row['Party'] || '')}</div>
+            <div class="exp-meta">
+              <span>${escapeHtml(dirLabel)}</span>
+              <span>${escapeHtml(fmtShortDate(row['Date']))}</span>
+              <span class="${isSettled ? 'debt-status-settled' : 'debt-status-open'}">${isSettled ? 'Settled' : 'Open'}</span>
+            </div>
+            ${row['Description'] ? `<div class="exp-meta">${escapeHtml(row['Description'])}</div>` : ''}
+          </div>
+          <div class="exp-amount ${cls}">${fmtEGP(Math.abs(amt))}</div>
+        </div>
+        ${!isSettled ? `<button class="debt-settle-btn" data-settle-row="${row._row}">Mark as settled</button>` : ''}
+      </div>`;
+    }).join('');
+
+    document.querySelectorAll('[data-settle-row]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const row = btn.getAttribute('data-settle-row');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        try{
+          const sep = API_URL.includes('?') ? '&' : '?';
+          await fetch(API_URL + sep + 'action=settleDebt&row=' + encodeURIComponent(row), { method:'GET', redirect:'follow' });
+          await fetchDebts();
+        } catch(err){
+          alert('Something went wrong, please try again.');
+          btn.disabled = false;
+          btn.textContent = 'Mark as settled';
+        }
+      });
+    });
+  }
+
+  // ---- Direction options change depending on the selected account ----
+  function refreshExpDirectionOptions(){
+    const account = $('expAccount').value;
+    const dirSelect = $('expDirection');
+    if(account === 'UVA'){
+      dirSelect.innerHTML = `
+        <option value="positive">Deposit into company account (+)</option>
+        <option value="negative">Payment/withdrawal from company account (-)</option>`;
+    } else {
+      dirSelect.innerHTML = `
+        <option value="positive">Paid from his own pocket (company owes him)</option>
+        <option value="negative">Collected money belonging to the company (he owes the company)</option>`;
+    }
+  }
+  $('expAccount').addEventListener('change', refreshExpDirectionOptions);
+
+  function openAddExpenseModal(){
+    $('expAccount').value = 'Bedir';
+    refreshExpDirectionOptions();
+    $('expAmount').value = '';
+    $('expCategory').value = 'Purchase';
+    $('expDescription').value = '';
+    $('expDate').value = todayISO();
+    $('expError').textContent = '';
+    $('addExpenseModal').classList.add('active');
+  }
+  function openAddDebtModal(){
+    $('debtParty').value = '';
+    $('debtDirection').value = 'positive';
+    $('debtAmount').value = '';
+    $('debtDescription').value = '';
+    $('debtDate').value = todayISO();
+    $('debtError').textContent = '';
+    $('addDebtModal').classList.add('active');
+  }
+  $('expensesFab').addEventListener('click', ()=>{
+    if(expActiveTab === 'internal') openAddExpenseModal();
+    else openAddDebtModal();
+  });
+  $('closeAddExpenseModalBtn').addEventListener('click', ()=> $('addExpenseModal').classList.remove('active'));
+  $('addExpenseModal').addEventListener('click', (e)=>{ if(e.target === $('addExpenseModal')) $('addExpenseModal').classList.remove('active'); });
+  $('closeAddDebtModalBtn').addEventListener('click', ()=> $('addDebtModal').classList.remove('active'));
+  $('addDebtModal').addEventListener('click', (e)=>{ if(e.target === $('addDebtModal')) $('addDebtModal').classList.remove('active'); });
+
+  $('confirmAddExpenseBtn').addEventListener('click', async ()=>{
+    const amount = parseFloat($('expAmount').value);
+    if(!amount || amount <= 0){
+      $('expError').textContent = 'Enter a valid amount greater than zero.';
+      return;
+    }
+    const btn = $('confirmAddExpenseBtn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try{
+      const params = new URLSearchParams({
+        action: 'addExpense',
+        account: $('expAccount').value,
+        direction: $('expDirection').value,
+        amount: String(amount),
+        category: $('expCategory').value,
+        description: $('expDescription').value,
+        date: $('expDate').value || todayISO()
+      });
+      const sep = API_URL.includes('?') ? '&' : '?';
+      await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
+      $('addExpenseModal').classList.remove('active');
+      await fetchExpenses();
+    } catch(err){
+      $('expError').textContent = 'Something went wrong, please try again.';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save transaction';
+    }
+  });
+
+  $('confirmAddDebtBtn').addEventListener('click', async ()=>{
+    const amount = parseFloat($('debtAmount').value);
+    const party = $('debtParty').value.trim();
+    if(!party){
+      $('debtError').textContent = 'Enter the party name.';
+      return;
+    }
+    if(!amount || amount <= 0){
+      $('debtError').textContent = 'Enter a valid amount greater than zero.';
+      return;
+    }
+    const btn = $('confirmAddDebtBtn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try{
+      const params = new URLSearchParams({
+        action: 'addDebt',
+        party: party,
+        direction: $('debtDirection').value,
+        amount: String(amount),
+        description: $('debtDescription').value,
+        date: $('debtDate').value || todayISO()
+      });
+      const sep = API_URL.includes('?') ? '&' : '?';
+      await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
+      $('addDebtModal').classList.remove('active');
+      await fetchDebts();
+    } catch(err){
+      $('debtError').textContent = 'Something went wrong, please try again.';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save debt';
+    }
+  });
 
   init();
 })();
