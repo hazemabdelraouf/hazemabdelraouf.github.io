@@ -644,6 +644,22 @@
     color:var(--cream);padding:11px 12px;border-radius:10px;
     font-family:inherit;font-size:14px;outline:none;
   }
+  .pi-row{
+    display:flex;align-items:center;gap:8px;background:var(--panel-2);
+    border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:6px;
+  }
+  .pi-name{flex:1;font-size:13.5px;font-weight:700;color:var(--cream);}
+  .pi-name .pi-sub{display:block;font-size:11px;font-weight:500;color:var(--cream-dim);margin-top:2px;}
+  .pi-qty, .pi-price{width:64px;background:var(--panel);border:1px solid var(--line);
+    border-radius:8px;padding:6px 7px;font-size:13px;color:var(--cream);text-align:center;}
+  .pi-sub-total{width:70px;text-align:right;font-family:'Cairo';font-weight:700;font-size:13px;color:var(--cream);}
+  .pi-remove{background:none;border:none;color:var(--rust);font-size:18px;cursor:pointer;padding:0 2px;}
+  .pi-add-row{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+  .pi-add-row input[type="text"]{flex:1;min-width:120px;}
+  .pi-total-row{display:flex;justify-content:space-between;align-items:center;
+    margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-strong);
+    font-family:'Cairo';font-weight:800;font-size:15px;color:var(--cream);}
+  .pi-empty{text-align:center;color:var(--cream-dim);font-size:12.5px;padding:14px 0;}
 </style>
 </head>
 <body>
@@ -734,6 +750,9 @@
         <span class="brand-text">Expenses</span>
       </div>
       <div style="display:flex;gap:8px;">
+        <div class="icon-btn" id="newPurchaseBtn" title="New purchase">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1.3"/><circle cx="18" cy="21" r="1.3"/><path d="M2.5 3h2l2.8 12.6a2 2 0 0 0 2 1.6h8.4a2 2 0 0 0 2-1.6L21.5 7H6.2"/></svg>
+        </div>
         <div class="icon-btn" id="expensesRefreshBtn" title="Refresh">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg>
         </div>
@@ -949,6 +968,71 @@
       <button class="modal-opt-btn" id="confirmAddDebtBtn">Save debt</button>
     </div>
     <button class="modal-cancel" id="closeAddDebtModalBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ NEW PURCHASE (INVOICE) MODAL ============ -->
+<div class="modal-overlay" id="purchaseModal">
+  <div class="modal-card edit-card">
+    <div class="modal-title">New purchase</div>
+    <div class="modal-sub">Log products bought from a merchant — updates stock &amp; average cost.</div>
+
+    <div class="edit-field-group">
+      <label>Merchant / supplier name</label>
+      <input type="text" id="piMerchant" placeholder="e.g. Lavazza distributor">
+    </div>
+
+    <div class="edit-field-group">
+      <label>Add to warehouse</label>
+      <select id="piWarehouse">
+        <option value="Mansoura">Mansoura</option>
+        <option value="Mahalla">Mahalla</option>
+      </select>
+    </div>
+
+    <div class="edit-field-group">
+      <label>Products</label>
+      <div id="piItemsList"></div>
+      <div class="pi-add-row">
+        <div class="items-editor-search-wrap" style="flex:1;min-width:140px;">
+          <input type="text" id="piSearch" placeholder="Search product..." autocomplete="off">
+          <div class="items-editor-search-results" id="piSearchResults"></div>
+        </div>
+        <input type="number" id="piQty" min="1" value="1" placeholder="Qty" style="width:60px;">
+        <input type="number" id="piPrice" min="0" step="0.01" placeholder="Unit cost" style="width:80px;">
+        <button type="button" id="piAddBtn" class="btn ghost" style="width:auto;padding:8px 14px;">Add</button>
+      </div>
+      <div class="pi-total-row">
+        <span>Total</span>
+        <span id="piTotal">0 EGP</span>
+      </div>
+    </div>
+
+    <div class="edit-field-group">
+      <label>Payment</label>
+      <select id="piPaymentType">
+        <option value="paid">Paid now</option>
+        <option value="credit">On credit (pay later)</option>
+      </select>
+    </div>
+    <div class="edit-field-group" id="piAccountGroup">
+      <label>Paid from</label>
+      <select id="piAccount">
+        <option value="Bedir">Bedir</option>
+        <option value="Hazem">Hazem</option>
+        <option value="UVA">UVA (company account)</option>
+      </select>
+    </div>
+    <div class="edit-field-group">
+      <label>Date</label>
+      <input type="date" id="piDate">
+    </div>
+
+    <div class="modal-field-error" id="piError"></div>
+    <div class="modal-options" style="margin-top:6px;">
+      <button class="modal-opt-btn" id="confirmPurchaseBtn">Save purchase</button>
+    </div>
+    <button class="modal-cancel" id="closePurchaseModalBtn">Cancel</button>
   </div>
 </div>
 
@@ -2225,8 +2309,9 @@
   // the item picker in the Edit order form. Fetched lazily — once, the
   // first time someone opens Edit order — and cached in allProducts.
   let isFetchingProducts = false;
-  async function fetchProducts(){
+  async function fetchProducts(force){
     if(isFetchingProducts || !API_URL) return;
+    if(allProducts.length && !force) return;
     isFetchingProducts = true;
     try{
       const sep = API_URL.includes('?') ? '&' : '?';
@@ -3274,6 +3359,207 @@
     } finally {
       btn.disabled = false;
       btn.textContent = 'Save debt';
+    }
+  });
+
+  // ---- New purchase (invoice) flow: pick products bought from a merchant,
+  // set a quantity + unit cost per line, choose which warehouse the stock
+  // goes into, then either log it as an expense (paid now) or an external
+  // debt (on credit). Reuses allProducts (from fetchProducts) and its
+  // search-as-you-type pattern, same as the order items editor. ----
+  let piItems = []; // [{row, name, qty, price}]
+  let piSelectedIdx = null;
+
+  function piRenderItems(){
+    const list = $('piItemsList');
+    if(!piItems.length){
+      list.innerHTML = '<div class="pi-empty">No products added yet.</div>';
+    } else {
+      list.innerHTML = piItems.map((it, i) => `
+        <div class="pi-row">
+          <span class="pi-name">${escapeHtml(it.name)}<span class="pi-sub">row ${it.row}</span></span>
+          <input type="number" class="pi-qty" min="1" value="${it.qty}" data-idx="${i}" title="Quantity">
+          <input type="number" class="pi-price" min="0" step="0.01" value="${it.price}" data-idx="${i}" title="Unit cost">
+          <span class="pi-sub-total">${(it.qty * it.price).toFixed(2)}</span>
+          <button type="button" class="pi-remove" data-idx="${i}" title="Remove">×</button>
+        </div>
+      `).join('');
+      list.querySelectorAll('.pi-qty').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const idx = parseInt(inp.dataset.idx, 10);
+          piItems[idx].qty = Math.max(1, parseInt(inp.value, 10) || 1);
+          piRenderItems();
+        });
+      });
+      list.querySelectorAll('.pi-price').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const idx = parseInt(inp.dataset.idx, 10);
+          piItems[idx].price = Math.max(0, parseFloat(inp.value) || 0);
+          piRenderItems();
+        });
+      });
+      list.querySelectorAll('.pi-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx, 10);
+          piItems.splice(idx, 1);
+          piRenderItems();
+        });
+      });
+    }
+    const total = piItems.reduce((sum, it) => sum + (it.qty * it.price), 0);
+    $('piTotal').textContent = total.toFixed(2) + ' EGP';
+  }
+
+  function piHideSearchResults(){
+    $('piSearchResults').classList.remove('show');
+  }
+  function piRenderSearchResults(query){
+    const box = $('piSearchResults');
+    const q = query.trim().toLowerCase();
+    if(!q){ piHideSearchResults(); return; }
+    const matches = allProducts
+      .map((p, i) => ({ p, i }))
+      .filter(({p}) => p.name.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const an = a.p.name.toLowerCase(), bn = b.p.name.toLowerCase();
+        const aStarts = an.startsWith(q) ? 0 : 1;
+        const bStarts = bn.startsWith(q) ? 0 : 1;
+        if(aStarts !== bStarts) return aStarts - bStarts;
+        return an.localeCompare(bn);
+      });
+    if(!matches.length){
+      box.innerHTML = '<div class="items-editor-search-empty">No matching products</div>';
+    } else {
+      box.innerHTML = matches.map(({p, i}) => `
+        <div class="items-editor-search-result" data-idx="${i}">
+          ${escapeHtml(p.name)}
+          <div class="ie-sr-price">cost so far: ${p.cost || 0} EGP</div>
+        </div>
+      `).join('');
+      box.querySelectorAll('.items-editor-search-result[data-idx]').forEach(el => {
+        el.addEventListener('click', () => {
+          const idx = parseInt(el.dataset.idx, 10);
+          piSelectedIdx = idx;
+          $('piSearch').value = allProducts[idx].name;
+          // Prefill the unit cost with the last known average cost, if any —
+          // still fully editable before adding.
+          if(allProducts[idx].cost) $('piPrice').value = allProducts[idx].cost;
+          piHideSearchResults();
+        });
+      });
+    }
+    box.classList.add('show');
+  }
+  $('piSearch').addEventListener('input', () => {
+    piSelectedIdx = null;
+    piRenderSearchResults($('piSearch').value);
+  });
+  $('piSearch').addEventListener('focus', () => {
+    if($('piSearch').value.trim()) piRenderSearchResults($('piSearch').value);
+  });
+  document.addEventListener('click', (e) => {
+    if(!e.target.closest('#piSearch') && !e.target.closest('#piSearchResults')) piHideSearchResults();
+  });
+
+  $('piAddBtn').addEventListener('click', () => {
+    let product = piSelectedIdx !== null ? allProducts[piSelectedIdx] : null;
+    if(!product){
+      const norm = $('piSearch').value.trim().toLowerCase();
+      product = allProducts.find(p => p.name.trim().toLowerCase() === norm);
+    }
+    if(!product){
+      $('piError').textContent = 'Pick a product from the search results first.';
+      $('piSearch').focus();
+      return;
+    }
+    $('piError').textContent = '';
+    const qty = Math.max(1, parseInt($('piQty').value, 10) || 1);
+    const price = Math.max(0, parseFloat($('piPrice').value) || 0);
+    const existing = piItems.find(it => it.row === product._row);
+    if(existing){
+      existing.qty += qty;
+      existing.price = price; // latest entered price wins for this line
+    } else {
+      piItems.push({ row: product._row, name: product.name, qty, price });
+    }
+    $('piQty').value = '1';
+    $('piPrice').value = '';
+    $('piSearch').value = '';
+    piSelectedIdx = null;
+    piHideSearchResults();
+    piRenderItems();
+  });
+
+  function piUpdatePaymentFieldsVisibility(){
+    $('piAccountGroup').style.display = $('piPaymentType').value === 'paid' ? '' : 'none';
+  }
+  $('piPaymentType').addEventListener('change', piUpdatePaymentFieldsVisibility);
+
+  async function openPurchaseModal(){
+    if(!allProducts.length) await fetchProducts();
+    piItems = [];
+    piSelectedIdx = null;
+    $('piMerchant').value = '';
+    $('piWarehouse').value = 'Mansoura';
+    $('piPaymentType').value = 'paid';
+    $('piAccount').value = 'Bedir';
+    $('piDate').value = todayISO();
+    $('piSearch').value = '';
+    $('piQty').value = '1';
+    $('piPrice').value = '';
+    $('piError').textContent = '';
+    piHideSearchResults();
+    piUpdatePaymentFieldsVisibility();
+    piRenderItems();
+    $('purchaseModal').classList.add('active');
+  }
+  $('newPurchaseBtn').addEventListener('click', openPurchaseModal);
+  $('closePurchaseModalBtn').addEventListener('click', ()=> $('purchaseModal').classList.remove('active'));
+  $('purchaseModal').addEventListener('click', (e)=>{ if(e.target === $('purchaseModal')) $('purchaseModal').classList.remove('active'); });
+
+  $('confirmPurchaseBtn').addEventListener('click', async ()=>{
+    if(!piItems.length){
+      $('piError').textContent = 'Add at least one product.';
+      return;
+    }
+    const paymentType = $('piPaymentType').value;
+    if(paymentType === 'paid' && !$('piAccount').value){
+      $('piError').textContent = 'Choose which account paid.';
+      return;
+    }
+    $('piError').textContent = '';
+    const btn = $('confirmPurchaseBtn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try{
+      const payload = {
+        action: 'addPurchase',
+        merchant: $('piMerchant').value.trim(),
+        warehouse: $('piWarehouse').value,
+        paymentType: paymentType,
+        account: $('piAccount').value,
+        date: $('piDate').value || todayISO(),
+        items: piItems.map(it => ({ row: it.row, name: it.name, quantity: it.qty, price: it.price }))
+      };
+      // Sent as POST with a JSON string body and no explicit Content-Type
+      // header (so it stays a CORS-"simple" request the Apps Script web
+      // app can receive without a preflight, same trick GET calls rely on).
+      const res = await fetch(API_URL, { method:'POST', redirect:'follow', body: JSON.stringify(payload) });
+      const data = await res.json();
+      if(data && data.error){
+        $('piError').textContent = 'Sheet error: ' + data.error;
+        return;
+      }
+      $('purchaseModal').classList.remove('active');
+      await fetchProducts(true); // refresh cached stock/cost for next time
+      if(paymentType === 'credit') await fetchDebts();
+      else await fetchExpenses();
+    } catch(err){
+      console.error('addPurchase error:', err);
+      $('piError').textContent = 'Something went wrong, please try again.';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save purchase';
     }
   });
 
