@@ -588,6 +588,16 @@
   /* ===== Expenses module ===== */
   #expensesView{display:none;padding-bottom:100px;}
   #expensesView .brand-text{font-family:'Cairo';}
+  #inventoryView{display:none;padding-bottom:60px;}
+  #inventoryView .brand-text{font-family:'Cairo';}
+  .inv-row{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:12px 14px;box-shadow:var(--shadow-sm);margin:10px 14px 0;
+    display:flex;justify-content:space-between;align-items:center;gap:8px;
+  }
+  .inv-name{font-size:13.5px;font-weight:700;color:var(--cream);}
+  .inv-meta{font-size:11.5px;color:var(--cream-dim);margin-top:3px;}
+  .inv-value{font-family:'Cairo';font-weight:800;font-size:14px;color:var(--cream);white-space:nowrap;}
   .exp-tabs{display:flex;gap:8px;padding:10px 16px 0;}
   .exp-tab{
     flex:1;text-align:center;padding:10px 8px;border-radius:12px;
@@ -750,6 +760,12 @@
         <span class="brand-text">Expenses</span>
       </div>
       <div style="display:flex;gap:8px;">
+        <div class="icon-btn" id="inventoryBtn" title="Inventory">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
+        </div>
+        <div class="icon-btn" id="transferBtn" title="Transfer between accounts">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h13l-4-4"/><path d="M17 17H4l4 4"/></svg>
+        </div>
         <div class="icon-btn" id="newPurchaseBtn" title="New purchase">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1.3"/><circle cx="18" cy="21" r="1.3"/><path d="M2.5 3h2l2.8 12.6a2 2 0 0 0 2 1.6h8.4a2 2 0 0 0 2-1.6L21.5 7H6.2"/></svg>
         </div>
@@ -778,6 +794,35 @@
   </div>
 
   <button class="exp-fab" id="expensesFab">+ Add transaction</button>
+</div>
+
+<!-- ============ INVENTORY MODULE (stock & value per warehouse) ============ -->
+<div id="inventoryView">
+  <header class="topbar">
+    <div class="topbar-row">
+      <div class="brand">
+        <div class="icon-btn" id="inventoryBackBtn" title="Back">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+        </div>
+        <span class="brand-text">Inventory</span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <div class="icon-btn" id="inventoryRefreshBtn" title="Refresh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="exp-tabs">
+    <div class="exp-tab active" id="invTabMansoura" data-inv-tab="Mansoura">Mansoura</div>
+    <div class="exp-tab" id="invTabMahalla" data-inv-tab="Mahalla">Mahalla</div>
+  </div>
+
+  <div class="stat-scroll" id="inventoryStatScroll"></div>
+
+  <div id="inventoryList"></div>
+  <div class="exp-empty" id="inventoryEmpty" style="display:none;">No stock recorded for this warehouse yet.</div>
 </div>
 
 <!-- ============ NOTIFICATIONS DRAWER ============ -->
@@ -979,7 +1024,8 @@
 
     <div class="edit-field-group">
       <label>Merchant / supplier name</label>
-      <input type="text" id="piMerchant" placeholder="e.g. Lavazza distributor">
+      <input type="text" id="piMerchant" list="piSupplierList" placeholder="e.g. Lavazza distributor">
+      <datalist id="piSupplierList"></datalist>
     </div>
 
     <div class="edit-field-group">
@@ -1024,8 +1070,25 @@
       </select>
     </div>
     <div class="edit-field-group">
-      <label>Date</label>
-      <input type="date" id="piDate">
+      <label>Category</label>
+      <select id="piCategory">
+        <option value="Purchase">Purchase (cost of goods)</option>
+        <option value="Ads">Ads</option>
+        <option value="Subscription">Subscription</option>
+        <option value="Order collection">Order collection</option>
+        <option value="Deposit">Deposit to company account</option>
+        <option value="Debt settlement">Debt settlement</option>
+        <option value="General expense">General expense</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <div class="edit-field-group">
+      <label>Description</label>
+      <textarea id="piDescription" placeholder="Optional — defaults to the products list"></textarea>
+    </div>
+    <div class="edit-field-group">
+      <label>Date &amp; time</label>
+      <input type="datetime-local" id="piDate">
     </div>
 
     <div class="modal-field-error" id="piError"></div>
@@ -1033,6 +1096,57 @@
       <button class="modal-opt-btn" id="confirmPurchaseBtn">Save purchase</button>
     </div>
     <button class="modal-cancel" id="closePurchaseModalBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ TRANSFER MODAL (between Bedir / Hazem / UVA) ============ -->
+<div class="modal-overlay" id="transferModal">
+  <div class="modal-card edit-card">
+    <div class="modal-title">Transfer between accounts</div>
+    <div class="modal-sub">A transfer fee (if any) is deducted from the sender only — the recipient gets the exact amount.</div>
+
+    <div class="edit-field-group">
+      <label>From</label>
+      <select id="trFrom">
+        <option value="Bedir">Bedir</option>
+        <option value="Hazem">Hazem</option>
+        <option value="UVA">UVA (company account)</option>
+      </select>
+    </div>
+    <div class="edit-field-group">
+      <label>To</label>
+      <select id="trTo">
+        <option value="Hazem">Hazem</option>
+        <option value="Bedir">Bedir</option>
+        <option value="UVA">UVA (company account)</option>
+      </select>
+    </div>
+    <div class="edit-field-group">
+      <label>Amount (received by the recipient)</label>
+      <input type="number" id="trAmount" min="0" step="0.01" placeholder="e.g. 1000">
+    </div>
+    <div class="edit-field-group">
+      <label>Transfer fee (optional)</label>
+      <input type="number" id="trFee" min="0" step="0.01" placeholder="e.g. 10" value="0">
+    </div>
+    <div class="pi-total-row" id="trTotalRow" style="display:none;">
+      <span>Total deducted from sender</span>
+      <span id="trTotal">0 EGP</span>
+    </div>
+    <div class="edit-field-group">
+      <label>Description (optional)</label>
+      <input type="text" id="trDescription" placeholder="e.g. Funding a purchase">
+    </div>
+    <div class="edit-field-group">
+      <label>Date &amp; time</label>
+      <input type="datetime-local" id="trDate">
+    </div>
+
+    <div class="modal-field-error" id="trError"></div>
+    <div class="modal-options" style="margin-top:6px;">
+      <button class="modal-opt-btn" id="confirmTransferBtn">Save transfer</button>
+    </div>
+    <button class="modal-cancel" id="closeTransferModalBtn">Cancel</button>
   </div>
 </div>
 
@@ -3065,6 +3179,13 @@
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   }
+  // "YYYY-MM-DDTHH:MM" in local time, for datetime-local inputs' default value.
+  function nowLocalDateTime(){
+    const d = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+      + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
   function fmtShortDate(v){
     if(!v) return '';
     const d = new Date(v);
@@ -3091,8 +3212,7 @@
       expActiveTab = tab.getAttribute('data-exp-tab');
       document.querySelectorAll('[data-exp-tab]').forEach(t=>t.classList.toggle('active', t===tab));
       $('expSectionInternal').classList.toggle('active', expActiveTab==='internal');
-      $('expSectionExternal').classList.toggle('active', expActiveTab==='external');
-      $('expensesFab').textContent = expActiveTab==='internal' ? '+ Add transaction' : '+ Add debt';
+      $('expSectionExternal').classList.toggle('active', expActiveTab==='external');      $('expensesFab').textContent = expActiveTab==='internal' ? '+ Add transaction' : '+ Add debt';
     });
   });
 
@@ -3131,6 +3251,94 @@
       isFetchingDebts = false;
     }
   }
+
+  // ---- Suppliers: fetched from the Purchases log so the merchant field
+  // can suggest names already used before (they're a limited set). Cached
+  // and refreshed after every saved purchase. ----
+  let allSuppliers = [];
+  let isFetchingSuppliers = false;
+  async function fetchSuppliers(){
+    if(isFetchingSuppliers || !API_URL) return;
+    isFetchingSuppliers = true;
+    try{
+      const sep = API_URL.includes('?') ? '&' : '?';
+      const res = await fetch(API_URL + sep + 'action=listSuppliers', { method:'GET', redirect:'follow' });
+      const data = await res.json();
+      allSuppliers = Array.isArray(data.suppliers) ? data.suppliers : [];
+      $('piSupplierList').innerHTML = allSuppliers.map(s => `<option value="${escapeHtml(s)}"></option>`).join('');
+    } catch(err){
+      console.error('fetchSuppliers error:', err);
+    } finally {
+      isFetchingSuppliers = false;
+    }
+  }
+
+  // ---- Inventory view: total stock quantity & value per warehouse,
+  // computed client-side from allProducts (mansoura/mahalla/cost), which
+  // is already fetched for the purchase flow — no extra backend call. ----
+  let invActiveWarehouse = 'Mansoura';
+  function showInventoryView(){
+    $('expensesView').style.display = 'none';
+    $('inventoryView').style.display = 'block';
+    fetchProducts(true).then(renderInventory);
+  }
+  function hideInventoryView(){
+    $('inventoryView').style.display = 'none';
+    $('expensesView').style.display = 'block';
+  }
+  function renderInventory(){
+    const key = invActiveWarehouse.toLowerCase(); // 'mansoura' | 'mahalla'
+    const rows = allProducts
+      .filter(p => (Number(p[key]) || 0) > 0)
+      .map(p => ({ name: p.name, qty: Number(p[key]) || 0, cost: Number(p.cost) || 0 }))
+      .sort((a, b) => (b.qty * b.cost) - (a.qty * a.cost));
+
+    const totalQty = rows.reduce((s, r) => s + r.qty, 0);
+    const totalValue = rows.reduce((s, r) => s + (r.qty * r.cost), 0);
+
+    $('inventoryStatScroll').innerHTML = `
+      <div class="balance-card">
+        <div class="stat-num">${totalValue.toFixed(0)}</div>
+        <div class="stat-label">Total stock value (EGP)</div>
+        <div class="stat-hint">${invActiveWarehouse}</div>
+      </div>
+      <div class="balance-card">
+        <div class="stat-num">${totalQty}</div>
+        <div class="stat-label">Total units in stock</div>
+        <div class="stat-hint">${invActiveWarehouse}</div>
+      </div>
+    `;
+
+    const list = $('inventoryList');
+    if(!rows.length){
+      list.innerHTML = '';
+      $('inventoryEmpty').style.display = 'block';
+    } else {
+      $('inventoryEmpty').style.display = 'none';
+      list.innerHTML = rows.map(r => `
+        <div class="exp-row">
+          <div class="exp-row-top">
+            <span class="exp-desc">${escapeHtml(r.name)}</span>
+            <span class="exp-amount pos">${(r.qty * r.cost).toFixed(2)} EGP</span>
+          </div>
+          <div class="exp-meta">
+            <span>${r.qty} units</span>
+            <span>avg cost ${r.cost.toFixed(2)} EGP</span>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+  $('inventoryBtn').addEventListener('click', showInventoryView);
+  $('inventoryBackBtn').addEventListener('click', hideInventoryView);
+  $('inventoryRefreshBtn').addEventListener('click', ()=> fetchProducts(true).then(renderInventory));
+  document.querySelectorAll('[data-inv-tab]').forEach(tab=>{
+    tab.addEventListener('click', ()=>{
+      invActiveWarehouse = tab.getAttribute('data-inv-tab');
+      document.querySelectorAll('[data-inv-tab]').forEach(t=>t.classList.toggle('active', t===tab));
+      renderInventory();
+    });
+  });
 
   function balanceClass(n){
     if(n > 0.5) return 'pos';
@@ -3497,13 +3705,16 @@
 
   async function openPurchaseModal(){
     if(!allProducts.length) await fetchProducts();
+    if(!allSuppliers.length) fetchSuppliers();
     piItems = [];
     piSelectedIdx = null;
     $('piMerchant').value = '';
     $('piWarehouse').value = 'Mansoura';
     $('piPaymentType').value = 'paid';
     $('piAccount').value = 'Bedir';
-    $('piDate').value = todayISO();
+    $('piCategory').value = 'Purchase';
+    $('piDescription').value = '';
+    $('piDate').value = nowLocalDateTime();
     $('piSearch').value = '';
     $('piQty').value = '1';
     $('piPrice').value = '';
@@ -3532,13 +3743,20 @@
     btn.disabled = true;
     btn.textContent = 'Saving...';
     try{
+      // datetime-local gives "YYYY-MM-DDTHH:MM" in local time with no
+      // timezone info — convert through Date so what's stored matches what
+      // the person actually picked, same as every other saved timestamp.
+      const rawDateTime = $('piDate').value;
+      const dateIso = rawDateTime ? new Date(rawDateTime).toISOString() : new Date().toISOString();
       const payload = {
         action: 'addPurchase',
         merchant: $('piMerchant').value.trim(),
         warehouse: $('piWarehouse').value,
         paymentType: paymentType,
         account: $('piAccount').value,
-        date: $('piDate').value || todayISO(),
+        category: $('piCategory').value,
+        description: $('piDescription').value.trim(),
+        date: dateIso,
         items: piItems.map(it => ({ row: it.row, name: it.name, quantity: it.qty, price: it.price }))
       };
       // Sent as POST with a JSON string body and no explicit Content-Type
@@ -3552,6 +3770,7 @@
       }
       $('purchaseModal').classList.remove('active');
       await fetchProducts(true); // refresh cached stock/cost for next time
+      fetchSuppliers(); // pick up a newly-typed merchant name for next time
       if(paymentType === 'credit') await fetchDebts();
       else await fetchExpenses();
     } catch(err){
@@ -3560,6 +3779,93 @@
     } finally {
       btn.disabled = false;
       btn.textContent = 'Save purchase';
+    }
+  });
+
+  // ---- Transfer between accounts (Bedir/Hazem/UVA), with an optional
+  // transfer fee deducted from the sender only. ----
+  function trUpdateTotal(){
+    const amount = parseFloat($('trAmount').value) || 0;
+    const fee = parseFloat($('trFee').value) || 0;
+    if(amount > 0){
+      $('trTotalRow').style.display = 'flex';
+      $('trTotal').textContent = (amount + fee).toFixed(2) + ' EGP';
+    } else {
+      $('trTotalRow').style.display = 'none';
+    }
+  }
+  $('trAmount').addEventListener('input', trUpdateTotal);
+  $('trFee').addEventListener('input', trUpdateTotal);
+  $('trFrom').addEventListener('change', ()=>{
+    // Keep From/To from pointing at the same account.
+    if($('trFrom').value === $('trTo').value){
+      const other = ['Bedir','Hazem','UVA'].find(a => a !== $('trFrom').value);
+      $('trTo').value = other;
+    }
+  });
+  $('trTo').addEventListener('change', ()=>{
+    if($('trTo').value === $('trFrom').value){
+      const other = ['Bedir','Hazem','UVA'].find(a => a !== $('trTo').value);
+      $('trFrom').value = other;
+    }
+  });
+
+  function openTransferModal(){
+    $('trFrom').value = 'Hazem';
+    $('trTo').value = 'Bedir';
+    $('trAmount').value = '';
+    $('trFee').value = '0';
+    $('trDescription').value = '';
+    $('trDate').value = nowLocalDateTime();
+    $('trError').textContent = '';
+    trUpdateTotal();
+    $('transferModal').classList.add('active');
+  }
+  $('transferBtn').addEventListener('click', openTransferModal);
+  $('closeTransferModalBtn').addEventListener('click', ()=> $('transferModal').classList.remove('active'));
+  $('transferModal').addEventListener('click', (e)=>{ if(e.target === $('transferModal')) $('transferModal').classList.remove('active'); });
+
+  $('confirmTransferBtn').addEventListener('click', async ()=>{
+    const amount = parseFloat($('trAmount').value);
+    if(!amount || amount <= 0){
+      $('trError').textContent = 'Enter a valid amount greater than zero.';
+      return;
+    }
+    if($('trFrom').value === $('trTo').value){
+      $('trError').textContent = 'Choose two different accounts.';
+      return;
+    }
+    $('trError').textContent = '';
+    const btn = $('confirmTransferBtn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try{
+      const rawDateTime = $('trDate').value;
+      const dateIso = rawDateTime ? new Date(rawDateTime).toISOString() : new Date().toISOString();
+      const params = new URLSearchParams({
+        action: 'addTransfer',
+        fromAccount: $('trFrom').value,
+        toAccount: $('trTo').value,
+        amount: String(amount),
+        fee: String(parseFloat($('trFee').value) || 0),
+        description: $('trDescription').value,
+        date: dateIso
+      });
+      const sep = API_URL.includes('?') ? '&' : '?';
+      const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
+      const data = await res.json();
+      if(data && data.error){
+        $('trError').textContent = 'Sheet error: ' + data.error;
+        return;
+      }
+      $('transferModal').classList.remove('active');
+      await fetchExpenses();
+    } catch(err){
+      console.error('addTransfer error:', err);
+      $('trError').textContent = 'Something went wrong, please try again.';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Save transfer';
     }
   });
 
