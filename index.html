@@ -3219,10 +3219,16 @@
         date: $('expDate').value || todayISO()
       });
       const sep = API_URL.includes('?') ? '&' : '?';
-      await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
+      const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
+      const data = await res.json();
+      if(data && data.error){
+        $('expError').textContent = 'Sheet error: ' + data.error;
+        return;
+      }
       $('addExpenseModal').classList.remove('active');
       await fetchExpenses();
     } catch(err){
+      console.error('addExpense error:', err);
       $('expError').textContent = 'Something went wrong, please try again.';
     } finally {
       btn.disabled = false;
@@ -3254,10 +3260,16 @@
         date: $('debtDate').value || todayISO()
       });
       const sep = API_URL.includes('?') ? '&' : '?';
-      await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
+      const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
+      const data = await res.json();
+      if(data && data.error){
+        $('debtError').textContent = 'Sheet error: ' + data.error;
+        return;
+      }
       $('addDebtModal').classList.remove('active');
       await fetchDebts();
     } catch(err){
+      console.error('addDebt error:', err);
       $('debtError').textContent = 'Something went wrong, please try again.';
     } finally {
       btn.disabled = false;
