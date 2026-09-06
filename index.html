@@ -1150,6 +1150,43 @@
   </div>
 </div>
 
+<!-- ============ SETTLE DEBT MODAL ============ -->
+<div class="modal-overlay" id="settleDebtModal">
+  <div class="modal-card edit-card">
+    <div class="modal-title">Settle debt</div>
+    <div class="modal-sub" id="settleDebtSub"></div>
+
+    <div class="edit-field-group">
+      <label id="settleAccountLabel">Paid from</label>
+      <select id="settleAccount">
+        <option value="Bedir">Bedir</option>
+        <option value="Hazem">Hazem</option>
+        <option value="UVA">UVA (company account)</option>
+      </select>
+    </div>
+    <div class="edit-field-group">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:600;">
+        <input type="checkbox" id="settleHasFee" style="width:auto;">
+        There's a transfer fee
+      </label>
+    </div>
+    <div class="edit-field-group" id="settleFeeGroup" style="display:none;">
+      <label>Fee amount</label>
+      <input type="number" id="settleFee" min="0" step="0.01" placeholder="e.g. 10">
+    </div>
+    <div class="edit-field-group">
+      <label>Date &amp; time</label>
+      <input type="datetime-local" id="settleDate">
+    </div>
+
+    <div class="modal-field-error" id="settleDebtError"></div>
+    <div class="modal-options" style="margin-top:6px;">
+      <button class="modal-opt-btn" id="confirmSettleDebtBtn">Confirm settled</button>
+    </div>
+    <button class="modal-cancel" id="closeSettleDebtModalBtn">Cancel</button>
+  </div>
+</div>
+
 <script>
 (function(){
   const MAKE_WEBHOOK_URL = 'https://hook.eu1.make.com/cbsn3w2zotz94kq1kw5w988o34al5874';
@@ -3192,6 +3229,14 @@
     if(isNaN(d.getTime())) return String(v);
     return d.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
   }
+  function fmtShortDateTime(v){
+    if(!v) return '';
+    const d = new Date(v);
+    if(isNaN(d.getTime())) return String(v);
+    const datePart = d.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
+    const timePart = d.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+    return datePart + ', ' + timePart;
+  }
 
   function showExpensesView(){
     $('app').style.display = 'none';
@@ -3391,10 +3436,7 @@
             <div class="exp-meta">
               <span>${escapeHtml(accountLabel)}</span>
               ${row['Category'] ? `<span class="exp-badge">${escapeHtml(row['Category'])}</span>` : ''}
-              <span>${escapeHtml(fmtShortDate(row['Date']))}</span>
-            </div>
-          </div>
-          <div class="exp-amount ${cls}">${sign} ${fmtEGP(Math.abs(amount))}</div>
+              <span>${escapeHtml(fmtShortDateTime(row['Date']))}</span>
         </div>
       </div>`;
     }).join('');
@@ -3419,31 +3461,24 @@
             <div class="exp-desc">${escapeHtml(row['Party'] || '')}</div>
             <div class="exp-meta">
               <span>${escapeHtml(dirLabel)}</span>
-              <span>${escapeHtml(fmtShortDate(row['Date']))}</span>
+              <span>${escapeHtml(fmtShortDateTime(row['Date']))}</span>
               <span class="${isSettled ? 'debt-status-settled' : 'debt-status-open'}">${isSettled ? 'Settled' : 'Open'}</span>
             </div>
             ${row['Description'] ? `<div class="exp-meta">${escapeHtml(row['Description'])}</div>` : ''}
           </div>
           <div class="exp-amount ${cls}">${fmtEGP(Math.abs(amt))}</div>
         </div>
-        ${!isSettled ? `<button class="debt-settle-btn" data-settle-row="${row._row}">Mark as settled</button>` : ''}
+        ${!isSettled ? `<button class="debt-settle-btn" data-settle-row="${row._row}" data-settle-amount="${amt}" data-settle-party="${escapeHtml(row['Party']||'')}">Mark as settled</button>` : ''}
       </div>`;
     }).join('');
 
     document.querySelectorAll('[data-settle-row]').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        const row = btn.getAttribute('data-settle-row');
-        btn.disabled = true;
-        btn.textContent = 'Saving...';
-        try{
-          const sep = API_URL.includes('?') ? '&' : '?';
-          await fetch(API_URL + sep + 'action=settleDebt&row=' + encodeURIComponent(row), { method:'GET', redirect:'follow' });
-          await fetchDebts();
-        } catch(err){
-          alert('Something went wrong, please try again.');
-          btn.disabled = false;
-          btn.textContent = 'Mark as settled';
-        }
+      btn.addEventListener('click', ()=>{
+        openSettleDebtModal({
+          row: btn.getAttribute('data-settle-row'),
+          amount: parseFloat(btn.getAttribute('data-settle-amount')) || 0,
+          party: btn.getAttribute('data-settle-party') || ''
+        });
       });
     });
   }
@@ -3866,6 +3901,70 @@
     } finally {
       btn.disabled = false;
       btn.textContent = 'Save transfer';
+    }
+  });
+
+  // ---- Settle debt: instead of marking Settled straight away, ask which
+  // account the money moved through and whether a fee applied, then log
+  // the matching Expense entry (category "Debt settlement") alongside it. ----
+  let settlePending = null; // { row, amount, party }
+
+  function openSettleDebtModal(info){
+    settlePending = info;
+    const payingOut = info.amount < 0;
+    $('settleDebtSub').textContent = payingOut
+      ? `Paying ${fmtEGP(Math.abs(info.amount))} to ${info.party || 'the supplier'} — which account paid it?`
+      : `Receiving ${fmtEGP(Math.abs(info.amount))} from ${info.party || 'the party'} — which account received it?`;
+    $('settleAccountLabel').textContent = payingOut ? 'Paid from' : 'Received into';
+    $('settleAccount').value = 'Bedir';
+    $('settleHasFee').checked = false;
+    $('settleFeeGroup').style.display = 'none';
+    $('settleFee').value = '';
+    $('settleDate').value = nowLocalDateTime();
+    $('settleDebtError').textContent = '';
+    $('settleDebtModal').classList.add('active');
+  }
+  $('settleHasFee').addEventListener('change', ()=>{
+    $('settleFeeGroup').style.display = $('settleHasFee').checked ? '' : 'none';
+    if(!$('settleHasFee').checked) $('settleFee').value = '';
+  });
+  $('closeSettleDebtModalBtn').addEventListener('click', ()=> $('settleDebtModal').classList.remove('active'));
+  $('settleDebtModal').addEventListener('click', (e)=>{ if(e.target === $('settleDebtModal')) $('settleDebtModal').classList.remove('active'); });
+
+  $('confirmSettleDebtBtn').addEventListener('click', async ()=>{
+    if(!settlePending) return;
+    $('settleDebtError').textContent = '';
+    const btn = $('confirmSettleDebtBtn');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
+    try{
+      const rawDateTime = $('settleDate').value;
+      const dateIso = rawDateTime ? new Date(rawDateTime).toISOString() : new Date().toISOString();
+      const fee = $('settleHasFee').checked ? (parseFloat($('settleFee').value) || 0) : 0;
+      const params = new URLSearchParams({
+        action: 'settleDebt',
+        row: settlePending.row,
+        account: $('settleAccount').value,
+        fee: String(fee),
+        date: dateIso
+      });
+      const sep = API_URL.includes('?') ? '&' : '?';
+      const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
+      const data = await res.json();
+      if(data && data.error){
+        $('settleDebtError').textContent = 'Sheet error: ' + data.error;
+        return;
+      }
+      $('settleDebtModal').classList.remove('active');
+      settlePending = null;
+      await fetchDebts();
+      await fetchExpenses();
+    } catch(err){
+      console.error('settleDebt error:', err);
+      $('settleDebtError').textContent = 'Something went wrong, please try again.';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Confirm settled';
     }
   });
 
