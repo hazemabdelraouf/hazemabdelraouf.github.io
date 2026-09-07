@@ -126,6 +126,14 @@
      static dot that was already green. */
   .status-dot.flash{animation:dotFlash 0.7s ease;}
   .last-update-text{font-size:10.5px;color:var(--cream-dim);white-space:nowrap;}
+  .topbar-right{display:flex;align-items:center;gap:10px;}
+  /* On narrow phones there isn't room for the "Last update at ..." text
+     next to the icon buttons on one line, so stack it: buttons stay on
+     top (unmoved), the timestamp drops below them, right-aligned. */
+  @media (max-width:420px){
+    .topbar-right{flex-direction:column-reverse;align-items:flex-end;gap:4px;}
+    .last-update-text{font-size:10px;}
+  }
   @keyframes dotFlash{
     0%{box-shadow:0 0 6px rgba(22,163,74,0.4);transform:scale(1);}
     40%{box-shadow:0 0 14px 4px rgba(22,163,74,0.9);transform:scale(1.5);}
@@ -716,7 +724,7 @@
         <span class="brand-text">Orders</span>
         <span class="status-dot" id="statusDot"></span>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;">
+      <div class="topbar-right">
         <span class="last-update-text" id="ordersLastUpdate"></span>
         <div style="display:flex;gap:8px;">
         <div class="icon-btn" id="bellBtn" title="Today's Notifications">
@@ -765,7 +773,7 @@
         <span class="brand-text">Expenses</span>
         <span class="status-dot" id="expensesStatusDot"></span>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;">
+      <div class="topbar-right">
         <span class="last-update-text" id="expensesLastUpdate"></span>
         <div style="display:flex;gap:8px;">
         <div class="icon-btn" id="inventoryBtn" title="Inventory">
@@ -2369,8 +2377,7 @@
         dot.classList.add('flash');
         setTimeout(()=> dot.classList.remove('flash'), 700);
         const now = new Date();
-        const pad = n => String(n).padStart(2,'0');
-        $('ordersLastUpdate').textContent = 'Last update at ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+        $('ordersLastUpdate').textContent = 'Last update at ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
       }
       return ok;
     } finally {
@@ -3281,8 +3288,7 @@
       dot.classList.add('flash');
       setTimeout(()=> dot.classList.remove('flash'), 700);
       const now = new Date();
-      const pad = n => String(n).padStart(2,'0');
-      $('expensesLastUpdate').textContent = 'Last update at ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+      $('expensesLastUpdate').textContent = 'Last update at ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     } finally {
       btn.classList.remove('spinning');
       isRefreshingExpensesView = false;
