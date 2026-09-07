@@ -125,6 +125,7 @@
      person actually notices the update landed instead of just seeing a
      static dot that was already green. */
   .status-dot.flash{animation:dotFlash 0.7s ease;}
+  .last-update-text{font-size:10.5px;color:var(--cream-dim);white-space:nowrap;}
   @keyframes dotFlash{
     0%{box-shadow:0 0 6px rgba(22,163,74,0.4);transform:scale(1);}
     40%{box-shadow:0 0 14px 4px rgba(22,163,74,0.9);transform:scale(1.5);}
@@ -759,8 +760,11 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
         </div>
         <span class="brand-text">Expenses</span>
+        <span class="status-dot" id="expensesStatusDot"></span>
       </div>
-      <div style="display:flex;gap:8px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="last-update-text" id="expensesLastUpdate"></span>
+        <div style="display:flex;gap:8px;">
         <div class="icon-btn" id="inventoryBtn" title="Inventory">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
         </div>
@@ -772,6 +776,7 @@
         </div>
         <div class="icon-btn" id="expensesRefreshBtn" title="Refresh">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5"/></svg>
+        </div>
         </div>
       </div>
     </div>
@@ -3242,8 +3247,7 @@
   function showExpensesView(){
     $('app').style.display = 'none';
     $('expensesView').style.display = 'block';
-    fetchExpenses();
-    fetchDebts();
+    refreshExpensesView();
   }
   function hideExpensesView(){
     $('expensesView').style.display = 'none';
@@ -3251,7 +3255,34 @@
   }
   $('expensesBtn').addEventListener('click', showExpensesView);
   $('expensesBackBtn').addEventListener('click', hideExpensesView);
-  $('expensesRefreshBtn').addEventListener('click', ()=>{ fetchExpenses(); fetchDebts(); });
+
+  // Spins the refresh icon for the whole request (same treatment as the
+  // Orders refresh button), then flashes the dot green and stamps
+  // "Last update at HH:MM" once both lists are back — a clear done signal.
+  let isRefreshingExpensesView = false;
+  async function refreshExpensesView(){
+    if(isRefreshingExpensesView) return;
+    isRefreshingExpensesView = true;
+    const btn = $('expensesRefreshBtn');
+    const dot = $('expensesStatusDot');
+    btn.classList.add('spinning');
+    dot.classList.add('stale');
+    try{
+      await Promise.all([fetchExpenses(), fetchDebts()]);
+      dot.classList.remove('stale');
+      dot.classList.remove('flash');
+      void dot.offsetWidth; // force reflow so the flash restarts even mid-animation
+      dot.classList.add('flash');
+      setTimeout(()=> dot.classList.remove('flash'), 700);
+      const now = new Date();
+      const pad = n => String(n).padStart(2,'0');
+      $('expensesLastUpdate').textContent = 'Last update at ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+    } finally {
+      btn.classList.remove('spinning');
+      isRefreshingExpensesView = false;
+    }
+  }
+  $('expensesRefreshBtn').addEventListener('click', refreshExpensesView);
 
   document.querySelectorAll('[data-exp-tab]').forEach(tab=>{
     tab.addEventListener('click', ()=>{
@@ -3438,6 +3469,9 @@
               <span>${escapeHtml(accountLabel)}</span>
               ${row['Category'] ? `<span class="exp-badge">${escapeHtml(row['Category'])}</span>` : ''}
               <span>${escapeHtml(fmtShortDateTime(row['Date']))}</span>
+            </div>
+          </div>
+          <div class="exp-amount ${cls}">${sign} ${fmtEGP(Math.abs(amount))}</div>
         </div>
       </div>`;
     }).join('');
