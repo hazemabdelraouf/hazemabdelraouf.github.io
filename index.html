@@ -3852,6 +3852,7 @@
       }
       $('purchaseModal').classList.remove('active');
       await fetchProducts(true); // refresh cached stock/cost for next time
+      renderInventory(); // keep the Inventory view in sync if it's open
       fetchSuppliers(); // pick up a newly-typed merchant name for next time
       if(paymentType === 'credit') await fetchDebts();
       else await fetchExpenses();
