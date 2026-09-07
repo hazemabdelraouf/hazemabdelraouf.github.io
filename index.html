@@ -716,7 +716,9 @@
         <span class="brand-text">Orders</span>
         <span class="status-dot" id="statusDot"></span>
       </div>
-      <div style="display:flex;gap:8px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="last-update-text" id="ordersLastUpdate"></span>
+        <div style="display:flex;gap:8px;">
         <div class="icon-btn" id="bellBtn" title="Today's Notifications">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
           <span class="notif-badge-count" id="notifBadge">0</span>
@@ -729,6 +731,7 @@
         </div>
         <div class="icon-btn" id="settingsBtn" title="Settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        </div>
         </div>
       </div>
     </div>
@@ -2365,6 +2368,9 @@
         void dot.offsetWidth;
         dot.classList.add('flash');
         setTimeout(()=> dot.classList.remove('flash'), 700);
+        const now = new Date();
+        const pad = n => String(n).padStart(2,'0');
+        $('ordersLastUpdate').textContent = 'Last update at ' + pad(now.getHours()) + ':' + pad(now.getMinutes());
       }
       return ok;
     } finally {
