@@ -876,6 +876,20 @@
   </div>
 </div>
 
+<!-- ============ MODAL (Who received the order — local delivery / paid) ============ -->
+<div class="modal-overlay" id="collectorModal">
+  <div class="modal-card">
+    <div class="modal-title" id="collectorModalTitle">Who received this order?</div>
+    <div class="modal-sub">Their account will be credited immediately.</div>
+    <div class="modal-options">
+      <button class="modal-opt-btn" data-collector="Hazem">Hazem</button>
+      <button class="modal-opt-btn" data-collector="Bedir">Bedir</button>
+      <button class="modal-opt-btn" data-collector="UVA">UVA (company account)</button>
+    </div>
+    <button class="modal-cancel" id="closeCollectorModalBtn">Cancel</button>
+  </div>
+</div>
+
 <!-- ============ MODAL (For AWB Pickup Date) ============ -->
 <div class="modal-overlay" id="pickupDateModal">
   <div class="modal-card">
@@ -1788,6 +1802,81 @@
       "to": toCustomerDate(to)
     }, `AWB Created (${location})`);
   });
+
+  // ---- "Who received this order?" flow, used by both "Delivered locally"
+  // and "Mark as paid". Asks which of Hazem/Bedir/UVA has the cash, then
+  // (a) sends the original delivered/paid webhook as before, and
+  // (b) immediately logs a debit against that person's account for the
+  // order's COD amount, so the Expenses balances update right away. ----
+  let pendingCollector = null; // { btn, serial, kind }
+  function promptCollectorSelection(btn, serial, kind){
+    pendingCollector = { btn, serial, kind };
+    $('collectorModalTitle').textContent = kind === 'delivered'
+      ? 'Who received order #' + serial + '?'
+      : 'Who collected payment for #' + serial + '?';
+    $('collectorModal').classList.add('active');
+  }
+  function hideCollectorModal(){
+    $('collectorModal').classList.remove('active');
+  }
+  $('closeCollectorModalBtn').addEventListener('click', ()=>{
+    hideCollectorModal();
+    pendingCollector = null;
+  });
+  $('collectorModal').addEventListener('click', (e)=>{
+    if(e.target === $('collectorModal')){ hideCollectorModal(); pendingCollector = null; }
+  });
+  document.querySelectorAll('#collectorModal [data-collector]').forEach(optBtn=>{
+    optBtn.addEventListener('click', async ()=>{
+      const person = optBtn.getAttribute('data-collector');
+      const ctx = pendingCollector;
+      hideCollectorModal();
+      pendingCollector = null;
+      if(!ctx) return;
+      await runCollectorAction(ctx.btn, ctx.serial, ctx.kind, person);
+    });
+  });
+
+  async function runCollectorAction(btn, serial, kind, person){
+    const isDelivered = kind === 'delivered';
+    logOrderAction(serial, isDelivered ? 'Marked delivered locally' : 'Marked as paid', 'Received by ' + person);
+
+    // 1) Original webhook, unchanged, plus who received it.
+    await sendMakeWebhook(btn, {
+      "order serial": serial,
+      "event": isDelivered ? "delivered locally" : "mark as paid",
+      "received by": person
+    }, isDelivered ? 'Marked delivered' : 'Marked paid', MARK_WEBHOOK_URL);
+
+    // 2) Credit the order's cash against that person's account right away.
+    const order = allOrders.find(o => String(o['Order Serial']) === String(serial)) || {};
+    const amount = Math.abs(parseFloat(order.COD)) || Math.abs(parseFloat(order.total)) || 0;
+    if(amount > 0 && API_URL){
+      try{
+        const paramsObj = {
+          action: 'addExpense',
+          account: person,
+          direction: 'negative', // they're holding customer cash, so they owe the company
+          amount: String(amount),
+          category: 'Order collection',
+          description: (isDelivered ? 'Delivered locally' : 'Marked as paid') + ' — order #' + serial,
+          date: new Date().toISOString()
+        };
+        const params = new URLSearchParams(paramsObj);
+        const sep = API_URL.includes('?') ? '&' : '?';
+        const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
+        const data = await res.json();
+        if(data && !data.error){
+          sendExpensesWebhook('expense_added', Object.assign({ row: data && data.row }, paramsObj));
+          await fetchExpenses(); // refresh balances immediately
+        } else if(data && data.error){
+          console.error('addExpense error:', data.error);
+        }
+      } catch(err){
+        console.error('Collector addExpense error:', err);
+      }
+    }
+  }
 
   function promptMailSelection(btn, orderId){
     currentTargetBtn = btn;
@@ -3183,31 +3272,24 @@
       });
     });
 
-    // Mark "Delivered locally" button listener
+    // Mark "Delivered locally" button listener — ask who received/collected
+    // the order first, then proceed.
     document.querySelectorAll('[data-mark-delivered]').forEach(btn=>{
       if(btn._boundMarkDelivered) return; btn._boundMarkDelivered = true;
-      btn.addEventListener('click', async ()=>{
+      btn.addEventListener('click', ()=>{
         const serial = btn.getAttribute('data-serial');
         if(!serial) return;
-        logOrderAction(serial, 'Marked delivered locally');
-        await sendMakeWebhook(btn, {
-          "order serial": serial,
-          "event": "delivered locally"
-        }, 'Marked delivered', MARK_WEBHOOK_URL);
+        promptCollectorSelection(btn, serial, 'delivered');
       });
     });
 
-    // Mark "Paid" button listener
+    // Mark "Paid" button listener — ask who received/collected the order first.
     document.querySelectorAll('[data-mark-paid]').forEach(btn=>{
       if(btn._boundMarkPaid) return; btn._boundMarkPaid = true;
-      btn.addEventListener('click', async ()=>{
+      btn.addEventListener('click', ()=>{
         const serial = btn.getAttribute('data-serial');
         if(!serial) return;
-        logOrderAction(serial, 'Marked as paid');
-        await sendMakeWebhook(btn, {
-          "order serial": serial,
-          "event": "mark as paid"
-        }, 'Marked paid', MARK_WEBHOOK_URL);
+        promptCollectorSelection(btn, serial, 'paid');
       });
     });
 
