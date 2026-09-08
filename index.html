@@ -1037,6 +1037,7 @@
       <label>Date</label>
       <input type="datetime-local" id="debtDate">
     </div>
+    <div class="modal-field-note" id="debtLinkedNote" style="display:none;"></div>
     <div class="modal-field-error" id="debtError"></div>
     <div class="modal-options" style="margin-top:6px;">
       <button class="modal-opt-btn" id="confirmAddDebtBtn">Save debt</button>
@@ -3232,6 +3233,7 @@
   let expenseBalances = { Bedir:0, Hazem:0, UVA:0 };
   let allDebts = [];
   let debtTotals = { owedToUs:0, weOwe:0 };
+  let currentEditDebtRow = null;
   let expActiveTab = 'internal';
   let isFetchingExpenses = false;
   let isFetchingDebts = false;
@@ -3662,6 +3664,8 @@
       const cls = amt >= 0 ? 'pos' : 'neg';
       const dirLabel = amt >= 0 ? 'Owes the company' : 'Company owes them';
       const isSettled = String(row['Status']||'').trim() === 'Settled';
+      const purchaseLinkId = String(row['PurchaseLinkID']||'').trim();
+      const linkLabel = purchaseLinkId ? 'Linked · purchase invoice' : '';
       return `<div class="debt-row">
         <div class="debt-row-top">
           <div>
@@ -3670,12 +3674,17 @@
               <span>${escapeHtml(dirLabel)}</span>
               <span>${escapeHtml(fmtShortDateTime(row['Date']))}</span>
               <span class="${isSettled ? 'debt-status-settled' : 'debt-status-open'}">${isSettled ? 'Settled' : 'Open'}</span>
+              ${linkLabel ? `<span>${escapeHtml(linkLabel)}</span>` : ''}
             </div>
             ${row['Description'] ? `<div class="exp-meta">${escapeHtml(row['Description'])}</div>` : ''}
           </div>
           <div class="exp-amount ${cls}">${fmtEGP(Math.abs(amt))}</div>
         </div>
         ${!isSettled ? `<button class="debt-settle-btn" data-settle-row="${row._row}" data-settle-amount="${amt}" data-settle-party="${escapeHtml(row['Party']||'')}">Mark as settled</button>` : ''}
+        <div class="exp-actions">
+          <button class="exp-action-btn" data-edit-debt-row="${row._row}">Edit</button>
+          <button class="exp-action-btn danger" data-delete-debt-row="${row._row}">Delete</button>
+        </div>
       </div>`;
     }).join('');
 
@@ -3688,6 +3697,66 @@
         });
       });
     });
+    document.querySelectorAll('[data-edit-debt-row]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        openEditDebtModal(Number(btn.getAttribute('data-edit-debt-row')));
+      });
+    });
+    document.querySelectorAll('[data-delete-debt-row]').forEach(btn=>{
+      btn.addEventListener('click', ()=> handleDeleteDebt(Number(btn.getAttribute('data-delete-debt-row'))));
+    });
+  }
+
+  // ---- Delete: always confirm first. Debts linked to a credit purchase
+  // invoice get an extra warning since deleting them also reverses the
+  // stock quantity the invoice added and removes it from the Purchases
+  // sheet; already-settled debts warn that the matching settlement
+  // transaction in Expenses will be deleted too. ----
+  async function handleDeleteDebt(row){
+    const item = allDebts.find(r => r._row === row);
+    if(!item) return;
+    const purchaseLinkId = String(item['PurchaseLinkID'] || '').trim();
+    const isSettled = String(item['Status'] || '').trim() === 'Settled';
+
+    let msg = 'Delete this debt? This cannot be undone.';
+    if(purchaseLinkId){
+      msg = 'This debt is linked to a purchase invoice bought on credit. Deleting it will also remove that invoice and reverse the stock quantity it added.';
+      if(isSettled) msg += ' It has also already been settled, so its matching transaction in Internal transactions will be deleted too.';
+      msg += ' Continue?';
+    } else if(isSettled){
+      msg = 'This debt has already been settled. Deleting it will also delete its matching transaction in Internal transactions. Continue?';
+    }
+    if(!confirm(msg)) return;
+
+    const btn = document.querySelector('[data-delete-debt-row="'+row+'"]');
+    if(btn){ btn.disabled = true; btn.textContent = 'Deleting...'; }
+    try{
+      const params = new URLSearchParams({ action:'deleteDebt', row:String(row) });
+      const sep = API_URL.includes('?') ? '&' : '?';
+      const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
+      const data = await res.json();
+      if(data && data.error){
+        alert('Sheet error: ' + data.error);
+        return;
+      }
+      sendExpensesWebhook('debt_deleted', {
+        row: row,
+        party: item['Party'] || '',
+        amount: Number(item['Amount']) || 0,
+        description: item['Description'] || '',
+        date: item['Date'] || '',
+        status: isSettled ? 'Settled' : 'Open',
+        purchaseLinked: !!purchaseLinkId
+      });
+      await fetchDebts();
+      if(isSettled) await fetchExpenses();
+      if(purchaseLinkId) fetchProducts(true);
+    } catch(err){
+      console.error('deleteDebt error:', err);
+      alert('Something went wrong, please try again.');
+    } finally {
+      if(btn){ btn.disabled = false; btn.textContent = 'Delete'; }
+    }
   }
 
   // ---- Direction options change depending on the selected account ----
@@ -3724,12 +3793,60 @@
     $('addExpenseModal').classList.add('active');
   }
   function openAddDebtModal(){
+    currentEditDebtRow = null;
     $('debtParty').value = '';
+    $('debtParty').disabled = false;
     $('debtDirection').value = 'positive';
+    $('debtDirection').disabled = false;
     $('debtAmount').value = '';
+    $('debtAmount').disabled = false;
     $('debtDescription').value = '';
     $('debtDate').value = nowLocalDateTime();
     $('debtError').textContent = '';
+    $('debtLinkedNote').style.display = 'none';
+    $('addDebtModal').querySelector('.modal-title').textContent = 'Add external debt';
+    $('confirmAddDebtBtn').textContent = 'Save debt';
+    $('addDebtModal').classList.add('active');
+  }
+
+  // ---- Edit: reuses the "Add external debt" modal in edit mode. Party/
+  // direction/amount are only editable for unlinked, still-open debts —
+  // debts tied to a credit purchase invoice or already settled have those
+  // fields locked (delete & recreate instead), same policy as editExpense. ----
+  function openEditDebtModal(row){
+    const item = allDebts.find(r => r._row === row);
+    if(!item){ alert('Could not find that debt to edit.'); return; }
+    currentEditDebtRow = row;
+
+    const amt = Number(item['Amount']) || 0;
+    $('debtParty').value = item['Party'] || '';
+    $('debtDirection').value = amt >= 0 ? 'positive' : 'negative';
+    $('debtAmount').value = Math.abs(amt) || '';
+    $('debtDescription').value = item['Description'] || '';
+    const d = item['Date'] ? new Date(item['Date']) : new Date();
+    const pad = n => String(n).padStart(2,'0');
+    $('debtDate').value = isNaN(d.getTime()) ? nowLocalDateTime()
+      : d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    $('debtError').textContent = '';
+
+    const purchaseLinkId = String(item['PurchaseLinkID'] || '').trim();
+    const isSettled = String(item['Status'] || '').trim() === 'Settled';
+    const isLinked = !!purchaseLinkId || isSettled;
+    $('debtParty').disabled = isLinked;
+    $('debtDirection').disabled = isLinked;
+    $('debtAmount').disabled = isLinked;
+    const note = $('debtLinkedNote');
+    if(isLinked){
+      note.style.display = 'block';
+      note.textContent = purchaseLinkId
+        ? 'This debt is linked to a purchase invoice — party/direction/amount are locked here. Delete and recreate it if those need to change.'
+        : 'This debt has already been settled — party/direction/amount are locked here. Delete and recreate it if those need to change.';
+    } else {
+      note.style.display = 'none';
+    }
+
+    $('addDebtModal').querySelector('.modal-title').textContent = 'Edit external debt';
+    $('confirmAddDebtBtn').textContent = 'Save changes';
     $('addDebtModal').classList.add('active');
   }
   $('expensesFab').addEventListener('click', ()=>{
@@ -3805,15 +3922,20 @@
   });
 
   $('confirmAddDebtBtn').addEventListener('click', async ()=>{
-    const amount = parseFloat($('debtAmount').value);
+    const isEdit = currentEditDebtRow !== null;
+    const editingLinked = isEdit && $('debtAmount').disabled;
     const party = $('debtParty').value.trim();
-    if(!party){
-      $('debtError').textContent = 'Enter the party name.';
-      return;
-    }
-    if(!amount || amount <= 0){
-      $('debtError').textContent = 'Enter a valid amount greater than zero.';
-      return;
+    const amount = parseFloat($('debtAmount').value);
+
+    if(!editingLinked){
+      if(!party){
+        $('debtError').textContent = 'Enter the party name.';
+        return;
+      }
+      if(!amount || amount <= 0){
+        $('debtError').textContent = 'Enter a valid amount greater than zero.';
+        return;
+      }
     }
     const btn = $('confirmAddDebtBtn');
     btn.disabled = true;
@@ -3824,14 +3946,27 @@
       // gets saved, same as the purchase/transfer/settle date fields.
       const rawDebtDateTime = $('debtDate').value;
       const debtDateIso = rawDebtDateTime ? new Date(rawDebtDateTime).toISOString() : new Date().toISOString();
-      const params = new URLSearchParams({
-        action: 'addDebt',
-        party: party,
-        direction: $('debtDirection').value,
-        amount: String(amount),
-        description: $('debtDescription').value,
-        date: debtDateIso
-      });
+      const paramsObj = isEdit
+        ? {
+            action: 'editDebt',
+            row: String(currentEditDebtRow),
+            description: $('debtDescription').value,
+            date: debtDateIso
+          }
+        : {
+            action: 'addDebt',
+            party: party,
+            direction: $('debtDirection').value,
+            amount: String(amount),
+            description: $('debtDescription').value,
+            date: debtDateIso
+          };
+      if(isEdit && !editingLinked){
+        paramsObj.party = party;
+        paramsObj.direction = $('debtDirection').value;
+        paramsObj.amount = String(amount);
+      }
+      const params = new URLSearchParams(paramsObj);
       const sep = API_URL.includes('?') ? '&' : '?';
       const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
       const data = await res.json();
@@ -3839,22 +3974,20 @@
         $('debtError').textContent = 'Sheet error: ' + data.error;
         return;
       }
-      sendExpensesWebhook('debt_added', {
-        party: party,
-        direction: $('debtDirection').value,
-        amount: amount,
-        signed_amount: $('debtDirection').value === 'negative' ? -amount : amount,
-        description: $('debtDescription').value,
-        date: debtDateIso
-      });
+      sendExpensesWebhook(isEdit ? 'debt_edited' : 'debt_added', Object.assign(
+        { row: isEdit ? currentEditDebtRow : (data && data.row) },
+        paramsObj,
+        !isEdit ? { signed_amount: $('debtDirection').value === 'negative' ? -amount : amount } : {}
+      ));
       $('addDebtModal').classList.remove('active');
+      currentEditDebtRow = null;
       await fetchDebts();
     } catch(err){
-      console.error('addDebt error:', err);
+      console.error('addDebt/editDebt error:', err);
       $('debtError').textContent = 'Something went wrong, please try again.';
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Save debt';
+      btn.textContent = isEdit ? 'Save changes' : 'Save debt';
     }
   });
 
