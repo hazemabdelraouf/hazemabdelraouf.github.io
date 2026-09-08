@@ -527,6 +527,12 @@
     margin-top:8px;display:none;
   }
   .modal-field-error.show{display:block;}
+  .modal-field-note{
+    color:var(--cream-dim);font-size:12px;font-weight:600;
+    margin-top:2px;margin-bottom:8px;line-height:1.5;
+    background:var(--panel-2);border:1px solid var(--line);
+    border-radius:10px;padding:9px 11px;
+  }
 
   .modal-card.edit-card{max-width:420px;max-height:85vh;overflow-y:auto;text-align:left;}
   .edit-field-group{margin-bottom:12px;}
@@ -652,6 +658,15 @@
     border-radius:10px;cursor:pointer;
   }
   .debt-settle-btn:hover{background:var(--sage);border-color:var(--sage);color:#fff;}
+  .exp-actions{display:flex;gap:8px;margin-top:9px;}
+  .exp-action-btn{
+    background:var(--panel-2);border:1px solid var(--line);
+    color:var(--cream);font-size:12px;font-weight:700;padding:7px 12px;
+    border-radius:10px;cursor:pointer;
+  }
+  .exp-action-btn:hover{background:var(--sage);border-color:var(--sage);color:#fff;}
+  .exp-action-btn.danger:hover{background:var(--rust);border-color:var(--rust);color:#fff;}
+  .exp-action-btn:disabled{opacity:0.4;pointer-events:none;}
   .exp-fab{
     position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
     background:linear-gradient(180deg, var(--gold-soft), var(--gold));
@@ -971,6 +986,7 @@
         <option value="Order collection">Order collection</option>
         <option value="Deposit">Deposit to company account</option>
         <option value="Debt settlement">Debt settlement</option>
+        <option value="Aramex tips &amp; delivery tips">Aramex tips &amp; delivery tips</option>
         <option value="General expense">General expense</option>
         <option value="Other">Other</option>
       </select>
@@ -983,6 +999,7 @@
       <label>Date</label>
       <input type="datetime-local" id="expDate">
     </div>
+    <div class="modal-field-note" id="expLinkedNote" style="display:none;"></div>
     <div class="modal-field-error" id="expError"></div>
     <div class="modal-options" style="margin-top:6px;">
       <button class="modal-opt-btn" id="confirmAddExpenseBtn">Save transaction</button>
@@ -1082,6 +1099,7 @@
         <option value="Order collection">Order collection</option>
         <option value="Deposit">Deposit to company account</option>
         <option value="Debt settlement">Debt settlement</option>
+        <option value="Aramex tips &amp; delivery tips">Aramex tips &amp; delivery tips</option>
         <option value="General expense">General expense</option>
         <option value="Other">Other</option>
       </select>
@@ -1197,6 +1215,10 @@
   const CANCEL_WEBHOOK_URL = 'https://hook.eu1.make.com/5wlzhqmoeu266mzqwoad9lfxwlsm8zmf';
   const MARK_WEBHOOK_URL = 'https://hook.eu1.make.com/45hb9q9fcwpu6oym3271jufqba2pr7fk';
   const EDIT_WEBHOOK_URL = 'https://hook.eu1.make.com/yfgnigygeuy1tpb6kdjn9iy7n4t8fgka';
+  // إشعارات موديول Expenses (مصاريف/ديون/فواتير/تحويلات) — بتتبعت من هنا
+  // على طول بعد كل عملية ناجحة، بنفس الطريقة اللي إشعارات الأوردرات
+  // (إلغاء/تعديل/إنشاء بوليصة) بتتبعت بيها فوق، مش من الـ Apps Script.
+  const EXPENSES_WEBHOOK_URL = 'https://hook.eu1.make.com/qjjuz1n8qcx35ysnw1w5kxjk0i1n5q42';
 
   const ORDERED_PRIMARY_SHIP_STATUSES = [
     'request needed',
@@ -3214,6 +3236,36 @@
   let isFetchingExpenses = false;
   let isFetchingDebts = false;
 
+  // ---- Fire-and-forget notification to Make.com for every successful
+  // Expenses-module action (add/edit/delete expense, add debt, settle debt,
+  // add purchase, add transfer). Mirrors sendMakeWebhook's transport (POST
+  // with no-cors, falling back to an image beacon) but isn't tied to a
+  // button's UI state — these fire silently in the background, same as the
+  // old Apps Script version used to. ----
+  function sendExpensesWebhook(eventName, details){
+    try{
+      const payload = Object.assign({ event: eventName, timestamp: new Date().toISOString() }, details || {});
+      const urlParams = new URLSearchParams();
+      for (const key in payload) {
+        if (payload[key] !== undefined && payload[key] !== null) {
+          urlParams.append(key, typeof payload[key] === 'object' ? JSON.stringify(payload[key]) : payload[key]);
+        }
+      }
+      const targetUrl = EXPENSES_WEBHOOK_URL + (EXPENSES_WEBHOOK_URL.includes('?') ? '&' : '?') + urlParams.toString();
+      fetch(targetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload),
+        mode: 'no-cors'
+      }).catch(()=>{
+        const beacon = new Image();
+        beacon.src = targetUrl;
+      });
+    } catch(err){
+      console.error('sendExpensesWebhook[' + eventName + '] error:', err);
+    }
+  }
+
   function fmtEGP(n){
     const v = Number(n)||0;
     return v.toLocaleString('en-US',{maximumFractionDigits:0}) + ' EGP';
@@ -3430,6 +3482,14 @@
     }).join('');
   }
 
+  // اسم عرض ودي لكل نوع ربط، بيتظهر بجانب الحركات المرتبطة (تحويل/فاتورة/
+  // تسوية دين) عشان يبقى واضح إن مسحها أو تعديلها هيأثر على حاجة تانية.
+  const LINK_TYPE_LABELS = {
+    transfer: 'Linked · transfer',
+    purchase: 'Linked · purchase invoice',
+    debt_settlement: 'Linked · debt settlement'
+  };
+
   function renderExpensesList(){
     const list = $('expensesList');
     if(!allExpenses.length){
@@ -3449,6 +3509,8 @@
       const accountLabel = account === 'UVA' ? 'UVA (company)' : (account || '');
       const cls = amount >= 0 ? 'pos' : 'neg';
       const sign = amount >= 0 ? '+' : '−';
+      const linkType = String(row['LinkType'] || '').trim();
+      const linkLabel = LINK_TYPE_LABELS[linkType];
       return `<div class="exp-row">
         <div class="exp-row-top">
           <div>
@@ -3457,12 +3519,134 @@
               <span>${escapeHtml(accountLabel)}</span>
               ${row['Category'] ? `<span class="exp-badge">${escapeHtml(row['Category'])}</span>` : ''}
               <span>${escapeHtml(fmtShortDateTime(row['Date']))}</span>
+              ${linkLabel ? `<span>${escapeHtml(linkLabel)}</span>` : ''}
             </div>
           </div>
           <div class="exp-amount ${cls}">${sign} ${fmtEGP(Math.abs(amount))}</div>
         </div>
+        <div class="exp-actions">
+          <button class="exp-action-btn" data-edit-expense-row="${row._row}">Edit</button>
+          <button class="exp-action-btn danger" data-delete-expense-row="${row._row}">Delete</button>
+        </div>
       </div>`;
     }).join('');
+
+    document.querySelectorAll('[data-edit-expense-row]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const row = Number(btn.getAttribute('data-edit-expense-row'));
+        openEditExpenseModal(row);
+      });
+    });
+    document.querySelectorAll('[data-delete-expense-row]').forEach(btn=>{
+      btn.addEventListener('click', ()=> handleDeleteExpense(Number(btn.getAttribute('data-delete-expense-row'))));
+    });
+  }
+
+  // ---- Delete: always confirm first. Linked transactions (transfer /
+  // purchase invoice / debt settlement) get an extra warning since deleting
+  // them also reverses whatever they affected elsewhere. ----
+  async function handleDeleteExpense(row){
+    const item = allExpenses.find(r => r._row === row);
+    if(!item) return;
+    const linkType = String(item['LinkType'] || '').trim();
+    let delAccount = null, delAmount = 0;
+    ['Bedir','Hazem','UVA'].forEach(p=>{
+      const n = Number(item[p]);
+      if(item[p] !== '' && item[p] !== null && item[p] !== undefined && !isNaN(n) && n !== 0){
+        delAccount = p; delAmount = n;
+      }
+    });
+    let msg = 'Delete this transaction? This cannot be undone.';
+    if(linkType === 'transfer'){
+      msg = 'This transaction is one leg of a transfer between accounts. Deleting it will delete both legs. Continue?';
+    } else if(linkType === 'purchase'){
+      msg = 'This transaction is linked to a purchase invoice. Deleting it will also remove that invoice and reverse the stock quantity it added. Continue?';
+    } else if(linkType === 'debt_settlement'){
+      msg = 'This transaction is linked to a debt settlement. Deleting it will reopen that external debt. Continue?';
+    }
+    if(!confirm(msg)) return;
+
+    const btn = document.querySelector('[data-delete-expense-row="'+row+'"]');
+    if(btn){ btn.disabled = true; btn.textContent = 'Deleting...'; }
+    try{
+      const params = new URLSearchParams({ action:'deleteExpense', row:String(row) });
+      const sep = API_URL.includes('?') ? '&' : '?';
+      const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
+      const data = await res.json();
+      if(data && data.error){
+        alert('Sheet error: ' + data.error);
+        return;
+      }
+      sendExpensesWebhook('expense_deleted', {
+        row: row,
+        account: delAccount,
+        amount: delAmount,
+        category: item['Category'] || '',
+        description: item['Description'] || '',
+        date: item['Date'] || '',
+        linkType: linkType || 'expense'
+      });
+      await fetchExpenses();
+      if(linkType === 'debt_settlement') await fetchDebts();
+      if(linkType === 'purchase') fetchProducts(true);
+    } catch(err){
+      console.error('deleteExpense error:', err);
+      alert('Something went wrong, please try again.');
+    } finally {
+      if(btn){ btn.disabled = false; btn.textContent = 'Delete'; }
+    }
+  }
+
+  // ---- Edit: reuses the "Add transaction" modal in edit mode. Amount and
+  // account are only editable for plain (unlinked) transactions — changing
+  // the amount/account of a linked transfer/purchase/debt-settlement leg
+  // would desync it from whatever it's linked to, so those fields are
+  // locked for linked rows (delete & recreate instead). ----
+  let currentEditExpenseRow = null;
+  function openEditExpenseModal(row){
+    const item = allExpenses.find(r => r._row === row);
+    if(!item){ alert('Could not find that transaction to edit.'); return; }
+    currentEditExpenseRow = row;
+
+    let account = 'Bedir', amount = 0, direction = 'positive';
+    ['Bedir','Hazem','UVA'].forEach(p=>{
+      const n = Number(item[p]);
+      if(item[p] !== '' && item[p] !== null && item[p] !== undefined && !isNaN(n) && n !== 0){
+        account = p; amount = Math.abs(n); direction = n >= 0 ? 'positive' : 'negative';
+      }
+    });
+
+    $('expAccount').value = account;
+    refreshExpDirectionOptions();
+    $('expDirection').value = direction;
+    $('expAmount').value = amount || '';
+    $('expCategory').value = item['Category'] || 'General expense';
+    if(![...$('expCategory').options].some(o => o.value === $('expCategory').value)){
+      $('expCategory').value = 'Other';
+    }
+    $('expDescription').value = item['Description'] || '';
+    const d = item['Date'] ? new Date(item['Date']) : new Date();
+    const pad = n => String(n).padStart(2,'0');
+    $('expDate').value = isNaN(d.getTime()) ? nowLocalDateTime()
+      : d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    $('expError').textContent = '';
+
+    const linkType = String(item['LinkType'] || '').trim();
+    const isLinked = !!linkType;
+    $('expAccount').disabled = isLinked;
+    $('expDirection').disabled = isLinked;
+    $('expAmount').disabled = isLinked;
+    const note = $('expLinkedNote');
+    if(isLinked){
+      note.style.display = 'block';
+      note.textContent = 'This transaction is linked to a ' + (linkType === 'transfer' ? 'transfer' : linkType === 'purchase' ? 'purchase invoice' : 'debt settlement') + ' — account/direction/amount are locked here. Delete and recreate it if those need to change.';
+    } else {
+      note.style.display = 'none';
+    }
+
+    $('addExpenseModal').querySelector('.modal-title').textContent = 'Edit transaction';
+    $('confirmAddExpenseBtn').textContent = 'Save changes';
+    $('addExpenseModal').classList.add('active');
   }
 
   function renderDebtsList(){
@@ -3523,13 +3707,20 @@
   $('expAccount').addEventListener('change', refreshExpDirectionOptions);
 
   function openAddExpenseModal(){
+    currentEditExpenseRow = null;
     $('expAccount').value = 'Bedir';
+    $('expAccount').disabled = false;
+    $('expDirection').disabled = false;
+    $('expAmount').disabled = false;
     refreshExpDirectionOptions();
     $('expAmount').value = '';
     $('expCategory').value = 'Purchase';
     $('expDescription').value = '';
     $('expDate').value = nowLocalDateTime();
     $('expError').textContent = '';
+    $('expLinkedNote').style.display = 'none';
+    $('addExpenseModal').querySelector('.modal-title').textContent = 'Add transaction';
+    $('confirmAddExpenseBtn').textContent = 'Save transaction';
     $('addExpenseModal').classList.add('active');
   }
   function openAddDebtModal(){
@@ -3551,10 +3742,15 @@
   $('addDebtModal').addEventListener('click', (e)=>{ if(e.target === $('addDebtModal')) $('addDebtModal').classList.remove('active'); });
 
   $('confirmAddExpenseBtn').addEventListener('click', async ()=>{
-    const amount = parseFloat($('expAmount').value);
-    if(!amount || amount <= 0){
-      $('expError').textContent = 'Enter a valid amount greater than zero.';
-      return;
+    const isEdit = currentEditExpenseRow !== null;
+    const editingLinked = isEdit && $('expAmount').disabled;
+
+    if(!editingLinked){
+      const amount = parseFloat($('expAmount').value);
+      if(!amount || amount <= 0){
+        $('expError').textContent = 'Enter a valid amount greater than zero.';
+        return;
+      }
     }
     const btn = $('confirmAddExpenseBtn');
     btn.disabled = true;
@@ -3565,15 +3761,29 @@
       // gets saved, same as the purchase/transfer/settle date fields.
       const rawExpDateTime = $('expDate').value;
       const expDateIso = rawExpDateTime ? new Date(rawExpDateTime).toISOString() : new Date().toISOString();
-      const params = new URLSearchParams({
-        action: 'addExpense',
-        account: $('expAccount').value,
-        direction: $('expDirection').value,
-        amount: String(amount),
-        category: $('expCategory').value,
-        description: $('expDescription').value,
-        date: expDateIso
-      });
+      const paramsObj = isEdit
+        ? {
+            action: 'editExpense',
+            row: String(currentEditExpenseRow),
+            category: $('expCategory').value,
+            description: $('expDescription').value,
+            date: expDateIso
+          }
+        : {
+            action: 'addExpense',
+            account: $('expAccount').value,
+            direction: $('expDirection').value,
+            amount: String(parseFloat($('expAmount').value)),
+            category: $('expCategory').value,
+            description: $('expDescription').value,
+            date: expDateIso
+          };
+      if(isEdit && !editingLinked){
+        paramsObj.account = $('expAccount').value;
+        paramsObj.direction = $('expDirection').value;
+        paramsObj.amount = String(parseFloat($('expAmount').value));
+      }
+      const params = new URLSearchParams(paramsObj);
       const sep = API_URL.includes('?') ? '&' : '?';
       const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
       const data = await res.json();
@@ -3581,14 +3791,16 @@
         $('expError').textContent = 'Sheet error: ' + data.error;
         return;
       }
+      sendExpensesWebhook(isEdit ? 'expense_edited' : 'expense_added', Object.assign({ row: isEdit ? currentEditExpenseRow : (data && data.row) }, paramsObj));
       $('addExpenseModal').classList.remove('active');
+      currentEditExpenseRow = null;
       await fetchExpenses();
     } catch(err){
-      console.error('addExpense error:', err);
+      console.error('addExpense/editExpense error:', err);
       $('expError').textContent = 'Something went wrong, please try again.';
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Save transaction';
+      btn.textContent = isEdit ? 'Save changes' : 'Save transaction';
     }
   });
 
@@ -3627,6 +3839,14 @@
         $('debtError').textContent = 'Sheet error: ' + data.error;
         return;
       }
+      sendExpensesWebhook('debt_added', {
+        party: party,
+        direction: $('debtDirection').value,
+        amount: amount,
+        signed_amount: $('debtDirection').value === 'negative' ? -amount : amount,
+        description: $('debtDescription').value,
+        date: debtDateIso
+      });
       $('addDebtModal').classList.remove('active');
       await fetchDebts();
     } catch(err){
@@ -3834,6 +4054,7 @@
         $('piError').textContent = 'Sheet error: ' + data.error;
         return;
       }
+      sendExpensesWebhook('purchase_added', Object.assign({ total: data && data.total }, payload));
       $('purchaseModal').classList.remove('active');
       await fetchProducts(true); // refresh cached stock/cost for next time
       renderInventory(); // keep the Inventory view in sync if it's open
@@ -3925,6 +4146,15 @@
         $('trError').textContent = 'Sheet error: ' + data.error;
         return;
       }
+      sendExpensesWebhook('transfer_added', {
+        fromAccount: $('trFrom').value,
+        toAccount: $('trTo').value,
+        amount: amount,
+        fee: parseFloat($('trFee').value) || 0,
+        total: amount + (parseFloat($('trFee').value) || 0),
+        description: $('trDescription').value,
+        date: dateIso
+      });
       $('transferModal').classList.remove('active');
       await fetchExpenses();
     } catch(err){
@@ -3987,6 +4217,7 @@
         $('settleDebtError').textContent = 'Sheet error: ' + data.error;
         return;
       }
+      sendExpensesWebhook('debt_settled', Object.assign({ row: settlePending.row, party: settlePending.party }, data));
       $('settleDebtModal').classList.remove('active');
       settlePending = null;
       await fetchDebts();
