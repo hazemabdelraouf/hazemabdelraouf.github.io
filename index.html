@@ -986,7 +986,7 @@
     </div>
     <div class="edit-field-group">
       <label>Date</label>
-      <input type="date" id="expDate">
+      <input type="datetime-local" id="expDate">
     </div>
     <div class="modal-field-error" id="expError"></div>
     <div class="modal-options" style="margin-top:6px;">
@@ -1023,7 +1023,7 @@
     </div>
     <div class="edit-field-group">
       <label>Date</label>
-      <input type="date" id="debtDate">
+      <input type="datetime-local" id="debtDate">
     </div>
     <div class="modal-field-error" id="debtError"></div>
     <div class="modal-options" style="margin-top:6px;">
@@ -3552,7 +3552,7 @@
     $('expAmount').value = '';
     $('expCategory').value = 'Purchase';
     $('expDescription').value = '';
-    $('expDate').value = todayISO();
+    $('expDate').value = nowLocalDateTime();
     $('expError').textContent = '';
     $('addExpenseModal').classList.add('active');
   }
@@ -3561,7 +3561,7 @@
     $('debtDirection').value = 'positive';
     $('debtAmount').value = '';
     $('debtDescription').value = '';
-    $('debtDate').value = todayISO();
+    $('debtDate').value = nowLocalDateTime();
     $('debtError').textContent = '';
     $('addDebtModal').classList.add('active');
   }
@@ -3584,6 +3584,11 @@
     btn.disabled = true;
     btn.textContent = 'Saving...';
     try{
+      // datetime-local gives "YYYY-MM-DDTHH:MM" in local time with no
+      // timezone info — convert through Date so the hour actually picked
+      // gets saved, same as the purchase/transfer/settle date fields.
+      const rawExpDateTime = $('expDate').value;
+      const expDateIso = rawExpDateTime ? new Date(rawExpDateTime).toISOString() : new Date().toISOString();
       const params = new URLSearchParams({
         action: 'addExpense',
         account: $('expAccount').value,
@@ -3591,7 +3596,7 @@
         amount: String(amount),
         category: $('expCategory').value,
         description: $('expDescription').value,
-        date: $('expDate').value || todayISO()
+        date: expDateIso
       });
       const sep = API_URL.includes('?') ? '&' : '?';
       const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
@@ -3626,13 +3631,18 @@
     btn.disabled = true;
     btn.textContent = 'Saving...';
     try{
+      // datetime-local gives "YYYY-MM-DDTHH:MM" in local time with no
+      // timezone info — convert through Date so the hour actually picked
+      // gets saved, same as the purchase/transfer/settle date fields.
+      const rawDebtDateTime = $('debtDate').value;
+      const debtDateIso = rawDebtDateTime ? new Date(rawDebtDateTime).toISOString() : new Date().toISOString();
       const params = new URLSearchParams({
         action: 'addDebt',
         party: party,
         direction: $('debtDirection').value,
         amount: String(amount),
         description: $('debtDescription').value,
-        date: $('debtDate').value || todayISO()
+        date: debtDateIso
       });
       const sep = API_URL.includes('?') ? '&' : '?';
       const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
