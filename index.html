@@ -813,7 +813,7 @@
   <button class="exp-fab" id="expensesFab">+ Add transaction</button>
 </div>
 
-<!-- ============ INVENTORY MODULE (stock & value per warehouse) ============ -->
+<!-- ============ INVENTORY MODULE (unified stock & value) ============ -->
 <div id="inventoryView">
   <header class="topbar">
     <div class="topbar-row">
@@ -831,15 +831,10 @@
     </div>
   </header>
 
-  <div class="exp-tabs">
-    <div class="exp-tab active" id="invTabMansoura" data-inv-tab="Mansoura">Mansoura</div>
-    <div class="exp-tab" id="invTabMahalla" data-inv-tab="Mahalla">Mahalla</div>
-  </div>
-
   <div class="stat-scroll" id="inventoryStatScroll"></div>
 
   <div id="inventoryList"></div>
-  <div class="exp-empty" id="inventoryEmpty" style="display:none;">No stock recorded for this warehouse yet.</div>
+  <div class="exp-empty" id="inventoryEmpty" style="display:none;">No stock recorded yet.</div>
 </div>
 
 <!-- ============ NOTIFICATIONS DRAWER ============ -->
@@ -1043,14 +1038,6 @@
       <label>Merchant / supplier name</label>
       <input type="text" id="piMerchant" list="piSupplierList" placeholder="e.g. Lavazza distributor">
       <datalist id="piSupplierList"></datalist>
-    </div>
-
-    <div class="edit-field-group">
-      <label>Add to warehouse</label>
-      <select id="piWarehouse">
-        <option value="Mansoura">Mansoura</option>
-        <option value="Mahalla">Mahalla</option>
-      </select>
     </div>
 
     <div class="edit-field-group">
@@ -3362,10 +3349,9 @@
     }
   }
 
-  // ---- Inventory view: total stock quantity & value per warehouse,
-  // computed client-side from allProducts (mansoura/mahalla/cost), which
-  // is already fetched for the purchase flow — no extra backend call. ----
-  let invActiveWarehouse = 'Mansoura';
+  // ---- Inventory view: total stock quantity & value, computed
+  // client-side from allProducts (balance/cost), which is already
+  // fetched for the purchase flow — no extra backend call. ----
   function showInventoryView(){
     $('expensesView').style.display = 'none';
     $('inventoryView').style.display = 'block';
@@ -3376,10 +3362,9 @@
     $('expensesView').style.display = 'block';
   }
   function renderInventory(){
-    const key = invActiveWarehouse.toLowerCase(); // 'mansoura' | 'mahalla'
     const rows = allProducts
-      .filter(p => (Number(p[key]) || 0) > 0)
-      .map(p => ({ name: p.name, qty: Number(p[key]) || 0, cost: Number(p.cost) || 0 }))
+      .filter(p => (Number(p.balance) || 0) > 0)
+      .map(p => ({ name: p.name, qty: Number(p.balance) || 0, cost: Number(p.cost) || 0 }))
       .sort((a, b) => (b.qty * b.cost) - (a.qty * a.cost));
 
     const totalQty = rows.reduce((s, r) => s + r.qty, 0);
@@ -3389,12 +3374,10 @@
       <div class="balance-card">
         <div class="stat-num">${totalValue.toFixed(0)}</div>
         <div class="stat-label">Total stock value (EGP)</div>
-        <div class="stat-hint">${invActiveWarehouse}</div>
       </div>
       <div class="balance-card">
         <div class="stat-num">${totalQty}</div>
         <div class="stat-label">Total units in stock</div>
-        <div class="stat-hint">${invActiveWarehouse}</div>
       </div>
     `;
 
@@ -3421,13 +3404,6 @@
   $('inventoryBtn').addEventListener('click', showInventoryView);
   $('inventoryBackBtn').addEventListener('click', hideInventoryView);
   $('inventoryRefreshBtn').addEventListener('click', ()=> fetchProducts(true).then(renderInventory));
-  document.querySelectorAll('[data-inv-tab]').forEach(tab=>{
-    tab.addEventListener('click', ()=>{
-      invActiveWarehouse = tab.getAttribute('data-inv-tab');
-      document.querySelectorAll('[data-inv-tab]').forEach(t=>t.classList.toggle('active', t===tab));
-      renderInventory();
-    });
-  });
 
   function balanceClass(n){
     if(n > 0.5) return 'pos';
@@ -3663,10 +3639,10 @@
   });
 
   // ---- New purchase (invoice) flow: pick products bought from a merchant,
-  // set a quantity + unit cost per line, choose which warehouse the stock
-  // goes into, then either log it as an expense (paid now) or an external
-  // debt (on credit). Reuses allProducts (from fetchProducts) and its
-  // search-as-you-type pattern, same as the order items editor. ----
+  // set a quantity + unit cost per line (added to the shared stock balance),
+  // then either log it as an expense (paid now) or an external debt (on
+  // credit). Reuses allProducts (from fetchProducts) and its search-as-you-
+  // type pattern, same as the order items editor. ----
   let piItems = []; // [{row, name, qty, price}]
   let piSelectedIdx = null;
 
@@ -3801,7 +3777,6 @@
     piItems = [];
     piSelectedIdx = null;
     $('piMerchant').value = '';
-    $('piWarehouse').value = 'Mansoura';
     $('piPaymentType').value = 'paid';
     $('piAccount').value = 'Bedir';
     $('piCategory').value = 'Purchase';
@@ -3843,7 +3818,6 @@
       const payload = {
         action: 'addPurchase',
         merchant: $('piMerchant').value.trim(),
-        warehouse: $('piWarehouse').value,
         paymentType: paymentType,
         account: $('piAccount').value,
         category: $('piCategory').value,
