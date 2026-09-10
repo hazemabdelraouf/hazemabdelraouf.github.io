@@ -1261,6 +1261,7 @@
   let API_URL = '';
   let allOrders = [];
   let allProducts = [];
+  let allOrderItems = []; // flat rows from the "Items" sheet: {orderSerial, customerName, phone, item, option, quantity, sku, date}
   let headers = [];
   let filteredOrders = [];
   let shownCount = 0;
@@ -2383,6 +2384,7 @@
         checkAndOpenTargetOrder();
       }
       fetchOrders();
+      fetchOrderItems();
     }
   }
 
@@ -3049,6 +3051,17 @@
     shippingCostKey = found || null;
     return shippingCostKey;
   }
+  // "Shipping cost" column: the order card's small "shipping X EGP" line
+  // under the headline COD amount reads straight from this column now,
+  // rather than being computed as COD minus Total.
+  let shippingAmountKey = null; // resolved lazily from the sheet's actual headers
+  function resolveShippingAmountKey(o){
+    if(shippingAmountKey && Object.prototype.hasOwnProperty.call(o, shippingAmountKey)) return shippingAmountKey;
+    const keys = Object.keys(o);
+    const found = keys.find(k => k.trim().toLowerCase() === 'shipping cost');
+    shippingAmountKey = found || null;
+    return shippingAmountKey;
+  }
   let createdAtKey = null; // resolved lazily from the sheet's actual headers
   function resolveCreatedAtKey(o){
     if(createdAtKey && Object.prototype.hasOwnProperty.call(o, createdAtKey)) return createdAtKey;
@@ -3089,9 +3102,11 @@
     // Card's headline number is the COD (what the customer actually pays,
     // shipping included) rather than "Total" (order value only, no shipping).
     const codNum = parseFloat(o.COD);
-    const totalNum = parseFloat(o.total);
     const total = !isNaN(codNum) ? codNum + ' EGP' : (o.total ? (parseFloat(o.total)||o.total) + ' EGP' : '—');
-    const shippingDiff = (!isNaN(codNum) && !isNaN(totalNum)) ? Math.round((codNum - totalNum) * 100) / 100 : null;
+    const shipKey = resolveShippingAmountKey(o);
+    const shipRaw = shipKey ? o[shipKey] : undefined;
+    const shipNum = parseFloat(shipRaw);
+    const shippingDiff = (shipRaw !== undefined && shipRaw !== null && String(shipRaw).trim() !== '' && !isNaN(shipNum)) ? shipNum : null;
     const city = [o.Gov, o.city].filter(Boolean).join(' - ');
     const serial = o['Order Serial'] || '';
     const orderId = o['order ID'] || serial;
@@ -3203,7 +3218,7 @@
           ${detailRow('Address line 1', o.Address_line1)}
           ${detailRow('Address line 2', o.Address_line2)}
           ${detailRow('Address', o.Address)}
-          ${itemsRow('Items', o.items)}
+          <div data-items-holder="${escapeAttr(serial)}">${itemsRowFromOrder(o, serial)}</div>
           ${detailRow('Pieces', o.pieces)}
           ${detailRow('Weight', o.weight)}
           ${detailRow('Total', o.total)}
@@ -3238,6 +3253,52 @@
     }
     if(lines.length === 0) return '';
     return `<div class="items-row"><span class="detail-label">${escapeHtml(label)}</span><span class="items-list">${lines.map(l=>escapeHtml(l)).join('<br>')}</span></div>`;
+  }
+
+  // ---- Items now come from a separate "Items" sheet — one row per item,
+  // repeating "order serial" for every item that belongs to the same order —
+  // instead of the single free-text "items" cell on the order itself. We
+  // match by Order Serial. If the Items sheet has no rows for an order
+  // (e.g. it predates the new sheet), we fall back to the old text field. ----
+  function itemsRowFromOrder(o, serial){
+    const fromSheet = allOrderItems.filter(it => String(it.orderSerial) === String(serial));
+    if(fromSheet.length){
+      const lines = fromSheet.map(it => {
+        const qty = it.quantity;
+        const qtyPart = (qty !== '' && qty !== null && qty !== undefined && qty !== 0) ? (qty + 'x ') : '';
+        const namePart = it.item || '';
+        const optionPart = it.option ? ` (${it.option})` : '';
+        const skuPart = it.sku ? ` — ${it.sku}` : '';
+        return `${qtyPart}${namePart}${optionPart}${skuPart}`.trim();
+      }).filter(Boolean);
+      if(lines.length){
+        return `<div class="items-row"><span class="detail-label">Items</span><span class="items-list">${lines.map(l=>escapeHtml(l)).join('<br>')}</span></div>`;
+      }
+    }
+    return itemsRow('Items', o.items);
+  }
+
+  async function fetchOrderItems(){
+    if(!API_URL) return;
+    try{
+      const params = new URLSearchParams({ action: 'listItems' });
+      const sep = API_URL.includes('?') ? '&' : '?';
+      const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
+      const data = await res.json();
+      if(data && Array.isArray(data.items)){
+        allOrderItems = data.items;
+        // Order cards are already rendered by the time this resolves, so
+        // patch each order's items placeholder in place instead of a full
+        // re-render (which would collapse any expanded detail panels).
+        document.querySelectorAll('[data-items-holder]').forEach(el=>{
+          const serial = el.getAttribute('data-items-holder');
+          const order = allOrders.find(o => String(o['Order Serial']) === String(serial));
+          if(order) el.innerHTML = itemsRowFromOrder(order, serial);
+        });
+      }
+    }catch(err){
+      console.error('fetchOrderItems error:', err);
+    }
   }
 
   function attachCardHandlers(){
