@@ -979,6 +979,7 @@
     <div class="edit-field-group">
       <label>Account</label>
       <select id="expAccount">
+        <option value="" disabled selected>Select account…</option>
         <option value="Bedir">Bedir</option>
         <option value="Hazem">Hazem</option>
         <option value="UVA">UVA (company account)</option>
@@ -986,7 +987,9 @@
     </div>
     <div class="edit-field-group">
       <label>Direction</label>
-      <select id="expDirection"></select>
+      <select id="expDirection">
+        <option value="" disabled selected>Select account first</option>
+      </select>
     </div>
     <div class="edit-field-group">
       <label>Amount (EGP)</label>
@@ -3950,12 +3953,16 @@
   function refreshExpDirectionOptions(){
     const account = $('expAccount').value;
     const dirSelect = $('expDirection');
-    if(account === 'UVA'){
+    if(!account){
+      dirSelect.innerHTML = `<option value="" disabled selected>Select account first</option>`;
+    } else if(account === 'UVA'){
       dirSelect.innerHTML = `
+        <option value="" disabled selected>Select…</option>
         <option value="positive">Paid from UVA (company owes UVA)</option>
         <option value="negative">Paid to UVA (UVA owes the company)</option>`;
     } else {
       dirSelect.innerHTML = `
+        <option value="" disabled selected>Select…</option>
         <option value="positive">Paid from his own pocket (company owes him)</option>
         <option value="negative">Collected money belonging to the company (he owes the company)</option>`;
     }
@@ -3964,7 +3971,7 @@
 
   function openAddExpenseModal(){
     currentEditExpenseRow = null;
-    $('expAccount').value = 'Bedir';
+    $('expAccount').value = '';
     $('expAccount').disabled = false;
     $('expDirection').disabled = false;
     $('expAmount').disabled = false;
@@ -4050,6 +4057,16 @@
     const editingLinked = isEdit && $('expAmount').disabled;
 
     if(!editingLinked){
+      const account = $('expAccount').value;
+      if(!account){
+        $('expError').textContent = 'Choose an account (Bedir, Hazem, or UVA).';
+        return;
+      }
+      const direction = $('expDirection').value;
+      if(!direction){
+        $('expError').textContent = 'Choose a direction.';
+        return;
+      }
       const amount = parseFloat($('expAmount').value);
       if(!amount || amount <= 0){
         $('expError').textContent = 'Enter a valid amount greater than zero.';
