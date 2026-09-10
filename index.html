@@ -1195,6 +1195,11 @@
     <div class="modal-sub" id="settleDebtSub"></div>
 
     <div class="edit-field-group">
+      <label>Amount to pay</label>
+      <input type="number" id="settleAmount" min="0" step="0.01">
+      <div class="modal-sub" id="settleAmountNote" style="margin-top:4px;">Leave at the full amount to settle completely, or lower it for a partial payment.</div>
+    </div>
+    <div class="edit-field-group">
       <label id="settleAccountLabel">Paid from</label>
       <select id="settleAccount">
         <option value="Bedir">Bedir</option>
@@ -3578,7 +3583,8 @@
   const LINK_TYPE_LABELS = {
     transfer: 'Linked · transfer',
     purchase: 'Linked · purchase invoice',
-    debt_settlement: 'Linked · debt settlement'
+    debt_settlement: 'Linked · debt settlement',
+    debt_settlement_partial: 'Linked · partial payment'
   };
 
   function renderExpensesList(){
@@ -3654,6 +3660,8 @@
       msg = 'This transaction is linked to a purchase invoice. Deleting it will also remove that invoice and reverse the stock quantity it added. Continue?';
     } else if(linkType === 'debt_settlement'){
       msg = 'This transaction is linked to a debt settlement. Deleting it will reopen that external debt. Continue?';
+    } else if(linkType === 'debt_settlement_partial'){
+      msg = 'This transaction is a partial payment toward an external debt. Deleting it will add the amount back to that debt\'s balance. Continue?';
     }
     if(!confirm(msg)) return;
 
@@ -3678,7 +3686,7 @@
         linkType: linkType || 'expense'
       });
       await fetchExpenses();
-      if(linkType === 'debt_settlement') await fetchDebts();
+      if(linkType === 'debt_settlement' || linkType === 'debt_settlement_partial') await fetchDebts();
       if(linkType === 'purchase') fetchProducts(true);
     } catch(err){
       console.error('deleteExpense error:', err);
@@ -3769,7 +3777,7 @@
           </div>
           <div class="exp-amount ${cls}">${fmtEGP(Math.abs(amt))}</div>
         </div>
-        ${!isSettled ? `<button class="debt-settle-btn" data-settle-row="${row._row}" data-settle-amount="${amt}" data-settle-party="${escapeHtml(row['Party']||'')}">Mark as settled</button>` : ''}
+        ${!isSettled ? `<button class="debt-settle-btn" data-settle-row="${row._row}" data-settle-amount="${amt}" data-settle-party="${escapeHtml(row['Party']||'')}">Settle / pay</button>` : ''}
         <div class="exp-actions">
           <button class="exp-action-btn" data-edit-debt-row="${row._row}">Edit</button>
           <button class="exp-action-btn danger" data-delete-debt-row="${row._row}">Delete</button>
@@ -4389,17 +4397,22 @@
   });
 
   // ---- Settle debt: instead of marking Settled straight away, ask which
-  // account the money moved through and whether a fee applied, then log
-  // the matching Expense entry (category "Debt settlement") alongside it. ----
+  // account the money moved through, how much is being paid (full or
+  // partial), and whether a fee applied, then log the matching Expense
+  // entry (category "Debt settlement") alongside it. ----
   let settlePending = null; // { row, amount, party }
 
   function openSettleDebtModal(info){
     settlePending = info;
     const payingOut = info.amount < 0;
+    const remaining = Math.abs(info.amount);
     $('settleDebtSub').textContent = payingOut
-      ? `Paying ${fmtEGP(Math.abs(info.amount))} to ${info.party || 'the supplier'} — which account paid it?`
-      : `Receiving ${fmtEGP(Math.abs(info.amount))} from ${info.party || 'the party'} — which account received it?`;
+      ? `Paying ${fmtEGP(remaining)} to ${info.party || 'the supplier'} — which account paid it?`
+      : `Receiving ${fmtEGP(remaining)} from ${info.party || 'the party'} — which account received it?`;
     $('settleAccountLabel').textContent = payingOut ? 'Paid from' : 'Received into';
+    $('settleAmount').value = remaining;
+    $('settleAmount').max = remaining;
+    $('settleAmountNote').textContent = `Remaining balance: ${fmtEGP(remaining)}. Leave as-is to settle completely, or lower it for a partial payment.`;
     $('settleAccount').value = 'Bedir';
     $('settleHasFee').checked = false;
     $('settleFeeGroup').style.display = 'none';
@@ -4418,6 +4431,14 @@
   $('confirmSettleDebtBtn').addEventListener('click', async ()=>{
     if(!settlePending) return;
     $('settleDebtError').textContent = '';
+    const remaining = Math.abs(settlePending.amount);
+    let payAmount = parseFloat($('settleAmount').value);
+    if(!payAmount || payAmount <= 0){
+      $('settleDebtError').textContent = 'Enter a valid amount greater than zero.';
+      return;
+    }
+    // A slightly-over-remaining entry (rounding) is treated as a full settlement.
+    if(payAmount > remaining) payAmount = remaining;
     const btn = $('confirmSettleDebtBtn');
     btn.disabled = true;
     btn.textContent = 'Saving...';
@@ -4429,6 +4450,7 @@
         action: 'settleDebt',
         row: settlePending.row,
         account: $('settleAccount').value,
+        amount: String(payAmount),
         fee: String(fee),
         date: dateIso
       });
@@ -4439,7 +4461,7 @@
         $('settleDebtError').textContent = 'Sheet error: ' + data.error;
         return;
       }
-      sendExpensesWebhook('debt_settled', Object.assign({ row: settlePending.row, party: settlePending.party }, data));
+      sendExpensesWebhook(data && data.partial ? 'debt_partially_settled' : 'debt_settled', Object.assign({ row: settlePending.row, party: settlePending.party }, data));
       $('settleDebtModal').classList.remove('active');
       settlePending = null;
       await fetchDebts();
