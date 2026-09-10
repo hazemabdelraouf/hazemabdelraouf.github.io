@@ -1986,10 +1986,10 @@
   // them with a quantity, and auto-total the weight/total/COD/pieces fields. ----
   let editItemsList = []; // [{name, qty, salePrice, weight, custom}]
   let editItemsBase = { total: 0, weight: 0 }; // pre-existing (legacy/unmatched) amount to add matched items on top of
-  // COD isn't always equal to the order's total (shipping fees, partial
-  // payments, etc). We keep the original gap between COD and total here so
-  // recomputing the total from the items list never clobbers a real COD
-  // value with the plain total — see recomputeItemsTotals() below.
+  // COD isn't just the order's total — it's Total + Shipping cost. We keep
+  // that shipping fee here so recomputing the total from the items list
+  // (add/remove/qty change) always derives COD as Total + Shipping cost,
+  // never overwriting COD with the plain total — see recomputeItemsTotals().
   let editCodBase = 0;
   let selectedSearchProductIdx = null;
   function findProductByName(name){
@@ -2047,9 +2047,8 @@
     });
     const finalTotal = editItemsBase.total + matchedPrice;
     const finalWeight = editItemsBase.weight + matchedWeight;
-    // COD = the recomputed total plus whatever gap (fees, partial payment,
-    // etc) the order already had between its COD and its total — NOT just
-    // the total itself, otherwise a real COD value gets overwritten.
+    // COD = the recomputed total plus the order's shipping cost (read from
+    // its "Shipping cost" column into editCodBase in initItemsEditor).
     const finalCOD = finalTotal + editCodBase;
     const rawEl = $('itemsEditorRaw');
     if(rawEl) rawEl.value = lines.join('\n');
@@ -2118,10 +2117,14 @@
       total: (parseFloat(order.total) || 0) - matchedPrice,
       weight: (parseFloat(order.weight) || 0) - matchedWeight
     };
-    // Preserve whatever gap already existed between COD and total (e.g.
-    // shipping fees or a partial payment), so recomputing totals from the
-    // items list keeps COD accurate instead of resetting it to the total.
-    editCodBase = (parseFloat(order.COD) || 0) - (parseFloat(order.total) || 0);
+    // COD should track Total + Shipping cost, reading the shipping fee from
+    // the order's own "Shipping cost" column (same column used for the
+    // "shipping X EGP" badge on the card) rather than guessing it from
+    // whatever gap COD/Total happened to have — that column is the actual
+    // source of truth for the fee.
+    const shipKey = resolveShippingAmountKey(order);
+    const shipVal = shipKey ? parseFloat(order[shipKey]) : NaN;
+    editCodBase = !isNaN(shipVal) ? shipVal : 0;
     renderItemsEditor();
   }
 
