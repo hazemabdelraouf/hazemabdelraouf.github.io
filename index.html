@@ -4513,14 +4513,15 @@
     const weOwe = debtTotals.weOwe || 0;
 
     // 3) Payment-pending orders = every order whose payment status is still
-    // "pending" — excluding Cancelled (never happened) and Delivered
-    // (already paid/settled by then). This money is still expected to come
-    // into the company soon, so it's summed by COD (what the customer
-    // actually pays, total + shipping), falling back to total if COD is
-    // blank.
+    // "pending" — excluding Cancelled (never happened), Delivered (already
+    // paid/settled by then), and Returned (item came back, so that money
+    // is never coming in — same reasoning as Cancelled). This money is
+    // still expected to come into the company soon, so it's summed by COD
+    // (what the customer actually pays, total + shipping), falling back to
+    // total if COD is blank.
     const pendingOrders = allOrders.filter(o=>{
       const ship = normStatus(o.shipping_status);
-      return normStatus(o.payment_status) === 'pending' && ship !== 'cancelled' && ship !== 'delivered';
+      return normStatus(o.payment_status) === 'pending' && !['cancelled','delivered','returned'].includes(ship);
     });
     const pendingOrdersTotal = pendingOrders.reduce((sum,o)=>{
       const cod = parseFloat(o.COD);
