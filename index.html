@@ -2016,6 +2016,14 @@
     const norm = String(name || '').trim().toLowerCase();
     return allProducts.find(p => p.name.trim().toLowerCase() === norm);
   }
+  // مطابقة عن طريق SKU بدل الاسم — الاسم ممكن يتغيّر (أو يتكرر بين
+  // الفاريانتس)، لكن الـ SKU ثابت. ده هو المصدر المعتمد لأي حساب مالي
+  // (تكلفة البضاعة المباعة، إلخ) لما يكون الـ SKU متاح.
+  function findProductBySku(sku){
+    const norm = String(sku || '').trim().toLowerCase();
+    if(!norm) return null;
+    return allProducts.find(p => String(p.sku||'').trim().toLowerCase() === norm);
+  }
   function renderItemsEditor(){
     const list = $('itemsEditorList');
     if(!list) return;
@@ -4467,8 +4475,8 @@
   $('closeTransferModalBtn').addEventListener('click', ()=> $('transferModal').classList.remove('active'));
   $('transferModal').addEventListener('click', (e)=>{ if(e.target === $('transferModal')) $('transferModal').classList.remove('active'); });
 
-  // ---- Summary: inventory value, internal/external debts, pending orders,
-  // and this month's sales & profit (with 1% set aside for the poor). Pulls
+  // ---- Summary: inventory value, internal/external debts, payment-pending
+  // orders, and this month's sales & profit (with 1% set aside as حق الله). Pulls
   // from whatever's already loaded (allProducts/allOrders/expenseBalances/
   // debtTotals) and only fetches what's missing, so opening this from a
   // fresh page load still works. ----
@@ -4481,6 +4489,7 @@
       if(!allOrders.length) tasks.push(fetchOrders());
       if(!allExpenses.length) tasks.push(fetchExpenses());
       if(!allDebts.length) tasks.push(fetchDebts());
+      if(!allOrderItems.length) tasks.push(fetchOrderItems());
       if(tasks.length) await Promise.all(tasks);
       renderSummary();
     }catch(err){
@@ -4495,39 +4504,70 @@
 
     // 2) Internal (Bedir/Hazem/UVA) balances + external debts, shown as a
     // breakdown rather than one blended figure since "company owes them"
-    // and "they owe the company" point in opposite directions.
-    const internalNet = (expenseBalances.Bedir||0) + (expenseBalances.Hazem||0) + (expenseBalances.UVA||0);
+    // and "they owe the company" point in opposite directions. A negative
+    // internal balance still represents company money sitting with that
+    // person (not a loss), so each account counts in full regardless of
+    // sign — summed as absolute values, not netted against each other.
+    const internalNet = Math.abs(expenseBalances.Bedir||0) + Math.abs(expenseBalances.Hazem||0) + Math.abs(expenseBalances.UVA||0);
     const owedToUs = debtTotals.owedToUs || 0;
     const weOwe = debtTotals.weOwe || 0;
 
-    // 3) Pending orders = every order except Delivered, Cancelled, Returned.
-    const pendingOrders = allOrders.filter(o => !['delivered','cancelled','returned'].includes(normStatus(o.shipping_status)));
-    const pendingOrdersTotal = pendingOrders.reduce((sum,o)=> sum + (parseFloat(o.total)||0), 0);
+    // 3) Payment-pending orders = every order whose payment status is still
+    // "pending" — excluding Cancelled (never happened) and Delivered
+    // (already paid/settled by then). This money is still expected to come
+    // into the company soon, so it's summed by COD (what the customer
+    // actually pays, total + shipping), falling back to total if COD is
+    // blank.
+    const pendingOrders = allOrders.filter(o=>{
+      const ship = normStatus(o.shipping_status);
+      return normStatus(o.payment_status) === 'pending' && ship !== 'cancelled' && ship !== 'delivered';
+    });
+    const pendingOrdersTotal = pendingOrders.reduce((sum,o)=>{
+      const cod = parseFloat(o.COD);
+      return sum + (!isNaN(cod) ? cod : (parseFloat(o.total)||0));
+    }, 0);
 
     // 4 & 5) Sales + profit from the start of this month through today.
     // Cancelled/returned orders never became real sales, so they're excluded.
+    // The order date lives in the sheet's "created at" column (o.date isn't
+    // a real field), so it's resolved the same way the order cards do —
+    // otherwise every date parses to NaN and the whole month comes back empty.
     // Profit = sales total minus cost of goods sold, where each item's cost
-    // is looked up live from the Items sheet's "cost" column (current
-    // average cost), matched against the order's saved items text.
+    // is looked up live from the products sheet's "cost" column, matched by
+    // SKU (from the Items sheet) rather than by name — names can change or
+    // repeat between variants, SKUs don't.
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthOrders = allOrders.filter(o=>{
       if(['cancelled','returned'].includes(normStatus(o.shipping_status))) return false;
-      const d = new Date(o.date);
+      const d = new Date(o[resolveCreatedAtKey(o)] || o.Updated);
       return !isNaN(d.getTime()) && d >= monthStart && d <= now;
     });
     let monthSales = 0, monthCOGS = 0;
     monthOrders.forEach(o=>{
       monthSales += parseFloat(o.total) || 0;
-      parseItemsText(o.items).forEach(it=>{
-        const product = findProductByName(it.name);
-        const unitCost = product ? (Number(product.cost)||0) : 0;
-        monthCOGS += unitCost * (Number(it.qty)||0);
-      });
+      const serial = o['Order Serial'];
+      const lineItems = allOrderItems.filter(it => String(it.orderSerial) === String(serial));
+      if(lineItems.length){
+        lineItems.forEach(it=>{
+          const product = findProductBySku(it.sku);
+          const unitCost = product ? (Number(product.cost)||0) : 0;
+          monthCOGS += unitCost * (Number(it.quantity)||0);
+        });
+      } else {
+        // Orders that predate the Items sheet have no SKU rows to match —
+        // fall back to the legacy free-text parse/by-name match so their
+        // cost isn't silently dropped from the total.
+        parseItemsText(o.items).forEach(it=>{
+          const product = findProductByName(it.name);
+          const unitCost = product ? (Number(product.cost)||0) : 0;
+          monthCOGS += unitCost * (Number(it.qty)||0);
+        });
+      }
     });
     const monthProfit = monthSales - monthCOGS;
 
-    // 6) 1% of this month's profit — Zakat / the poor's due.
+    // 6) 1% of this month's profit — حق الله.
     const zakat = monthProfit * 0.01;
 
     const row = (label, value) => `<div class="detail-row"><span class="detail-label">${label}</span><span class="detail-value">${value}</span></div>`;
@@ -4537,10 +4577,10 @@
       row('— Internal balance (Bedir/Hazem/UVA)', fmtEGP(internalNet)),
       row('— Owed to us (external)', fmtEGP(owedToUs)),
       row('— We owe (external)', fmtEGP(weOwe)),
-      row('Pending orders total', fmtEGP(pendingOrdersTotal) + ' (' + pendingOrders.length + ' orders)'),
+      row('Payment pending total', fmtEGP(pendingOrdersTotal) + ' (' + pendingOrders.length + ' orders)'),
       row('Sales this month', fmtEGP(monthSales)),
       row('Profit this month', fmtEGP(monthProfit)),
-      row('1% of profit (for the poor)', fmtEGP(zakat)),
+      row('1% of profit (حق الله)', fmtEGP(zakat)),
     ].join('');
   }
   $('summaryBtn').addEventListener('click', openSummaryModal);
