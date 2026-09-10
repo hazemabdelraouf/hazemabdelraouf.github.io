@@ -3651,7 +3651,7 @@
     const cards = [
       { label:'Bedir balance', val:b.Bedir||0, hint: (b.Bedir||0) >= 0 ? 'Company owes him' : 'He owes the company' },
       { label:'Hazem balance', val:b.Hazem||0, hint: (b.Hazem||0) >= 0 ? 'Company owes him' : 'He owes the company' },
-      { label:'UVA balance (company)', val:b.UVA||0, hint:'Net company account movement' },
+      { label:'UVA balance', val:b.UVA||0, hint: (b.UVA||0) >= 0 ? 'Company owes UVA' : 'UVA owes the company' },
       { label:'Owed to us', val:debtTotals.owedToUs||0, hint:'From external customers/parties', forcePos:true },
       { label:'We owe', val:debtTotals.weOwe||0, hint:'To external suppliers/parties', forceNeg:true },
     ];
@@ -3943,14 +3943,17 @@
     }
   }
 
-  // ---- Direction options change depending on the selected account ----
+  // ---- Direction options change depending on the selected account.
+  // UVA is treated exactly like Bedir/Hazem now — as an account that can
+  // pay for the company out of its own funds (+) or be paid by the company
+  // (-), not as the company's own cash register. ----
   function refreshExpDirectionOptions(){
     const account = $('expAccount').value;
     const dirSelect = $('expDirection');
     if(account === 'UVA'){
       dirSelect.innerHTML = `
-        <option value="positive">Deposit into company account (+)</option>
-        <option value="negative">Payment/withdrawal from company account (-)</option>`;
+        <option value="positive">Paid from UVA (company owes UVA)</option>
+        <option value="negative">Paid to UVA (UVA owes the company)</option>`;
     } else {
       dirSelect.innerHTML = `
         <option value="positive">Paid from his own pocket (company owes him)</option>
