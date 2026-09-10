@@ -278,6 +278,7 @@
   }
   .order-sub{color:var(--cream-dim);font-size:12.5px;margin-top:2px;display:flex;gap:10px;flex-wrap:wrap;}
   .order-total{font-family:'Cairo';font-weight:800;font-size:15.5px;color:var(--cream);}
+  .order-shipping{color:var(--cream-dim);font-size:10.5px;margin-top:-2px;}
 
   .drip-line{display:flex;align-items:center;gap:4px;margin:12px 0 10px;}
   .drip-seg{flex:1;height:3.5px;border-radius:2px;background:var(--line);}
@@ -3080,7 +3081,12 @@
     const drip = dripState(o.shipping_status);
     const ship = o.shipping_status || '';
     const pay = o.payment_status || '';
-    const total = o.total ? (parseFloat(o.total)||o.total) + ' EGP' : '—';
+    // Card's headline number is the COD (what the customer actually pays,
+    // shipping included) rather than "Total" (order value only, no shipping).
+    const codNum = parseFloat(o.COD);
+    const totalNum = parseFloat(o.total);
+    const total = !isNaN(codNum) ? codNum + ' EGP' : (o.total ? (parseFloat(o.total)||o.total) + ' EGP' : '—');
+    const shippingDiff = (!isNaN(codNum) && !isNaN(totalNum)) ? Math.round((codNum - totalNum) * 100) / 100 : null;
     const city = [o.Gov, o.city].filter(Boolean).join(' - ');
     const serial = o['Order Serial'] || '';
     const orderId = o['order ID'] || serial;
@@ -3126,7 +3132,8 @@
         <div class="status-icon" title="Shipping: ${escapeAttr(SHIP_LABELS[ship]||ship||'No status')}">${shipStatusIcon(ship)}</div>
         <div style="text-align:right;">
           <div class="order-total">${total}</div>
-          <div class="order-date">${fmtDate(o[resolveCreatedAtKey(o)] || o.Updated)}</div>
+          ${shippingDiff !== null ? `<div class="order-shipping">shipping ${shippingDiff} EGP</div>` : ''}
+          <div class="order-date" style="margin-top:6px;">${fmtDate(o[resolveCreatedAtKey(o)] || o.Updated)}</div>
           ${o.pickup_location ? `<div class="order-date">Shipped from ${escapeHtml(o.pickup_location)}</div>` : ''}
         </div>
       </div>
