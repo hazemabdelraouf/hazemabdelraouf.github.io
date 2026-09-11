@@ -2120,7 +2120,7 @@
         name = oldFormat[2].trim();
       }
       const product = findProductByName(name);
-      if(product) return { name: product.name, qty, salePrice: product.salePrice, weight: product.weight };
+      if(product) return { name: product.name, qty, salePrice: product.salePrice, weight: product.weight, sku: product.sku };
       return { name, qty, salePrice: 0, weight: 0, custom: true };
     });
   }
@@ -2147,13 +2147,18 @@
         // صف Items القديم مالوش سعر محفوظ (قبل ما العمود يتضاف).
         const rowPrice = Number(row.salePrice);
         const salePrice = (!isNaN(rowPrice) && rowPrice > 0) ? rowPrice : (product ? product.salePrice : 0);
+        // الوزن بنفس منطق السعر بالظبط: بياخد وزن الصنف وقت الأوردر من
+        // شيت Items نفسه (عمود "weight")، ولو الصف قديم من قبل ما العمود
+        // يتضاف (أو الوزن صفر) بيرجع لوزن شيت products الحالي كـ fallback.
+        const rowWeight = Number(row.weight);
+        const weight = (!isNaN(rowWeight) && rowWeight > 0) ? rowWeight : (product ? product.weight : 0);
         if(product){
-          return { name: product.name, qty: Math.max(1, Number(row.quantity) || 1), salePrice: salePrice, weight: product.weight, sku: product.sku };
+          return { name: product.name, qty: Math.max(1, Number(row.quantity) || 1), salePrice: salePrice, weight: weight, sku: product.sku };
         }
         // صنف فى شيت Items مالوش SKU متطابق فى شيت المنتجات دلوقتي (مثلاً
         // منتج بايع أو الاسم اتغيّر) — يفضل يظهر للمراجعة بسعره المحفوظ
         // (لو موجود)، وقيمته الأصلية بتتحفظ فى الـ base بدل ما تضيع.
-        return { name: row.item || '(unknown item)', qty: Math.max(1, Number(row.quantity) || 1), salePrice: salePrice, weight: 0, custom: !salePrice };
+        return { name: row.item || '(unknown item)', qty: Math.max(1, Number(row.quantity) || 1), salePrice: salePrice, weight: weight, sku: row.sku || '', custom: !salePrice };
       });
     } else {
       // أوردر قديم قبل ما شيت Items يتضاف لهذا الأوردر — نرجع لتحليل النص
@@ -2254,7 +2259,7 @@
     if(existing){
       existing.qty += qty;
     } else {
-      editItemsList.push({ name: product.name, qty, salePrice: product.salePrice, weight: product.weight });
+      editItemsList.push({ name: product.name, qty, salePrice: product.salePrice, weight: product.weight, sku: product.sku });
     }
     qtyInput.value = '1';
     $('itemsEditorSearch').value = '';
@@ -2304,6 +2309,16 @@
     if(payload.items){
       payload.items = String(payload.items).split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(', ');
     }
+    // Structured items array (title/SKU/weight/quantity) built from the
+    // items editor's current list, on top of the comma-separated "items"
+    // text above — so Make/downstream automations can read exact per-item
+    // data instead of re-parsing the free-text string.
+    payload.items_array = editItemsList.map(it => ({
+      title: it.name,
+      sku: it.sku || '',
+      weight: it.weight || 0,
+      quantity: it.qty
+    }));
 
     hideEditOrderModal();
     logOrderAction(serial, 'Order edited');
@@ -2321,8 +2336,12 @@
       // Build query string so Make captures variables directly from URL parameters
       const urlParams = new URLSearchParams();
       for (const key in payload) {
-        if (payload[key] !== undefined && payload[key] !== null) {
-          urlParams.append(key, payload[key]);
+        const val = payload[key];
+        if (val !== undefined && val !== null) {
+          // Arrays/objects (e.g. items_array) need to be JSON-encoded before
+          // going into a query string — otherwise URLSearchParams just calls
+          // toString() on them and you get "[object Object]".
+          urlParams.append(key, (typeof val === 'object') ? JSON.stringify(val) : val);
         }
       }
 
@@ -3385,6 +3404,26 @@
     }
   }
 
+  // ---- Builds the {title, sku, weight, quantity} items array sent to the
+  // update/cancel webhooks (Make.com), from the raw "Items" sheet rows for
+  // a given order serial. Falls back to the live products sheet for
+  // weight/title when a row predates the "weight" column or has no SKU
+  // match, same fallback logic used in initItemsEditor. ----
+  function buildOrderItemsArray(serial){
+    const rows = allOrderItems.filter(it => String(it.orderSerial) === String(serial));
+    return rows.map(row => {
+      const product = findProductBySku(row.sku) || findProductByName(row.item);
+      const rowWeight = Number(row.weight);
+      const weight = (!isNaN(rowWeight) && rowWeight > 0) ? rowWeight : (product ? product.weight : 0);
+      return {
+        title: row.item || (product ? product.name : ''),
+        sku: row.sku || (product ? product.sku : '') || '',
+        weight: weight,
+        quantity: Number(row.quantity) || 0
+      };
+    });
+  }
+
   function attachCardHandlers(){
     document.querySelectorAll('[data-toggle]').forEach(btn=>{
       if(btn._bound) return; btn._bound = true;
@@ -3421,10 +3460,12 @@
         const serial = btn.getAttribute('data-serial');
         if(!serial) return;
         if(!confirm('Cancel this order (' + serial + ')?')) return;
+        if(!allOrderItems.length) await fetchOrderItems();
         logOrderAction(serial, 'Cancel order requested');
         await sendMakeWebhook(btn, {
           "order serial": serial,
-          "event": "cancel order"
+          "event": "cancel order",
+          "items_array": buildOrderItemsArray(serial)
         }, 'Cancel requested', CANCEL_WEBHOOK_URL);
       });
     });
