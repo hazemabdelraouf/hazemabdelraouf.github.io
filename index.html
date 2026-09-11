@@ -2141,13 +2141,19 @@
     if(sheetRows.length){
       editItemsList = sheetRows.map(row => {
         const product = findProductBySku(row.sku) || findProductByName(row.item);
+        // السعر بيتاخد من شيت Items نفسه (سعر وقت الأوردر)، مش من شيت
+        // products اللايف — لأن سعر المنتج ممكن يتغيّر بعد كذا، وده كان
+        // بيبوّظ حساب الأوردرات القديمة. بيرجع لسعر شيت products بس لو
+        // صف Items القديم مالوش سعر محفوظ (قبل ما العمود يتضاف).
+        const rowPrice = Number(row.salePrice);
+        const salePrice = (!isNaN(rowPrice) && rowPrice > 0) ? rowPrice : (product ? product.salePrice : 0);
         if(product){
-          return { name: product.name, qty: Math.max(1, Number(row.quantity) || 1), salePrice: product.salePrice, weight: product.weight, sku: product.sku };
+          return { name: product.name, qty: Math.max(1, Number(row.quantity) || 1), salePrice: salePrice, weight: product.weight, sku: product.sku };
         }
         // صنف فى شيت Items مالوش SKU متطابق فى شيت المنتجات دلوقتي (مثلاً
-        // منتج بايع أو الاسم اتغيّر) — يفضل يظهر للمراجعة، وقيمته الأصلية
-        // بتتحفظ فى الـ base بدل ما تضيع، بدل ما نفرض سعر خطأ عليه.
-        return { name: row.item || '(unknown item)', qty: Math.max(1, Number(row.quantity) || 1), salePrice: 0, weight: 0, custom: true };
+        // منتج بايع أو الاسم اتغيّر) — يفضل يظهر للمراجعة بسعره المحفوظ
+        // (لو موجود)، وقيمته الأصلية بتتحفظ فى الـ base بدل ما تضيع.
+        return { name: row.item || '(unknown item)', qty: Math.max(1, Number(row.quantity) || 1), salePrice: salePrice, weight: 0, custom: !salePrice };
       });
     } else {
       // أوردر قديم قبل ما شيت Items يتضاف لهذا الأوردر — نرجع لتحليل النص
