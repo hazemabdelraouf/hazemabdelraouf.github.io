@@ -2316,6 +2316,7 @@
     payload.items_array = editItemsList.map(it => ({
       title: it.name,
       sku: it.sku || '',
+      price: it.salePrice || 0,
       weight: it.weight || 0,
       quantity: it.qty
     }));
@@ -3364,20 +3365,12 @@
   // match by Order Serial. If the Items sheet has no rows for an order
   // (e.g. it predates the new sheet), we fall back to the old text field. ----
   function itemsRowFromOrder(o, serial){
-    const fromSheet = allOrderItems.filter(it => String(it.orderSerial) === String(serial));
-    if(fromSheet.length){
-      const lines = fromSheet.map(it => {
-        const qty = it.quantity;
-        const qtyPart = (qty !== '' && qty !== null && qty !== undefined && qty !== 0) ? (qty + 'x ') : '';
-        const namePart = it.item || '';
-        const optionPart = it.option ? ` (${it.option})` : '';
-        const skuPart = it.sku ? ` — ${it.sku}` : '';
-        return `${qtyPart}${namePart}${optionPart}${skuPart}`.trim();
-      }).filter(Boolean);
-      if(lines.length){
-        return `<div class="items-row"><span class="detail-label">Items</span><span class="items-list">${lines.map(l=>escapeHtml(l)).join('<br>')}</span></div>`;
-      }
-    }
+    // Display always comes from Sheet1's own "items" text cell (each comma-
+    // separated value rendered on its own line) — NOT from the "Items"
+    // sheet. The "Items" sheet (allOrderItems) is only used to build the
+    // structured items_array sent to the update/cancel webhooks (see
+    // buildOrderItemsArray below), so the two stay independent on purpose:
+    // what the staff sees here is exactly Sheet1's items cell.
     return itemsRow('Items', o.items);
   }
 
@@ -3415,9 +3408,15 @@
       const product = findProductBySku(row.sku) || findProductByName(row.item);
       const rowWeight = Number(row.weight);
       const weight = (!isNaN(rowWeight) && rowWeight > 0) ? rowWeight : (product ? product.weight : 0);
+      // Sale price at order time, same fallback logic as weight: prefer the
+      // price stored on the Items sheet row itself, and only fall back to
+      // the live products sheet price if this row predates that column.
+      const rowPrice = Number(row.salePrice);
+      const price = (!isNaN(rowPrice) && rowPrice > 0) ? rowPrice : (product ? product.salePrice : 0);
       return {
         title: row.item || (product ? product.name : ''),
         sku: row.sku || (product ? product.sku : '') || '',
+        price: price,
         weight: weight,
         quantity: Number(row.quantity) || 0
       };
