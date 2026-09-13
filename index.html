@@ -852,6 +852,12 @@
 
   <div class="stat-scroll" id="inventoryStatScroll"></div>
 
+  <div class="filters">
+    <div class="search-row">
+      <input type="search" id="inventorySearch" placeholder="Search product by name or SKU...">
+    </div>
+  </div>
+
   <div id="inventoryList"></div>
   <div class="exp-empty" id="inventoryEmpty" style="display:none;">No stock recorded yet.</div>
 </div>
@@ -1001,15 +1007,14 @@
     <div class="edit-field-group">
       <label>Category</label>
       <select id="expCategory">
-        <option value="Purchase">Purchase (cost of goods)</option>
-        <option value="Ads">Ads</option>
-        <option value="Subscription">Subscription</option>
+        <option value="Aramex">Aramex</option>
+        <option value="Tips Saad">Tips Saad</option>
+        <option value="Delivery">Delivery</option>
         <option value="Order collection">Order collection</option>
-        <option value="Deposit">Deposit to company account</option>
-        <option value="Debt settlement">Debt settlement</option>
-        <option value="Aramex tips &amp; delivery tips">Aramex tips &amp; delivery tips</option>
-        <option value="General expense">General expense</option>
-        <option value="Other">Other</option>
+        <option value="Facebook ads">Facebook ads</option>
+        <option value="Make">Make</option>
+        <option value="Ycloud">Ycloud</option>
+        <option value="Others">Others</option>
       </select>
     </div>
     <div class="edit-field-group">
@@ -3708,6 +3713,7 @@
   function showInventoryView(){
     $('expensesView').style.display = 'none';
     $('inventoryView').style.display = 'block';
+    $('inventorySearch').value = '';
     fetchProducts(true).then(renderInventory);
   }
   function hideInventoryView(){
@@ -3715,9 +3721,11 @@
     $('expensesView').style.display = 'block';
   }
   function renderInventory(){
+    const query = $('inventorySearch').value.trim().toLowerCase();
     const rows = allProducts
       .filter(p => (Number(p.balance) || 0) > 0)
-      .map(p => ({ name: p.name, qty: Number(p.balance) || 0, cost: Number(p.cost) || 0 }))
+      .map(p => ({ name: p.name, sku: p.sku || '', qty: Number(p.balance) || 0, cost: Number(p.cost) || 0 }))
+      .filter(r => !query || r.name.toLowerCase().includes(query) || r.sku.toLowerCase().includes(query))
       .sort((a, b) => (b.qty * b.cost) - (a.qty * a.cost));
 
     const totalQty = rows.reduce((s, r) => s + r.qty, 0);
@@ -3738,6 +3746,7 @@
     if(!rows.length){
       list.innerHTML = '';
       $('inventoryEmpty').style.display = 'block';
+      $('inventoryEmpty').textContent = query ? 'No matching products.' : 'No stock recorded yet.';
     } else {
       $('inventoryEmpty').style.display = 'none';
       list.innerHTML = rows.map(r => `
@@ -3749,6 +3758,7 @@
           <div class="exp-meta">
             <span>${r.qty} units</span>
             <span>avg cost ${r.cost.toFixed(2)} EGP</span>
+            ${r.sku ? `<span>SKU: ${escapeHtml(r.sku)}</span>` : ''}
           </div>
         </div>
       `).join('');
@@ -3757,6 +3767,7 @@
   $('inventoryBtn').addEventListener('click', showInventoryView);
   $('inventoryBackBtn').addEventListener('click', hideInventoryView);
   $('inventoryRefreshBtn').addEventListener('click', ()=> fetchProducts(true).then(renderInventory));
+  $('inventorySearch').addEventListener('input', renderInventory);
 
   function balanceClass(n){
     if(n > 0.5) return 'pos';
@@ -3924,9 +3935,9 @@
     refreshExpDirectionOptions();
     $('expDirection').value = direction;
     $('expAmount').value = amount || '';
-    $('expCategory').value = item['Category'] || 'General expense';
+    $('expCategory').value = item['Category'] || 'Others';
     if(![...$('expCategory').options].some(o => o.value === $('expCategory').value)){
-      $('expCategory').value = 'Other';
+      $('expCategory').value = 'Others';
     }
     $('expDescription').value = item['Description'] || '';
     const d = item['Date'] ? new Date(item['Date']) : new Date();
@@ -4092,7 +4103,7 @@
     $('expAmount').disabled = false;
     refreshExpDirectionOptions();
     $('expAmount').value = '';
-    $('expCategory').value = 'Purchase';
+    $('expCategory').value = 'Others';
     $('expDescription').value = '';
     $('expDate').value = nowLocalDateTime();
     $('expError').textContent = '';
