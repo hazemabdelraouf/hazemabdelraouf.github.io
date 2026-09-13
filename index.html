@@ -4577,10 +4577,13 @@
   $('transferModal').addEventListener('click', (e)=>{ if(e.target === $('transferModal')) $('transferModal').classList.remove('active'); });
 
   // ---- Summary: inventory value, internal/external debts, payment-pending
-  // orders, and this month's sales & profit (with 1% set aside as حق الله). Pulls
-  // from whatever's already loaded (allProducts/allOrders/expenseBalances/
-  // debtTotals) and only fetches what's missing, so opening this from a
-  // fresh page load still works. ----
+  // orders, and this month's sales, gross & net profit (net = gross minus
+  // this month's Aramex/Tips Saad/Delivery/Facebook ads/Make/Ycloud/Others
+  // transactions — "Order collection" excluded on purpose, see the P&L
+  // categories comment below — with 1% of net set aside as حق الله).
+  // Pulls from whatever's already loaded (allProducts/allOrders/
+  // expenseBalances/debtTotals/allExpenses) and only fetches what's
+  // missing, so opening this from a fresh page load still works. ----
   async function openSummaryModal(){
     $('summaryModal').classList.add('active');
     $('summaryContent').innerHTML = `<div class="detail-row"><span class="detail-label">Loading…</span><span class="detail-value"></span></div>`;
@@ -4671,8 +4674,32 @@
     });
     const monthProfit = monthSales - monthCOGS;
 
-    // 6) 1% of this month's profit — حق الله.
-    const zakat = monthProfit * 0.01;
+    // 6) Operating expenses this month — every internal transaction whose
+    // category is one of the fixed P&L categories (Aramex, Tips Saad,
+    // Delivery, Facebook ads, Make, Ycloud, Others — "Order collection" is
+    // deliberately excluded, since it's just cash-in-transit tracking, not
+    // an actual business cost), dated within this same month window. These
+    // get deducted from gross profit before net profit (and حق الله) are
+    // computed, regardless of which account (Bedir/Hazem/UVA) the amount
+    // sits under or which direction it's recorded in — the category alone
+    // decides whether it's a cost to the business.
+    const PL_EXPENSE_CATEGORIES = ['aramex','tips saad','delivery','facebook ads','make','ycloud','others'];
+    const monthCategoryExpenses = allExpenses.reduce((sum, row) => {
+      const cat = String(row['Category'] || '').trim().toLowerCase();
+      if(!PL_EXPENSE_CATEGORIES.includes(cat)) return sum;
+      const d = new Date(row['Date']);
+      if(isNaN(d.getTime()) || d < monthStart || d > now) return sum;
+      let amount = 0;
+      ['Bedir','Hazem','UVA'].forEach(p=>{
+        const n = Number(row[p]);
+        if(row[p] !== '' && row[p] !== null && row[p] !== undefined && !isNaN(n) && n !== 0) amount = n;
+      });
+      return sum + Math.abs(amount);
+    }, 0);
+    const netProfit = monthProfit - monthCategoryExpenses;
+
+    // 7) 1% of this month's NET profit (after the category expenses above) — حق الله.
+    const zakat = netProfit * 0.01;
 
     const row = (label, value) => `<div class="detail-row"><span class="detail-label">${label}</span><span class="detail-value">${value}</span></div>`;
 
@@ -4680,11 +4707,13 @@
       row('Physical inventory value', fmtEGP(inventoryValue)),
       row('— Internal balance (Bedir/Hazem/UVA)', fmtEGP(internalNet)),
       row('— Owed to us (external)', fmtEGP(owedToUs)),
-      row('— We owe (external)', fmtEGP(weOwe)),
+      row('— We owe (external)', fmtEGP(-weOwe)),
       row('Not-yet-paid orders total', fmtEGP(pendingOrdersTotal) + ' (' + pendingOrders.length + ' orders)'),
       row('Sales this month', fmtEGP(monthSales)),
-      row('Profit this month', fmtEGP(monthProfit)),
-      row('1% of profit (حق الله)', fmtEGP(zakat)),
+      row('Gross profit this month', fmtEGP(monthProfit)),
+      row('— Operating expenses this month', fmtEGP(-monthCategoryExpenses)),
+      row('Net profit this month', fmtEGP(netProfit)),
+      row('1% of net profit (حق الله)', fmtEGP(zakat)),
     ].join('');
   }
   $('summaryBtn').addEventListener('click', openSummaryModal);
