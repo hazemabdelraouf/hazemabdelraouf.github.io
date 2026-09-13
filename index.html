@@ -2004,7 +2004,7 @@
 
   // ---- Items editor: pick products from the "products" sheet, add/remove
   // them with a quantity, and auto-total the weight/total/COD/pieces fields. ----
-  let editItemsList = []; // [{name, qty, salePrice, weight, custom}]
+  let editItemsList = []; // [{name, qty, salePrice, weight, sku, option, date, custom}]
   let editItemsBase = { total: 0, weight: 0 }; // pre-existing (legacy/unmatched) amount to add matched items on top of
   // COD isn't just the order's total — it's Total + Shipping cost. We keep
   // that shipping fee here so recomputing the total from the items list
@@ -2120,8 +2120,8 @@
         name = oldFormat[2].trim();
       }
       const product = findProductByName(name);
-      if(product) return { name: product.name, qty, salePrice: product.salePrice, weight: product.weight, sku: product.sku };
-      return { name, qty, salePrice: 0, weight: 0, custom: true };
+      if(product) return { name: product.name, qty, salePrice: product.salePrice, weight: product.weight, sku: product.sku, option: '', date: '' };
+      return { name, qty, salePrice: 0, weight: 0, custom: true, option: '', date: '' };
     });
   }
   async function initItemsEditor(order){
@@ -2152,13 +2152,16 @@
         // يتضاف (أو الوزن صفر) بيرجع لوزن شيت products الحالي كـ fallback.
         const rowWeight = Number(row.weight);
         const weight = (!isNaN(rowWeight) && rowWeight > 0) ? rowWeight : (product ? product.weight : 0);
+        // option وdate بيتحفظوا زي ما هما من صف شيت Items الأصلي، عشان لو
+        // اتضافوا (أو اتعدلوا) صنف واحد بس، باقي الأصناف يرجعوا يتكتبوا
+        // بنفس الـ option/date بتوعهم القديمة لما نعيد كتابة الشيت.
         if(product){
-          return { name: product.name, qty: Math.max(1, Number(row.quantity) || 1), salePrice: salePrice, weight: weight, sku: product.sku };
+          return { name: product.name, qty: Math.max(1, Number(row.quantity) || 1), salePrice: salePrice, weight: weight, sku: product.sku, option: row.option || '', date: row.date || '' };
         }
         // صنف فى شيت Items مالوش SKU متطابق فى شيت المنتجات دلوقتي (مثلاً
         // منتج بايع أو الاسم اتغيّر) — يفضل يظهر للمراجعة بسعره المحفوظ
         // (لو موجود)، وقيمته الأصلية بتتحفظ فى الـ base بدل ما تضيع.
-        return { name: row.item || '(unknown item)', qty: Math.max(1, Number(row.quantity) || 1), salePrice: salePrice, weight: weight, sku: row.sku || '', custom: !salePrice };
+        return { name: row.item || '(unknown item)', qty: Math.max(1, Number(row.quantity) || 1), salePrice: salePrice, weight: weight, sku: row.sku || '', custom: !salePrice, option: row.option || '', date: row.date || '' };
       });
     } else {
       // أوردر قديم قبل ما شيت Items يتضاف لهذا الأوردر — نرجع لتحليل النص
@@ -2259,7 +2262,7 @@
     if(existing){
       existing.qty += qty;
     } else {
-      editItemsList.push({ name: product.name, qty, salePrice: product.salePrice, weight: product.weight, sku: product.sku });
+      editItemsList.push({ name: product.name, qty, salePrice: product.salePrice, weight: product.weight, sku: product.sku, option: '', date: '' });
     }
     qtyInput.value = '1';
     $('itemsEditorSearch').value = '';
@@ -2309,22 +2312,52 @@
     if(payload.items){
       payload.items = String(payload.items).split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(', ');
     }
-    // Structured items array (title/SKU/weight/quantity) built from the
-    // items editor's current list, on top of the comma-separated "items"
-    // text above — so Make/downstream automations can read exact per-item
-    // data instead of re-parsing the free-text string.
-    payload.items_array = editItemsList.map(it => ({
-      title: it.name,
-      sku: it.sku || '',
-      price: it.salePrice || 0,
-      weight: it.weight || 0,
-      quantity: it.qty
-    }));
 
     hideEditOrderModal();
     logOrderAction(serial, 'Order edited');
+    // Replace ALL of this order's rows in the "Items" sheet with the
+    // editor's current list — instead of sending a separate items_array to
+    // the webhook, the Apps Script backend deletes the order's old rows and
+    // writes the new ones directly, so the sheet itself stays the single
+    // source of truth for per-item detail.
+    await syncOrderItemsSheet(serial, payload);
     await sendMakeWebhook(btn, payload, 'Order updated', EDIT_WEBHOOK_URL);
   });
+
+  // ---- Rewrites this order's rows in the "Items" sheet to match the items
+  // editor's current list: deletes every existing row for this order serial
+  // and appends fresh ones, via the Apps Script "updateOrderItems" action.
+  // Runs on every order update so the sheet reflects the edit exactly. ----
+  async function syncOrderItemsSheet(serial, payload){
+    if(!API_URL) return;
+    const body = {
+      action: 'updateOrderItems',
+      orderSerial: serial,
+      customerName: payload['Customer Name'] || '',
+      phone: payload['Phone'] || '',
+      items: editItemsList.map(it => ({
+        item: it.name,
+        option: it.option || '',
+        quantity: it.qty,
+        sku: it.sku || '',
+        date: it.date || '',
+        salePrice: it.salePrice || 0,
+        weight: it.weight || 0
+      }))
+    };
+    try{
+      const res = await fetch(API_URL, { method:'POST', redirect:'follow', body: JSON.stringify(body) });
+      const data = await res.json();
+      if(data && data.error){
+        console.error('updateOrderItems error:', data.error);
+      } else {
+        await fetchOrderItems(); // refresh the cached Items rows so the UI matches the sheet
+      }
+    }catch(err){
+      console.error('updateOrderItems request failed:', err);
+    }
+  }
+
 
 
     async function sendMakeWebhook(btn, payload, successDefaultMsg, webhookUrl){
@@ -3359,18 +3392,15 @@
     return `<div class="items-row"><span class="detail-label">${escapeHtml(label)}</span><span class="items-list">${lines.map(l=>escapeHtml(l)).join('<br>')}</span></div>`;
   }
 
-  // ---- Items now come from a separate "Items" sheet — one row per item,
-  // repeating "order serial" for every item that belongs to the same order —
-  // instead of the single free-text "items" cell on the order itself. We
-  // match by Order Serial. If the Items sheet has no rows for an order
-  // (e.g. it predates the new sheet), we fall back to the old text field. ----
+  // ---- Items live in a separate "Items" sheet — one row per item, repeating
+  // "order serial" for every item that belongs to the same order — used by
+  // the items editor (initItemsEditor) and kept in sync with the edited list
+  // via the "updateOrderItems" backend action on every order update. ----
   function itemsRowFromOrder(o, serial){
     // Display always comes from Sheet1's own "items" text cell (each comma-
     // separated value rendered on its own line) — NOT from the "Items"
-    // sheet. The "Items" sheet (allOrderItems) is only used to build the
-    // structured items_array sent to the update/cancel webhooks (see
-    // buildOrderItemsArray below), so the two stay independent on purpose:
-    // what the staff sees here is exactly Sheet1's items cell.
+    // sheet, which is only the backing store for the items editor and the
+    // updateOrderItems sync described above.
     return itemsRow('Items', o.items);
   }
 
@@ -3395,32 +3425,6 @@
     }catch(err){
       console.error('fetchOrderItems error:', err);
     }
-  }
-
-  // ---- Builds the {title, sku, weight, quantity} items array sent to the
-  // update/cancel webhooks (Make.com), from the raw "Items" sheet rows for
-  // a given order serial. Falls back to the live products sheet for
-  // weight/title when a row predates the "weight" column or has no SKU
-  // match, same fallback logic used in initItemsEditor. ----
-  function buildOrderItemsArray(serial){
-    const rows = allOrderItems.filter(it => String(it.orderSerial) === String(serial));
-    return rows.map(row => {
-      const product = findProductBySku(row.sku) || findProductByName(row.item);
-      const rowWeight = Number(row.weight);
-      const weight = (!isNaN(rowWeight) && rowWeight > 0) ? rowWeight : (product ? product.weight : 0);
-      // Sale price at order time, same fallback logic as weight: prefer the
-      // price stored on the Items sheet row itself, and only fall back to
-      // the live products sheet price if this row predates that column.
-      const rowPrice = Number(row.salePrice);
-      const price = (!isNaN(rowPrice) && rowPrice > 0) ? rowPrice : (product ? product.salePrice : 0);
-      return {
-        title: row.item || (product ? product.name : ''),
-        sku: row.sku || (product ? product.sku : '') || '',
-        price: price,
-        weight: weight,
-        quantity: Number(row.quantity) || 0
-      };
-    });
   }
 
   function attachCardHandlers(){
@@ -3459,12 +3463,10 @@
         const serial = btn.getAttribute('data-serial');
         if(!serial) return;
         if(!confirm('Cancel this order (' + serial + ')?')) return;
-        if(!allOrderItems.length) await fetchOrderItems();
         logOrderAction(serial, 'Cancel order requested');
         await sendMakeWebhook(btn, {
           "order serial": serial,
-          "event": "cancel order",
-          "items_array": buildOrderItemsArray(serial)
+          "event": "cancel order"
         }, 'Cancel requested', CANCEL_WEBHOOK_URL);
       });
     });
