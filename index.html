@@ -2345,6 +2345,20 @@
         weight: it.weight || 0
       }))
     };
+    await sendUpdateOrderItems(body);
+  }
+
+  // ---- Wipes this order's rows from the "Items" sheet entirely (an empty
+  // items list), which also makes updateOrderItems restore the full old
+  // quantity of every removed item back onto the products sheet's Balance
+  // (matched by SKU) — used when an order is cancelled, since nothing is
+  // being ordered anymore. ----
+  async function clearOrderItemsSheet(serial){
+    if(!API_URL) return;
+    await sendUpdateOrderItems({ action: 'updateOrderItems', orderSerial: serial, items: [] });
+  }
+
+  async function sendUpdateOrderItems(body){
     try{
       const res = await fetch(API_URL, { method:'POST', redirect:'follow', body: JSON.stringify(body) });
       const data = await res.json();
@@ -2357,7 +2371,6 @@
       console.error('updateOrderItems request failed:', err);
     }
   }
-
 
 
     async function sendMakeWebhook(btn, payload, successDefaultMsg, webhookUrl){
@@ -3464,6 +3477,11 @@
         if(!serial) return;
         if(!confirm('Cancel this order (' + serial + ')?')) return;
         logOrderAction(serial, 'Cancel order requested');
+        // Wipe this order's rows from the "Items" sheet and restore their
+        // quantity onto the products sheet's Balance (by SKU) — same
+        // updateOrderItems backend action used for edits, just with an
+        // empty items list.
+        await clearOrderItemsSheet(serial);
         await sendMakeWebhook(btn, {
           "order serial": serial,
           "event": "cancel order"
