@@ -1014,6 +1014,7 @@
         <option value="Facebook ads">Facebook ads</option>
         <option value="Make">Make</option>
         <option value="Ycloud">Ycloud</option>
+        <option value="Purchase">Purchase</option>
         <option value="Others">Others</option>
       </select>
     </div>
@@ -4676,13 +4677,15 @@
 
     // 6) Operating expenses this month — every internal transaction whose
     // category is one of the fixed P&L categories (Aramex, Tips Saad,
-    // Delivery, Facebook ads, Make, Ycloud, Others — "Order collection" is
-    // deliberately excluded, since it's just cash-in-transit tracking, not
-    // an actual business cost), dated within this same month window. These
-    // get deducted from gross profit before net profit (and حق الله) are
-    // computed, regardless of which account (Bedir/Hazem/UVA) the amount
-    // sits under or which direction it's recorded in — the category alone
-    // decides whether it's a cost to the business.
+    // Delivery, Facebook ads, Make, Ycloud, Others — "Order collection" and
+    // "Purchase" are deliberately excluded: Order collection is just
+    // cash-in-transit tracking, and Purchase is money spent buying
+    // merchandise, which is already reflected in COGS/gross profit above,
+    // not a separate operating cost), dated within this same month window.
+    // These get deducted from gross profit before net profit (and حق الله)
+    // are computed, regardless of which account (Bedir/Hazem/UVA) the
+    // amount sits under or which direction it's recorded in — the category
+    // alone decides whether it's a cost to the business.
     const PL_EXPENSE_CATEGORIES = ['aramex','tips saad','delivery','facebook ads','make','ycloud','others'];
     const monthCategoryExpenses = allExpenses.reduce((sum, row) => {
       const cat = String(row['Category'] || '').trim().toLowerCase();
