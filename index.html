@@ -1005,6 +1005,10 @@
       <input type="number" id="expAmount" min="0" step="0.01" inputmode="decimal">
     </div>
     <div class="edit-field-group">
+      <label>Commission (EGP) — optional</label>
+      <input type="number" id="expCommission" min="0" step="0.01" inputmode="decimal" placeholder="e.g. transfer/payment fee, if any">
+    </div>
+    <div class="edit-field-group">
       <label>Category</label>
       <select id="expCategory">
         <option value="Aramex">Aramex</option>
@@ -3825,6 +3829,7 @@
       const sign = amount >= 0 ? '+' : '−';
       const linkType = String(row['LinkType'] || '').trim();
       const linkLabel = LINK_TYPE_LABELS[linkType];
+      const commission = Number(row['Commission']) || 0;
       return `<div class="exp-row">
         <div class="exp-row-top">
           <div>
@@ -3834,6 +3839,7 @@
               ${row['Category'] ? `<span class="exp-badge">${escapeHtml(row['Category'])}</span>` : ''}
               <span>${escapeHtml(fmtShortDateTime(row['Date']))}</span>
               ${linkLabel ? `<span>${escapeHtml(linkLabel)}</span>` : ''}
+              ${commission > 0 ? `<span>incl. ${fmtEGP(commission)} commission</span>` : ''}
             </div>
           </div>
           <div class="exp-amount ${cls}">${sign} ${fmtEGP(Math.abs(amount))}</div>
@@ -3931,11 +3937,16 @@
         account = p; amount = Math.abs(n); direction = n >= 0 ? 'positive' : 'negative';
       }
     });
+    // The stored account amount is base amount + commission combined —
+    // split them back apart so the two fields show correctly for editing.
+    const commission = Math.max(0, Number(item['Commission']) || 0);
+    const baseAmount = Math.max(0, amount - commission);
 
     $('expAccount').value = account;
     refreshExpDirectionOptions();
     $('expDirection').value = direction;
-    $('expAmount').value = amount || '';
+    $('expAmount').value = baseAmount || '';
+    $('expCommission').value = commission || '';
     $('expCategory').value = item['Category'] || 'Others';
     if(![...$('expCategory').options].some(o => o.value === $('expCategory').value)){
       $('expCategory').value = 'Others';
@@ -3952,6 +3963,7 @@
     $('expAccount').disabled = isLinked;
     $('expDirection').disabled = isLinked;
     $('expAmount').disabled = isLinked;
+    $('expCommission').disabled = isLinked;
     const note = $('expLinkedNote');
     if(isLinked){
       note.style.display = 'block';
@@ -4102,8 +4114,10 @@
     $('expAccount').disabled = false;
     $('expDirection').disabled = false;
     $('expAmount').disabled = false;
+    $('expCommission').disabled = false;
     refreshExpDirectionOptions();
     $('expAmount').value = '';
+    $('expCommission').value = '';
     $('expCategory').value = 'Others';
     $('expDescription').value = '';
     $('expDate').value = nowLocalDateTime();
@@ -4199,6 +4213,11 @@
         $('expError').textContent = 'Enter a valid amount greater than zero.';
         return;
       }
+      const commissionVal = $('expCommission').value;
+      if(commissionVal !== '' && (isNaN(parseFloat(commissionVal)) || parseFloat(commissionVal) < 0)){
+        $('expError').textContent = 'Commission must be a valid amount (0 or more).';
+        return;
+      }
     }
     const btn = $('confirmAddExpenseBtn');
     btn.disabled = true;
@@ -4209,6 +4228,7 @@
       // gets saved, same as the purchase/transfer/settle date fields.
       const rawExpDateTime = $('expDate').value;
       const expDateIso = rawExpDateTime ? new Date(rawExpDateTime).toISOString() : new Date().toISOString();
+      const commissionAmount = String(parseFloat($('expCommission').value) || 0);
       const paramsObj = isEdit
         ? {
             action: 'editExpense',
@@ -4222,6 +4242,7 @@
             account: $('expAccount').value,
             direction: $('expDirection').value,
             amount: String(parseFloat($('expAmount').value)),
+            commission: commissionAmount,
             category: $('expCategory').value,
             description: $('expDescription').value,
             date: expDateIso
@@ -4230,6 +4251,7 @@
         paramsObj.account = $('expAccount').value;
         paramsObj.direction = $('expDirection').value;
         paramsObj.amount = String(parseFloat($('expAmount').value));
+        paramsObj.commission = commissionAmount;
       }
       const params = new URLSearchParams(paramsObj);
       const sep = API_URL.includes('?') ? '&' : '?';
@@ -4578,10 +4600,11 @@
   $('transferModal').addEventListener('click', (e)=>{ if(e.target === $('transferModal')) $('transferModal').classList.remove('active'); });
 
   // ---- Summary: inventory value, internal/external debts, payment-pending
-  // orders, and this month's sales, gross & net profit (net = gross minus
-  // this month's Aramex/Tips Saad/Delivery/Facebook ads/Make/Ycloud/Others
-  // transactions — "Order collection" excluded on purpose, see the P&L
-  // categories comment below — with 1% of net set aside as حق الله).
+  // orders, a "Main budget" net-worth figure, and this month's sales,
+  // gross & net profit (net = gross minus this month's Aramex/Tips Saad/
+  // Delivery/Facebook ads/Make/Ycloud/Others transactions — "Order
+  // collection" and "Purchase" excluded on purpose, see the P&L categories
+  // comment below — with 1% of net set aside as حق الله).
   // Pulls from whatever's already loaded (allProducts/allOrders/
   // expenseBalances/debtTotals/allExpenses) and only fetches what's
   // missing, so opening this from a fresh page load still works. ----
@@ -4613,7 +4636,11 @@
     // internal balance still represents company money sitting with that
     // person (not a loss), so each account counts in full regardless of
     // sign — summed as absolute values, not netted against each other.
+    // Also split into "owed to company" (negative balances — an asset) vs
+    // "owed by company" (positive balances — a liability) for Main budget.
     const internalNet = Math.abs(expenseBalances.Bedir||0) + Math.abs(expenseBalances.Hazem||0) + Math.abs(expenseBalances.UVA||0);
+    const internalOwedToCompany = ['Bedir','Hazem','UVA'].reduce((s,p)=> s + Math.max(0, -(expenseBalances[p]||0)), 0);
+    const internalOwedByCompany = ['Bedir','Hazem','UVA'].reduce((s,p)=> s + Math.max(0, (expenseBalances[p]||0)), 0);
     const owedToUs = debtTotals.owedToUs || 0;
     const weOwe = debtTotals.weOwe || 0;
 
@@ -4686,23 +4713,42 @@
     // are computed, regardless of which account (Bedir/Hazem/UVA) the
     // amount sits under or which direction it's recorded in — the category
     // alone decides whether it's a cost to the business.
+    //
+    // Commission handling: a transaction's stored amount already includes
+    // its commission (they're combined when the account balance is
+    // recorded), so for a matching category the full amount is correct as
+    // -is. But a transaction in an EXCLUDED category (Purchase, Order
+    // collection) still had a real payment/transfer commission on it if one
+    // was entered — that fee is a genuine operating cost even though the
+    // underlying purchase/collection itself isn't, so it's added back in on
+    // its own for those rows.
     const PL_EXPENSE_CATEGORIES = ['aramex','tips saad','delivery','facebook ads','make','ycloud','others'];
     const monthCategoryExpenses = allExpenses.reduce((sum, row) => {
-      const cat = String(row['Category'] || '').trim().toLowerCase();
-      if(!PL_EXPENSE_CATEGORIES.includes(cat)) return sum;
       const d = new Date(row['Date']);
       if(isNaN(d.getTime()) || d < monthStart || d > now) return sum;
-      let amount = 0;
-      ['Bedir','Hazem','UVA'].forEach(p=>{
-        const n = Number(row[p]);
-        if(row[p] !== '' && row[p] !== null && row[p] !== undefined && !isNaN(n) && n !== 0) amount = n;
-      });
-      return sum + Math.abs(amount);
+      const cat = String(row['Category'] || '').trim().toLowerCase();
+      const commission = Number(row['Commission']) || 0;
+      if(PL_EXPENSE_CATEGORIES.includes(cat)){
+        let amount = 0;
+        ['Bedir','Hazem','UVA'].forEach(p=>{
+          const n = Number(row[p]);
+          if(row[p] !== '' && row[p] !== null && row[p] !== undefined && !isNaN(n) && n !== 0) amount = n;
+        });
+        return sum + Math.abs(amount); // already includes this row's commission
+      }
+      return sum + Math.abs(commission); // excluded category — only its commission counts
     }, 0);
     const netProfit = monthProfit - monthCategoryExpenses;
 
     // 7) 1% of this month's NET profit (after the category expenses above) — حق الله.
     const zakat = netProfit * 0.01;
+
+    // 8) Main budget = everything that belongs to the company (inventory +
+    // not-yet-paid orders + what's owed to the company, internally and
+    // externally) minus everything the company owes (internally and
+    // externally) — a single "what's actually ours right now" figure.
+    const mainBudget = inventoryValue + pendingOrdersTotal + internalOwedToCompany + owedToUs
+                      - internalOwedByCompany - weOwe;
 
     const row = (label, value) => `<div class="detail-row"><span class="detail-label">${label}</span><span class="detail-value">${value}</span></div>`;
 
@@ -4712,6 +4758,7 @@
       row('— Owed to us (external)', fmtEGP(owedToUs)),
       row('— We owe (external)', fmtEGP(-weOwe)),
       row('Not-yet-paid orders total', fmtEGP(pendingOrdersTotal) + ' (' + pendingOrders.length + ' orders)'),
+      row('Main budget', fmtEGP(mainBudget)),
       row('Sales this month', fmtEGP(monthSales)),
       row('Gross profit this month', fmtEGP(monthProfit)),
       row('— Operating expenses this month', fmtEGP(-monthCategoryExpenses)),
