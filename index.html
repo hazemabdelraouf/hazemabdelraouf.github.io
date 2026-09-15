@@ -2374,11 +2374,17 @@
       const data = await res.json();
       if(data && data.error){
         console.error('updateOrderItems error:', data.error);
+        // Surfaced visibly on purpose: this used to fail silently (console
+        // only), so a broken sync (e.g. Code.gs not redeployed, or a sheet
+        // header mismatch) looked like it worked while the "Items" sheet
+        // quietly kept its old, pre-edit rows.
+        alert('Could not update the Items sheet for this order:\n' + data.error + '\n\nThe order/webhook update still went through, but please double-check the Items sheet for this order.');
       } else {
         await fetchOrderItems(); // refresh the cached Items rows so the UI matches the sheet
       }
     }catch(err){
       console.error('updateOrderItems request failed:', err);
+      alert('Could not reach the sheet to update this order\'s items (network/API error). The order/webhook update still went through, but please double-check the Items sheet for this order.');
     }
   }
 
