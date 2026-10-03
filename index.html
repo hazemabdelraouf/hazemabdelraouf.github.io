@@ -279,6 +279,9 @@
     padding:2px 7px;border-radius:20px;vertical-align:middle;white-space:nowrap;
   }
   /* Inventory item with stock below zero -> red */
+  .stock-edit{display:flex;gap:8px;align-items:center;margin-top:9px;flex-wrap:wrap;}
+  .stock-edit input{width:90px;padding:7px 9px;border-radius:8px;border:1px solid var(--border,#d4d4d8);font-size:14px;font-family:inherit;}
+  .stock-edit .stock-edit-err{color:var(--rust);font-size:11.5px;flex-basis:100%;}
   .exp-row.neg-stock{border-color:var(--rust);background:#fef2f2;}
   .exp-row.neg-stock .exp-desc{color:var(--rust);}
   .exp-row.neg-stock .exp-meta{color:var(--rust);}
@@ -1037,6 +1040,22 @@
         <option value="Purchase">Purchase</option>
         <option value="Others">Others</option>
       </select>
+    </div>
+    <div class="edit-field-group" id="expItemsGroup" style="display:none;">
+      <label>Products taken (deducted from stock)</label>
+      <div id="colItemsList"></div>
+      <div class="pi-add-row">
+        <div class="items-editor-search-wrap" style="flex:1;min-width:140px;">
+          <input type="text" id="colSearch" placeholder="Tap to list all products / search..." autocomplete="off">
+          <div class="items-editor-search-results" id="colSearchResults"></div>
+        </div>
+        <input type="number" id="colQty" min="1" value="1" placeholder="Qty" style="width:60px;">
+        <button type="button" id="colAddBtn" class="btn ghost" style="width:auto;padding:8px 14px;">Add</button>
+      </div>
+      <div class="pi-total-row">
+        <span>Items value</span>
+        <span id="colTotal">0 EGP</span>
+      </div>
     </div>
     <div class="edit-field-group">
       <label>Description</label>
@@ -3876,8 +3895,9 @@
   function renderInventory(){
     const query = $('inventorySearch').value.trim().toLowerCase();
     const rows = allProducts
-      .filter(p => (Number(p.balance) || 0) !== 0)
-      .map(p => ({ name: p.name, sku: p.sku || '', qty: Number(p.balance) || 0, cost: Number(p.cost) || 0 }))
+      // Zero-stock products stay hidden unless you search for them (so you can bring them back up).
+      .filter(p => (Number(p.balance) || 0) !== 0 || !!query)
+      .map(p => ({ row: p._row, name: p.name, sku: p.sku || '', qty: Number(p.balance) || 0, cost: Number(p.cost) || 0 }))
       .filter(r => !query || r.name.toLowerCase().includes(query) || r.sku.toLowerCase().includes(query))
       // Items below zero first (they need attention), then by stock value.
       .sort((a, b) => ((a.qty < 0) !== (b.qty < 0)) ? (a.qty < 0 ? -1 : 1) : (b.qty * b.cost) - (a.qty * a.cost));
@@ -3915,8 +3935,66 @@
             <span>avg cost ${r.cost.toFixed(2)} EGP</span>
             ${r.sku ? `<span>SKU: ${escapeHtml(r.sku)}</span>` : ''}
           </div>
+          <div class="exp-actions" data-stock-actions="${r.row}">
+            <button class="exp-action-btn" data-edit-stock="${r.row}">Edit quantity</button>
+          </div>
         </div>
       `).join('');
+      list.querySelectorAll('[data-edit-stock]').forEach(btn => {
+        btn.addEventListener('click', () => openStockEdit(Number(btn.getAttribute('data-edit-stock'))));
+      });
+    }
+  }
+
+  // ---- Inline quantity-only edit for a stock item: sets the products sheet's
+  // Balance for that row to the exact number typed (a stock count correction),
+  // via the Apps Script "setProductBalance" action. Nothing else is touched. ----
+  function openStockEdit(row){
+    const product = allProducts.find(p => p._row === row);
+    const box = document.querySelector('[data-stock-actions="' + row + '"]');
+    if(!product || !box) return;
+    const current = Number(product.balance) || 0;
+    box.innerHTML = `
+      <div class="stock-edit">
+        <input type="number" step="1" inputmode="numeric" value="${current}" id="stockEditInput-${row}" title="New quantity">
+        <button class="exp-action-btn" data-save-stock="${row}">Save</button>
+        <button class="exp-action-btn" data-cancel-stock="${row}">Cancel</button>
+        <span class="stock-edit-err" id="stockEditErr-${row}"></span>
+      </div>`;
+    const input = $('stockEditInput-' + row);
+    input.focus(); input.select();
+    box.querySelector('[data-cancel-stock]').addEventListener('click', renderInventory);
+    input.addEventListener('keydown', e => { if(e.key === 'Enter') saveStockEdit(row); });
+    box.querySelector('[data-save-stock]').addEventListener('click', () => saveStockEdit(row));
+  }
+  async function saveStockEdit(row){
+    const product = allProducts.find(p => p._row === row);
+    const input = $('stockEditInput-' + row);
+    const err = $('stockEditErr-' + row);
+    const raw = input.value.trim();
+    const newQty = Number(raw);
+    if(raw === '' || isNaN(newQty)){ err.textContent = 'Enter a valid number.'; return; }
+    if(newQty === (Number(product.balance) || 0)){ renderInventory(); return; }
+    const saveBtn = document.querySelector('[data-save-stock="' + row + '"]');
+    saveBtn.disabled = true; saveBtn.textContent = 'Saving...';
+    try{
+      const res = await fetch(API_URL, {
+        method: 'POST', redirect: 'follow',
+        body: JSON.stringify({ action: 'setProductBalance', row: row, sku: product.sku || '', name: product.name, balance: newQty })
+      });
+      const data = await res.json();
+      if(data && data.error){
+        err.textContent = 'Sheet error: ' + data.error;
+        saveBtn.disabled = false; saveBtn.textContent = 'Save';
+        return;
+      }
+      await fetchProducts(true);
+      renderInventory();
+      repatchItemsHolders();
+    } catch(e){
+      console.error('setProductBalance error:', e);
+      err.textContent = 'Something went wrong, please try again.';
+      saveBtn.disabled = false; saveBtn.textContent = 'Save';
     }
   }
   $('inventoryBtn').addEventListener('click', showInventoryView);
@@ -4036,11 +4114,26 @@
     } else if(linkType === 'debt_settlement_partial'){
       msg = 'This transaction is a partial payment toward an external debt. Deleting it will add the amount back to that debt\'s balance. Continue?';
     }
+    // Order collection that took products from stock: its description carries
+    // the synthetic serial "[COL-...]". Deleting it returns those items.
+    const colMatch = String(item['Description'] || '').match(/\[(COL-\d+)\]/);
+    if(colMatch) msg = 'This collection took products from stock. Deleting it will put those items back into the products balance. Continue?';
     if(!confirm(msg)) return;
 
     const btn = document.querySelector('[data-delete-expense-row="'+row+'"]');
     if(btn){ btn.disabled = true; btn.textContent = 'Deleting...'; }
     try{
+      if(colMatch){
+        // Empty items list => backend restores every removed quantity to Balance.
+        const r0 = await fetch(API_URL, { method:'POST', redirect:'follow', body: JSON.stringify({ action:'updateOrderItems', orderSerial: colMatch[1], items: [] }) });
+        const d0 = await r0.json();
+        if(d0 && d0.error){
+          alert('Could not restore stock: ' + d0.error);
+          if(btn){ btn.disabled = false; btn.textContent = 'Delete'; }
+          return;
+        }
+        fetchProducts(true);
+      }
       const params = new URLSearchParams({ action:'deleteExpense', row:String(row) });
       const sep = API_URL.includes('?') ? '&' : '?';
       const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
@@ -4124,6 +4217,7 @@
 
     $('addExpenseModal').querySelector('.modal-title').textContent = 'Edit transaction';
     $('confirmAddExpenseBtn').textContent = 'Save changes';
+    colUpdateVisibility(); // hidden while editing (stock was already deducted at creation)
     $('addExpenseModal').classList.add('active');
   }
 
@@ -4258,6 +4352,138 @@
   }
   $('expAccount').addEventListener('change', refreshExpDirectionOptions);
 
+  // ---- Order collection with products: when the category is "Order collection"
+  // (new transactions only) a product list appears. The chosen items are
+  // deducted from the products sheet's Balance exactly like a real order —
+  // by writing them to the "Items" sheet under a synthetic serial via the
+  // existing updateOrderItems action — and the order value is booked as a
+  // debt on the chosen person (direction = "he owes the company"). ----
+  let colItems = []; // [{name, sku, qty, salePrice, weight}]
+  let colSelectedIdx = null;
+  let colAmountTouched = false;
+
+  function colIsActive(){
+    return $('expCategory').value === 'Order collection' && currentEditExpenseRow === null;
+  }
+  function colUpdateVisibility(){
+    $('expItemsGroup').style.display = colIsActive() ? '' : 'none';
+    if(colIsActive()) colEnsureNegativeDirection();
+  }
+  // Items taken from stock are money the person owes the company.
+  function colEnsureNegativeDirection(){
+    if(!colIsActive() || !colItems.length) return;
+    if($('expAccount').value && $('expDirection').value !== 'negative'){
+      $('expDirection').value = 'negative';
+    }
+  }
+  function colTotalValue(){
+    return colItems.reduce((sum, it) => sum + (Number(it.salePrice) || 0) * it.qty, 0);
+  }
+  function colRenderItems(){
+    const list = $('colItemsList');
+    if(!colItems.length){
+      list.innerHTML = '<div class="pi-empty">No products added yet.</div>';
+    } else {
+      list.innerHTML = colItems.map((it, i) => `
+        <div class="pi-row">
+          <span class="pi-name">${escapeHtml(it.name)}<span class="pi-sub">${it.salePrice || 0} EGP each</span></span>
+          <input type="number" class="col-qty" min="1" value="${it.qty}" data-idx="${i}" title="Quantity">
+          <span class="pi-sub-total">${((Number(it.salePrice) || 0) * it.qty).toFixed(2)}</span>
+          <button type="button" class="col-remove" data-idx="${i}" title="Remove">×</button>
+        </div>
+      `).join('');
+      list.querySelectorAll('.col-qty').forEach(inp => {
+        inp.addEventListener('change', () => {
+          colItems[parseInt(inp.dataset.idx, 10)].qty = Math.max(1, parseInt(inp.value, 10) || 1);
+          colRenderItems();
+        });
+      });
+      list.querySelectorAll('.col-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          colItems.splice(parseInt(btn.dataset.idx, 10), 1);
+          colRenderItems();
+        });
+      });
+    }
+    const total = colTotalValue();
+    $('colTotal').textContent = total.toFixed(2) + ' EGP';
+    // Keep the amount in sync with the items' value until the user types their own.
+    if(!colAmountTouched) $('expAmount').value = total > 0 ? String(total) : '';
+    colEnsureNegativeDirection();
+  }
+  function colHideResults(){ $('colSearchResults').classList.remove('show'); }
+  function colRenderResults(query){
+    const box = $('colSearchResults');
+    const q = String(query || '').trim().toLowerCase();
+    const matches = allProducts
+      .map((p, i) => ({ p, i }))
+      .filter(({p}) => !q || p.name.toLowerCase().includes(q) || String(p.sku || '').toLowerCase().includes(q))
+      .sort((a, b) => a.p.name.localeCompare(b.p.name));
+    if(!matches.length){
+      box.innerHTML = '<div class="items-editor-search-empty">No matching products</div>';
+    } else {
+      box.innerHTML = matches.map(({p, i}) => {
+        const bal = Number(p.balance) || 0;
+        return `<div class="items-editor-search-result" data-idx="${i}">
+          ${escapeHtml(p.name)}
+          <div class="ie-sr-price" ${bal <= 0 ? 'style="color:var(--rust);"' : ''}>stock: ${bal} · ${p.salePrice || 0} EGP</div>
+        </div>`;
+      }).join('');
+      box.querySelectorAll('.items-editor-search-result[data-idx]').forEach(el => {
+        el.addEventListener('click', () => {
+          colSelectedIdx = parseInt(el.dataset.idx, 10);
+          $('colSearch').value = allProducts[colSelectedIdx].name;
+          colHideResults();
+          $('colQty').focus();
+        });
+      });
+    }
+    box.classList.add('show');
+  }
+  $('colSearch').addEventListener('input', () => { colSelectedIdx = null; colRenderResults($('colSearch').value); });
+  $('colSearch').addEventListener('focus', async () => {
+    if(!allProducts.length) await fetchProducts();
+    colRenderResults($('colSearch').value);
+  });
+  document.addEventListener('click', (e) => {
+    if(!e.target.closest('#colSearch') && !e.target.closest('#colSearchResults')) colHideResults();
+  });
+  $('colAddBtn').addEventListener('click', () => {
+    let product = colSelectedIdx !== null ? allProducts[colSelectedIdx] : null;
+    if(!product){
+      const norm = $('colSearch').value.trim().toLowerCase();
+      product = allProducts.find(p => p.name.trim().toLowerCase() === norm);
+    }
+    if(!product){
+      $('expError').textContent = 'Pick a product from the list first.';
+      $('colSearch').focus();
+      return;
+    }
+    $('expError').textContent = '';
+    const qty = Math.max(1, parseInt($('colQty').value, 10) || 1);
+    const existing = colItems.find(it => it.sku && it.sku === product.sku && it.name === product.name);
+    if(existing) existing.qty += qty;
+    else colItems.push({ name: product.name, sku: product.sku || '', qty, salePrice: Number(product.salePrice) || 0, weight: Number(product.weight) || 0 });
+    $('colQty').value = '1';
+    $('colSearch').value = '';
+    colSelectedIdx = null;
+    colHideResults();
+    colRenderItems();
+  });
+  $('expAmount').addEventListener('input', () => { colAmountTouched = true; });
+  $('expCategory').addEventListener('change', colUpdateVisibility);
+  $('expAccount').addEventListener('change', colEnsureNegativeDirection);
+  function colReset(){
+    colItems = [];
+    colSelectedIdx = null;
+    colAmountTouched = false;
+    $('colSearch').value = '';
+    $('colQty').value = '1';
+    colHideResults();
+    colRenderItems();
+    colUpdateVisibility();
+  }
+
   function openAddExpenseModal(){
     currentEditExpenseRow = null;
     $('expAccount').value = '';
@@ -4275,6 +4501,8 @@
     $('expLinkedNote').style.display = 'none';
     $('addExpenseModal').querySelector('.modal-title').textContent = 'Add transaction';
     $('confirmAddExpenseBtn').textContent = 'Save transaction';
+    colReset();
+    if(!allProducts.length) fetchProducts();
     $('addExpenseModal').classList.add('active');
   }
   function openAddDebtModal(){
@@ -4347,6 +4575,9 @@
     const isEdit = currentEditExpenseRow !== null;
     const editingLinked = isEdit && $('expAmount').disabled;
 
+    const useCollectionItems = !isEdit && colIsActive() && colItems.length > 0;
+    if(useCollectionItems) colEnsureNegativeDirection(); // goods taken = he owes the company
+
     if(!editingLinked){
       const account = $('expAccount').value;
       if(!account){
@@ -4379,6 +4610,36 @@
       const rawExpDateTime = $('expDate').value;
       const expDateIso = rawExpDateTime ? new Date(rawExpDateTime).toISOString() : new Date().toISOString();
       const commissionAmount = String(parseFloat($('expCommission').value) || 0);
+
+      // Order collection with products: deduct them from stock FIRST (same
+      // mechanism as a real order — rows in the Items sheet under a synthetic
+      // serial, which makes the backend subtract each SKU's quantity from the
+      // products sheet's Balance). If that fails we stop before booking the
+      // debt, so stock and money never get out of sync.
+      let collectionSerial = '';
+      let itemsSummary = '';
+      if(useCollectionItems){
+        collectionSerial = 'COL-' + Date.now();
+        itemsSummary = colItems.map(it => it.name + ' x' + it.qty).join(', ');
+        const stockRes = await fetch(API_URL, {
+          method: 'POST', redirect: 'follow',
+          body: JSON.stringify({
+            action: 'updateOrderItems',
+            orderSerial: collectionSerial,
+            customerName: $('expAccount').value,
+            phone: '',
+            items: colItems.map(it => ({
+              item: it.name, option: '', quantity: it.qty, sku: it.sku || '',
+              date: expDateIso, salePrice: it.salePrice || 0, weight: it.weight || 0
+            }))
+          })
+        });
+        const stockData = await stockRes.json();
+        if(stockData && stockData.error){
+          $('expError').textContent = 'Could not deduct stock: ' + stockData.error;
+          return;
+        }
+      }
       const paramsObj = isEdit
         ? {
             action: 'editExpense',
@@ -4394,7 +4655,9 @@
             amount: String(parseFloat($('expAmount').value)),
             commission: commissionAmount,
             category: $('expCategory').value,
-            description: $('expDescription').value,
+            description: useCollectionItems
+              ? ($('expDescription').value.trim() ? $('expDescription').value.trim() + ' — ' : '') + 'Items [' + collectionSerial + ']: ' + itemsSummary
+              : $('expDescription').value,
             date: expDateIso
           };
       if(isEdit && !editingLinked){
@@ -4414,6 +4677,11 @@
       sendExpensesWebhook(isEdit ? 'expense_edited' : 'expense_added', Object.assign({ row: isEdit ? currentEditExpenseRow : (data && data.row) }, paramsObj));
       $('addExpenseModal').classList.remove('active');
       currentEditExpenseRow = null;
+      if(useCollectionItems){
+        await fetchProducts(true); // balances changed
+        renderInventory();
+        fetchOrderItems();
+      }
       await fetchExpenses();
     } catch(err){
       console.error('addExpense/editExpense error:', err);
