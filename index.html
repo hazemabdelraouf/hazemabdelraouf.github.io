@@ -3461,15 +3461,35 @@
     if(value === undefined || value === null || value === '') return '';
     return `<div class="detail-row"><span class="detail-label">${escapeHtml(label)}</span><span class="detail-value">${escapeHtml(value)}</span></div>`;
   }
+  // Splits the Sheet1 "items" cell into one entry per product. Handles real
+  // newlines, commas (Latin or Arabic), semicolons/pipes, and several products
+  // glued on one line after each "(N قطعة )" quantity marker.
+  function splitItemLines(value){
+    const raw = String(value || '');
+    const qtyMarker = /\(\s*\d+\s*(?:قطعة|قطع|pcs?|pieces?)?\s*\)/gi;
+    let lines = raw.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+    let out = [];
+    lines.forEach(line => {
+      const markers = line.match(qtyMarker) || [];
+      if(markers.length > 1){
+        // Break right after each quantity marker, dropping the separator glue.
+        line.replace(qtyMarker, m => m + '\u0001')
+            .split('\u0001')
+            .map(x => x.replace(/^[\s,،;؛|+\-–—]+/, '').trim())
+            .filter(Boolean)
+            .forEach(x => out.push(x));
+      } else {
+        out.push(line);
+      }
+    });
+    if(out.length <= 1){
+      out = out.join('\n').split(/[,،;؛|]/).map(x=>x.trim()).filter(Boolean);
+    }
+    return out;
+  }
   function itemsRow(label, value, serial){
     if(value === undefined || value === null || value === '') return '';
-    // Split on newlines (as they appear in the sheet cell) and, as a fallback
-    // for single-line cells, on commas — each item then renders on its own line.
-    const raw = String(value);
-    let lines = raw.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
-    if(lines.length <= 1){
-      lines = raw.split(',').map(s=>s.trim()).filter(Boolean);
-    }
+    const lines = splitItemLines(value);
     if(lines.length === 0) return '';
     return `<div class="items-row"><span class="detail-label">${escapeHtml(label)}</span><span class="items-list">${lines.map(l=>{
       const neg = itemHasNegativeBalance(l, serial);
