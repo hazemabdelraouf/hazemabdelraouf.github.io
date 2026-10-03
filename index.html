@@ -4619,6 +4619,12 @@
       let collectionSerial = '';
       let itemsSummary = '';
       if(useCollectionItems){
+        // The backend matches stock by SKU, so a product without one can't be deducted.
+        const noSku = colItems.filter(it => !String(it.sku || '').trim());
+        if(noSku.length){
+          $('expError').textContent = 'No SKU in the products sheet for: ' + noSku.map(it => it.name).join(', ') + ' — add a SKU first, otherwise stock can\'t be deducted.';
+          return;
+        }
         collectionSerial = 'COL-' + Date.now();
         itemsSummary = colItems.map(it => it.name + ' x' + it.qty).join(', ');
         const stockRes = await fetch(API_URL, {
@@ -4638,6 +4644,10 @@
         if(stockData && stockData.error){
           $('expError').textContent = 'Could not deduct stock: ' + stockData.error;
           return;
+        }
+        const unmatched = (stockData && stockData.balanceAdjustments || []).filter(a => a && a.matched === false);
+        if(unmatched.length){
+          alert('Saved, but these SKUs were not found in the products sheet, so their stock was NOT deducted:\n' + unmatched.map(a => a.sku).join(', '));
         }
       }
       const paramsObj = isEdit
