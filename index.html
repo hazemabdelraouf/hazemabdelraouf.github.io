@@ -282,6 +282,7 @@
   .stock-edit{display:flex;gap:8px;align-items:center;margin-top:9px;flex-wrap:wrap;}
   .stock-edit input{width:90px;padding:7px 9px;border-radius:8px;border:1px solid var(--border,#d4d4d8);font-size:14px;font-family:inherit;}
   .stock-edit .stock-edit-err{color:var(--rust);font-size:11.5px;flex-basis:100%;}
+  .exp-row.zero-stock .exp-desc, .exp-row.zero-stock .exp-amount{opacity:.65;}
   .exp-row.neg-stock{border-color:var(--rust);background:#fef2f2;}
   .exp-row.neg-stock .exp-desc{color:var(--rust);}
   .exp-row.neg-stock .exp-meta{color:var(--rust);}
@@ -3895,12 +3896,15 @@
   function renderInventory(){
     const query = $('inventorySearch').value.trim().toLowerCase();
     const rows = allProducts
-      // Zero-stock products stay hidden unless you search for them (so you can bring them back up).
-      .filter(p => (Number(p.balance) || 0) !== 0 || !!query)
       .map(p => ({ row: p._row, name: p.name, sku: p.sku || '', qty: Number(p.balance) || 0, cost: Number(p.cost) || 0 }))
       .filter(r => !query || r.name.toLowerCase().includes(query) || r.sku.toLowerCase().includes(query))
-      // Items below zero first (they need attention), then by stock value.
-      .sort((a, b) => ((a.qty < 0) !== (b.qty < 0)) ? (a.qty < 0 ? -1 : 1) : (b.qty * b.cost) - (a.qty * a.cost));
+      // Below-zero items first (need attention), then in-stock by value, zero-stock last (A→Z).
+      .sort((a, b) => {
+        const rank = r => r.qty < 0 ? 0 : (r.qty > 0 ? 1 : 2);
+        if(rank(a) !== rank(b)) return rank(a) - rank(b);
+        if(a.qty === 0) return a.name.localeCompare(b.name);
+        return (b.qty * b.cost) - (a.qty * a.cost);
+      });
 
     // Totals only count real stock (negative balances are shown in red but not subtracted).
     const totalQty = rows.filter(r => r.qty > 0).reduce((s, r) => s + r.qty, 0);
@@ -3921,11 +3925,11 @@
     if(!rows.length){
       list.innerHTML = '';
       $('inventoryEmpty').style.display = 'block';
-      $('inventoryEmpty').textContent = query ? 'No matching products.' : 'No stock recorded yet.';
+      $('inventoryEmpty').textContent = query ? 'No matching products.' : 'No products found.';
     } else {
       $('inventoryEmpty').style.display = 'none';
       list.innerHTML = rows.map(r => `
-        <div class="exp-row${r.qty < 0 ? ' neg-stock' : ''}">
+        <div class="exp-row${r.qty < 0 ? ' neg-stock' : ''}${r.qty === 0 ? ' zero-stock' : ''}">
           <div class="exp-row-top">
             <span class="exp-desc">${r.qty < 0 ? '⚠️ ' : ''}${escapeHtml(r.name)}</span>
             <span class="exp-amount ${r.qty < 0 ? 'neg' : 'pos'}">${(r.qty * r.cost).toFixed(2)} EGP</span>
