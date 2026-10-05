@@ -874,7 +874,7 @@
 
   <div class="filters">
     <div class="search-row">
-      <input type="search" id="inventorySearch" placeholder="Search product by name or SKU...">
+      <input type="search" id="inventorySearch" placeholder="Search product (Arabic / English) or SKU...">
     </div>
   </div>
 
@@ -2830,22 +2830,28 @@
   // Fetches the products sheet (name / sale price / weight) used to build
   // the item picker in the Edit order form. Fetched lazily — once, the
   // first time someone opens Edit order — and cached in allProducts.
-  let isFetchingProducts = false;
+  // One shared in-flight request: a second caller (e.g. the Refresh button
+  // pressed while products are already loading) waits for that same request
+  // instead of returning immediately, so spinners last until data is back.
+  let productsFetchPromise = null;
   async function fetchProducts(force){
-    if(isFetchingProducts || !API_URL) return;
+    if(!API_URL) return;
+    if(productsFetchPromise) return productsFetchPromise;
     if(allProducts.length && !force) return;
-    isFetchingProducts = true;
-    try{
-      const sep = API_URL.includes('?') ? '&' : '?';
-      const res = await fetch(API_URL + sep + 'action=listProducts', { method:'GET', redirect:'follow' });
-      if(!res.ok) throw new Error('HTTP status ' + res.status);
-      const data = await res.json();
-      allProducts = Array.isArray(data.products) ? data.products : [];
-    }catch(err){
-      console.error('fetchProducts error:', err);
-    } finally {
-      isFetchingProducts = false;
-    }
+    productsFetchPromise = (async () => {
+      try{
+        const sep = API_URL.includes('?') ? '&' : '?';
+        const res = await fetch(API_URL + sep + 'action=listProducts', { method:'GET', redirect:'follow' });
+        if(!res.ok) throw new Error('HTTP status ' + res.status);
+        const data = await res.json();
+        allProducts = Array.isArray(data.products) ? data.products : [];
+      }catch(err){
+        console.error('fetchProducts error:', err);
+      } finally {
+        productsFetchPromise = null;
+      }
+    })();
+    return productsFetchPromise;
   }
 
   function renderStats(){
@@ -3935,8 +3941,8 @@
   function renderInventory(){
     const query = $('inventorySearch').value.trim().toLowerCase();
     const rows = allProducts
-      .map(p => ({ row: p._row, name: p.name, sku: p.sku || '', qty: Number(p.balance) || 0, cost: Number(p.cost) || 0 }))
-      .filter(r => !query || r.name.toLowerCase().includes(query) || r.sku.toLowerCase().includes(query))
+      .map(p => ({ row: p._row, name: p.name, nameEn: p.nameEn || '', sku: p.sku || '', qty: Number(p.balance) || 0, cost: Number(p.cost) || 0 }))
+      .filter(r => !query || productMatchesQuery(r, query) || r.sku.toLowerCase().includes(query))
       // Below-zero items first (need attention), then in-stock by value, zero-stock last (A→Z).
       .sort((a, b) => {
         const rank = r => r.qty < 0 ? 0 : (r.qty > 0 ? 1 : 2);
@@ -4042,7 +4048,26 @@
   }
   $('inventoryBtn').addEventListener('click', showInventoryView);
   $('inventoryBackBtn').addEventListener('click', hideInventoryView);
-  $('inventoryRefreshBtn').addEventListener('click', ()=> fetchProducts(true).then(renderInventory));
+  // Same treatment as the Orders / Expenses refresh buttons: the icon spins for
+  // the whole request (at least ~0.7s so a fast response still reads as "done").
+  let isRefreshingInventory = false;
+  async function refreshInventoryView(){
+    if(isRefreshingInventory) return;
+    isRefreshingInventory = true;
+    const btn = $('inventoryRefreshBtn');
+    btn.classList.add('spinning');
+    try{
+      await Promise.all([
+        fetchProducts(true),
+        new Promise(resolve => setTimeout(resolve, 700))
+      ]);
+      renderInventory();
+    } finally {
+      btn.classList.remove('spinning');
+      isRefreshingInventory = false;
+    }
+  }
+  $('inventoryRefreshBtn').addEventListener('click', refreshInventoryView);
   $('inventorySearch').addEventListener('input', renderInventory);
 
   function balanceClass(n){
