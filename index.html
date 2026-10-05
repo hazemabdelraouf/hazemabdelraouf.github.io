@@ -1189,6 +1189,21 @@
   </div>
 </div>
 
+<!-- ============ PURCHASE SAVED -> SHARE ============ -->
+<div class="modal-overlay" id="purchaseSavedModal">
+  <div class="modal-card edit-card">
+    <div class="modal-title">Purchase saved ✓</div>
+    <div class="modal-sub">Share the invoice now, or any time later from the Share invoice button on its row.</div>
+    <pre id="purchaseShareText" style="white-space:pre-wrap;word-break:break-word;background:var(--panel-2);color:var(--cream);border:1px solid var(--line);border-radius:10px;padding:12px;font-size:13px;line-height:1.6;max-height:40vh;overflow:auto;margin:10px 0;font-family:inherit;"></pre>
+    <div class="modal-field-error" id="purchaseShareMsg"></div>
+    <div class="modal-options" style="margin-top:6px;">
+      <button class="modal-opt-btn" id="purchaseShareBtn">Share</button>
+      <button class="modal-opt-btn" id="purchaseCopyBtn">Copy text</button>
+    </div>
+    <button class="modal-cancel" id="purchaseSavedCloseBtn">Close</button>
+  </div>
+</div>
+
 <!-- ============ TRANSFER MODAL (between Bedir / Hazem / UVA) ============ -->
 <div class="modal-overlay" id="transferModal">
   <div class="modal-card edit-card">
@@ -4077,6 +4092,7 @@
           <div class="exp-amount ${cls}">${sign} ${fmtEGP(Math.abs(amount))}</div>
         </div>
         <div class="exp-actions">
+          ${(linkType === 'purchase' && String(row['LinkID'] || '').trim()) ? `<button class="exp-action-btn" data-share-purchase="${escapeAttr(String(row['LinkID']).trim())}">Share invoice</button>` : ''}
           <button class="exp-action-btn" data-edit-expense-row="${row._row}">Edit</button>
           <button class="exp-action-btn danger" data-delete-expense-row="${row._row}">Delete</button>
         </div>
@@ -4256,6 +4272,7 @@
         </div>
         ${!isSettled ? `<button class="debt-settle-btn" data-settle-row="${row._row}" data-settle-amount="${amt}" data-settle-party="${escapeHtml(row['Party']||'')}">Settle / pay</button>` : ''}
         <div class="exp-actions">
+          ${purchaseLinkId ? `<button class="exp-action-btn" data-share-purchase="${escapeAttr(purchaseLinkId)}">Share invoice</button>` : ''}
           <button class="exp-action-btn" data-edit-debt-row="${row._row}">Edit</button>
           <button class="exp-action-btn danger" data-delete-debt-row="${row._row}">Delete</button>
         </div>
@@ -4933,6 +4950,141 @@
   $('closePurchaseModalBtn').addEventListener('click', ()=> $('purchaseModal').classList.remove('active'));
   $('purchaseModal').addEventListener('click', (e)=>{ if(e.target === $('purchaseModal')) $('purchaseModal').classList.remove('active'); });
 
+  // ---- Share a freshly saved purchase invoice (one-time window after Save) ----
+  function buildPurchaseShareText(payload, total){
+    const d = new Date(payload.date);
+    const dateStr = isNaN(d.getTime()) ? '' : d.toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    const lines = [];
+    lines.push('🧾 Purchase invoice');
+    if(payload.merchant) lines.push('Merchant: ' + payload.merchant);
+    if(dateStr) lines.push('Date: ' + dateStr);
+    lines.push('');
+    payload.items.forEach(it => {
+      if(it.price === null || it.price === undefined || it.price === ''){
+        lines.push('• ' + it.name + ' — ' + it.quantity); // older invoice without per-line prices
+        return;
+      }
+      const lineTotal = (Number(it.quantity) || 0) * (Number(it.price) || 0);
+      lines.push('• ' + it.name + ' — ' + it.quantity + ' × ' + (Number(it.price) || 0).toFixed(2) + ' = ' + lineTotal.toFixed(2) + ' EGP');
+    });
+    lines.push('');
+    lines.push('Total: ' + (Number(total) || 0).toFixed(2) + ' EGP');
+    lines.push(payload.paymentType === 'credit' ? 'Payment: On credit (to be paid later)' : 'Payment: Paid now by ' + payload.account);
+    if(payload.category) lines.push('Category: ' + payload.category);
+    if(payload.description) lines.push('Note: ' + payload.description);
+    return lines.join('\n');
+  }
+  let purchaseShareText = '';
+  function showPurchaseSavedModal(payload, total, fresh = true){
+    $('purchaseSavedModal').querySelector('.modal-title').textContent = fresh ? 'Purchase saved ✓' : 'Share invoice';
+    $('purchaseSavedModal').querySelector('.modal-sub').textContent = fresh
+      ? 'Share the invoice now, or any time later from the Share invoice button on its row.'
+      : 'Send this purchase invoice to anyone.';
+    purchaseShareText = buildPurchaseShareText(payload, total);
+    $('purchaseShareText').textContent = purchaseShareText;
+    $('purchaseShareMsg').textContent = '';
+    $('purchaseSavedModal').classList.add('active');
+  }
+  async function copyPurchaseText(){
+    try{
+      await navigator.clipboard.writeText(purchaseShareText);
+      return true;
+    } catch(e){
+      // Older/locked-down browsers: fall back to a temporary textarea.
+      try{
+        const ta = document.createElement('textarea');
+        ta.value = purchaseShareText;
+        ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+      } catch(e2){ return false; }
+    }
+  }
+  $('purchaseShareBtn').addEventListener('click', async ()=>{
+    const msg = $('purchaseShareMsg');
+    msg.style.color = '';
+    if(navigator.share){
+      try{
+        await navigator.share({ title: 'Purchase invoice', text: purchaseShareText });
+        return;
+      } catch(e){
+        if(e && e.name === 'AbortError') return; // user closed the share sheet
+      }
+    }
+    // No native share (e.g. desktop browsers): open WhatsApp with the text ready to send.
+    window.open('https://wa.me/?text=' + encodeURIComponent(purchaseShareText), '_blank');
+  });
+  $('purchaseCopyBtn').addEventListener('click', async ()=>{
+    const ok = await copyPurchaseText();
+    const msg = $('purchaseShareMsg');
+    msg.style.color = ok ? 'var(--sage)' : '';
+    msg.textContent = ok ? 'Copied ✓' : 'Could not copy — select the text above and copy it manually.';
+  });
+  function closePurchaseSavedModal(){ $('purchaseSavedModal').classList.remove('active'); }
+  $('purchaseSavedCloseBtn').addEventListener('click', closePurchaseSavedModal);
+  $('purchaseSavedModal').addEventListener('click', (e)=>{ if(e.target === $('purchaseSavedModal')) closePurchaseSavedModal(); });
+
+  // ---- Permanent "Share invoice" button on every purchase row (paid purchases in
+  // Transactions, credit purchases in Debts). The invoice is read from the
+  // Purchases log by its LinkID (same id the row carries). ----
+  let allPurchases = [];
+  async function fetchPurchases(){
+    if(!API_URL) return;
+    const sep = API_URL.includes('?') ? '&' : '?';
+    const res = await fetch(API_URL + sep + 'action=listPurchases', { method:'GET', redirect:'follow' });
+    const data = await res.json();
+    allPurchases = Array.isArray(data.purchases) ? data.purchases : [];
+  }
+  function purchaseRecordToPayload(rec){
+    let items = [];
+    try{ items = JSON.parse(rec['ItemsJSON'] || '[]'); } catch(e){ items = []; }
+    items = (Array.isArray(items) ? items : []).map(it => ({ name: it.name, quantity: it.quantity, price: it.price }));
+    if(!items.length && rec['Items']){
+      // Older invoices saved before per-line details existed: "2x Name, 1x Other".
+      items = String(rec['Items']).split(',').map(x => x.trim()).filter(Boolean).map(x => {
+        const m = x.match(/^(\d+)\s*x\s*(.+)$/i);
+        return m ? { name: m[2].trim(), quantity: Number(m[1]), price: null } : { name: x, quantity: '', price: null };
+      });
+    }
+    // The stored description is "<your note> — <items>" or the auto text
+    // "Purchase from X: ..."; keep only what the person actually wrote.
+    let note = String(rec['Description'] || '');
+    const dash = note.indexOf(' — ');
+    note = dash > -1 ? note.slice(0, dash) : (/^Purchase from /i.test(note) ? '' : note);
+    return {
+      merchant: rec['Merchant'] || '',
+      date: rec['Date'],
+      paymentType: String(rec['PaymentType'] || '') === 'credit' ? 'credit' : 'paid',
+      account: rec['Account'] || '',
+      category: rec['Category'] || '',
+      description: note.trim(),
+      items: items
+    };
+  }
+  document.addEventListener('click', async (e)=>{
+    const btn = e.target.closest('[data-share-purchase]');
+    if(!btn) return;
+    const linkId = btn.getAttribute('data-share-purchase');
+    const original = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Loading...';
+    try{
+      let rec = allPurchases.find(p => String(p['LinkID'] || '').trim() === linkId);
+      if(!rec){ await fetchPurchases(); rec = allPurchases.find(p => String(p['LinkID'] || '').trim() === linkId); }
+      if(!rec){
+        alert('Could not find this invoice in the Purchases sheet. Invoices saved before the Purchases log was added cannot be shared.');
+        return;
+      }
+      showPurchaseSavedModal(purchaseRecordToPayload(rec), Number(rec['Total']) || 0, false);
+    } catch(err){
+      console.error('share purchase error:', err);
+      alert('Could not load the invoice, please try again.');
+    } finally {
+      btn.disabled = false; btn.textContent = original;
+    }
+  });
+
   $('confirmPurchaseBtn').addEventListener('click', async ()=>{
     if(!piItems.length){
       $('piError').textContent = 'Add at least one product.';
@@ -4974,6 +5126,10 @@
       }
       sendExpensesWebhook('purchase_added', Object.assign({ total: data && data.total }, payload));
       $('purchaseModal').classList.remove('active');
+      // Offer to share the invoice right away (shown once, only after a successful save).
+      const savedTotal = (data && data.total != null) ? data.total : payload.items.reduce((sum, it) => sum + (Number(it.quantity) || 0) * (Number(it.price) || 0), 0);
+      showPurchaseSavedModal(payload, savedTotal, true);
+      fetchPurchases().catch(()=>{}); // so its row's Share button opens instantly
       await fetchProducts(true); // refresh cached stock/cost for next time
       renderInventory(); // keep the Inventory view in sync if it's open
       fetchSuppliers(); // pick up a newly-typed merchant name for next time
