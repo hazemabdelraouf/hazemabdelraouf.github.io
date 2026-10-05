@@ -2259,6 +2259,30 @@
   function hideItemsSearchResults(){
     $('itemsEditorSearchResults').classList.remove('show');
   }
+  // ---- Product search matches the Arabic name OR the English title (the
+  // "Title" column), ignoring case and small Arabic spelling differences
+  // (أ/إ/آ/ا، ى/ي، ة/ه، التشكيل). Only used to FIND products: what gets
+  // added to an invoice / order is always the product's Arabic name. ----
+  function normSearch(str){
+    return String(str || '').toLowerCase()
+      .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+      .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه');
+  }
+  function productMatchesQuery(p, q){
+    const nq = normSearch(q).trim();
+    if(!nq) return true;
+    return normSearch(p.name).includes(nq) || normSearch(p.nameEn).includes(nq);
+  }
+  function productMatchesExact(p, text){
+    const nt = normSearch(text).trim();
+    return !!nt && (normSearch(p.name).trim() === nt || normSearch(p.nameEn).trim() === nt);
+  }
+  // Rank: names (Arabic or English) that START with the query come first.
+  function productSearchRank(p, q){
+    const nq = normSearch(q).trim();
+    return (normSearch(p.name).startsWith(nq) || normSearch(p.nameEn).startsWith(nq)) ? 0 : 1;
+  }
+
   function renderItemsSearchResults(query){
     const box = $('itemsEditorSearchResults');
     const q = query.trim().toLowerCase();
@@ -2270,13 +2294,12 @@
     // contain it, so the closest matches surface first even in a long list.
     const matches = allProducts
       .map((p, i) => ({ p, i }))
-      .filter(({p}) => p.name.toLowerCase().includes(q))
+      .filter(({p}) => productMatchesQuery(p, q))
       .sort((a, b) => {
-        const an = a.p.name.toLowerCase(), bn = b.p.name.toLowerCase();
-        const aStarts = an.startsWith(q) ? 0 : 1;
-        const bStarts = bn.startsWith(q) ? 0 : 1;
+        const aStarts = productSearchRank(a.p, q);
+        const bStarts = productSearchRank(b.p, q);
         if(aStarts !== bStarts) return aStarts - bStarts;
-        return an.localeCompare(bn);
+        return a.p.name.toLowerCase().localeCompare(b.p.name.toLowerCase());
       });
     if(!matches.length){
       box.innerHTML = '<div class="items-editor-search-empty">No matching products</div>';
@@ -2313,7 +2336,8 @@
     let product = selectedSearchProductIdx !== null ? allProducts[selectedSearchProductIdx] : null;
     // Fall back to an exact (case-insensitive) name match if they typed the
     // full name without picking a suggestion from the dropdown.
-    if(!product) product = findProductByName($('itemsEditorSearch').value);
+    if(!product) product = findProductByName($('itemsEditorSearch').value)
+      || allProducts.find(p => productMatchesExact(p, $('itemsEditorSearch').value));
     if(!product){
       $('itemsEditorSearch').focus();
       return;
@@ -4438,7 +4462,7 @@
     const q = String(query || '').trim().toLowerCase();
     const matches = allProducts
       .map((p, i) => ({ p, i }))
-      .filter(({p}) => !q || p.name.toLowerCase().includes(q) || String(p.sku || '').toLowerCase().includes(q))
+      .filter(({p}) => !q || productMatchesQuery(p, q) || String(p.sku || '').toLowerCase().includes(q))
       .sort((a, b) => a.p.name.localeCompare(b.p.name));
     if(!matches.length){
       box.innerHTML = '<div class="items-editor-search-empty">No matching products</div>';
@@ -4472,8 +4496,7 @@
   $('colAddBtn').addEventListener('click', () => {
     let product = colSelectedIdx !== null ? allProducts[colSelectedIdx] : null;
     if(!product){
-      const norm = $('colSearch').value.trim().toLowerCase();
-      product = allProducts.find(p => p.name.trim().toLowerCase() === norm);
+      product = allProducts.find(p => productMatchesExact(p, $('colSearch').value));
     }
     if(!product){
       $('expError').textContent = 'Pick a product from the list first.';
@@ -4850,13 +4873,12 @@
     if(!q){ piHideSearchResults(); return; }
     const matches = allProducts
       .map((p, i) => ({ p, i }))
-      .filter(({p}) => p.name.toLowerCase().includes(q))
+      .filter(({p}) => productMatchesQuery(p, q))
       .sort((a, b) => {
-        const an = a.p.name.toLowerCase(), bn = b.p.name.toLowerCase();
-        const aStarts = an.startsWith(q) ? 0 : 1;
-        const bStarts = bn.startsWith(q) ? 0 : 1;
+        const aStarts = productSearchRank(a.p, q);
+        const bStarts = productSearchRank(b.p, q);
         if(aStarts !== bStarts) return aStarts - bStarts;
-        return an.localeCompare(bn);
+        return a.p.name.toLowerCase().localeCompare(b.p.name.toLowerCase());
       });
     if(!matches.length){
       box.innerHTML = '<div class="items-editor-search-empty">No matching products</div>';
@@ -4895,8 +4917,7 @@
   $('piAddBtn').addEventListener('click', () => {
     let product = piSelectedIdx !== null ? allProducts[piSelectedIdx] : null;
     if(!product){
-      const norm = $('piSearch').value.trim().toLowerCase();
-      product = allProducts.find(p => p.name.trim().toLowerCase() === norm);
+      product = allProducts.find(p => productMatchesExact(p, $('piSearch').value));
     }
     if(!product){
       $('piError').textContent = 'Pick a product from the search results first.';
