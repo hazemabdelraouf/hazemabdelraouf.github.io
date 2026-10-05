@@ -619,6 +619,30 @@
     background:var(--gold);color:#1a1208;font-weight:800;font-size:13px;cursor:pointer;
   }
 
+  /* Custom (manual) item: name/price/weight/qty, never touches stock */
+  .ie-custom-toggle{
+    background:none;border:none;color:var(--gold);font-family:'Cairo',sans-serif;
+    font-weight:700;font-size:12.5px;cursor:pointer;padding:8px 2px 0;
+  }
+  .ie-custom-box{display:none;margin-top:8px;padding:10px;border:1px dashed var(--line);border-radius:10px;}
+  .ie-custom-box.show{display:block;}
+  .ie-custom-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+  .ie-custom-grid .ie-cname{grid-column:1 / -1;}
+  .ie-custom-box input{
+    width:100%;padding:10px;border-radius:10px;background:var(--panel-2);
+    border:1px solid var(--line);color:var(--cream);font-family:'Cairo',sans-serif;
+    font-weight:600;font-size:13px;box-sizing:border-box;text-align:start;
+  }
+  .ie-custom-box .ie-cnote{font-size:11px;color:var(--cream-dim);margin:6px 2px 8px;}
+  .ie-custom-box button{
+    padding:10px 14px;border-radius:10px;border:none;
+    background:var(--gold);color:#1a1208;font-weight:800;font-size:13px;cursor:pointer;
+  }
+  .ie-tag-custom{
+    display:inline-block;font-size:10px;font-weight:800;padding:1px 6px;border-radius:6px;
+    background:var(--gold-soft);color:var(--gold);margin-inline-start:6px;
+  }
+
   ::selection{background:var(--gold-soft);color:#ffffff;}
 
   /* ===== Expenses module ===== */
@@ -984,6 +1008,17 @@
         </div>
         <input type="number" id="itemsEditorQty" min="1" value="1">
         <button type="button" id="itemsEditorAddBtn">Add</button>
+      </div>
+      <button type="button" class="ie-custom-toggle" id="ieCustomToggle">+ Custom item (no stock effect)</button>
+      <div class="ie-custom-box" id="ieCustomBox">
+        <div class="ie-custom-grid">
+          <input type="text" class="ie-cname" id="ieCustomName" placeholder="Item name" autocomplete="off">
+          <input type="number" id="ieCustomPrice" min="0" step="any" placeholder="Price (EGP)" inputmode="decimal">
+          <input type="number" id="ieCustomWeight" min="0" step="any" placeholder="Weight (kg)" inputmode="decimal">
+          <input type="number" id="ieCustomQty" min="1" value="1" placeholder="Qty" inputmode="numeric">
+        </div>
+        <div class="ie-cnote">Counts toward total, weight, COD and pieces — but never deducted from stock.</div>
+        <button type="button" id="ieCustomAddBtn">Add custom item</button>
       </div>
       <textarea data-field="items" id="itemsEditorRaw" style="display:none;"></textarea>
     </div>
@@ -2093,7 +2128,7 @@
     } else {
       list.innerHTML = editItemsList.map((it, i) => `
         <div class="items-editor-row">
-          <span class="ie-name">${escapeHtml(it.name)}${it.custom ? '' : `<span class="ie-sub">${it.salePrice} EGP · ${it.weight} kg each</span>`}</span>
+          <span class="ie-name">${escapeHtml(it.name)}${it.manual ? '<span class="ie-tag-custom">custom</span>' : ''}${it.custom ? '' : `<span class="ie-sub">${it.salePrice} EGP · ${it.weight} kg each</span>`}</span>
           <input type="number" class="ie-qty" min="1" value="${it.qty}" data-idx="${i}">
           <button type="button" class="ie-remove" data-idx="${i}" title="Remove">×</button>
         </div>
@@ -2356,8 +2391,31 @@
     renderItemsEditor();
   });
 
+  // ---- Custom (manual) item: free name/price/weight/qty typed by hand. It's
+  // flagged `manual` so it counts in total/weight/COD/pieces like any priced
+  // item, but it's always saved with an EMPTY sku (+ noStock flag) so the
+  // backend's stock diff never deducts or restores anything for it. ----
+  $('ieCustomToggle').addEventListener('click', () => {
+    $('ieCustomBox').classList.toggle('show');
+    if($('ieCustomBox').classList.contains('show')) $('ieCustomName').focus();
+  });
+  $('ieCustomAddBtn').addEventListener('click', () => {
+    const name = $('ieCustomName').value.trim();
+    if(!name){ $('ieCustomName').focus(); return; }
+    const price = Math.max(0, parseFloat($('ieCustomPrice').value) || 0);
+    const weight = Math.max(0, parseFloat($('ieCustomWeight').value) || 0);
+    const qty = Math.max(1, parseInt($('ieCustomQty').value, 10) || 1);
+    editItemsList.push({ name, qty, salePrice: price, weight, sku: '', option: '', date: '', manual: true });
+    $('ieCustomName').value = '';
+    $('ieCustomPrice').value = '';
+    $('ieCustomWeight').value = '';
+    $('ieCustomQty').value = '1';
+    renderItemsEditor();
+  });
+
   function hideEditOrderModal(){
     $('editOrderModal').classList.remove('active');
+    $('ieCustomBox').classList.remove('show');
   }
   function openEditOrderModal(btn, serial){
     const order = allOrders.find(o => String(o['Order Serial']) === String(serial));
@@ -2424,10 +2482,11 @@
         item: it.name,
         option: it.option || '',
         quantity: it.qty,
-        sku: it.sku || '',
+        sku: it.manual ? '' : (it.sku || ''),
         date: it.date || '',
         salePrice: it.salePrice || 0,
-        weight: it.weight || 0
+        weight: it.weight || 0,
+        noStock: it.manual ? true : false
       }))
     };
     await sendUpdateOrderItems(body);
