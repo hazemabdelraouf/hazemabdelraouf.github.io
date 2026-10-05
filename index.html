@@ -2100,6 +2100,7 @@
 
   // ---- Items editor: pick products from the "products" sheet, add/remove
   // them with a quantity, and auto-total the weight/total/COD/pieces fields. ----
+  const CUSTOM_ITEM_MARK = '[custom]'; // goes in the Items sheet's "option" column for hand-typed items
   let editItemsList = []; // [{name, qty, salePrice, weight, sku, option, date, custom}]
   let editItemsBase = { total: 0, weight: 0 }; // pre-existing (legacy/unmatched) amount to add matched items on top of
   // COD isn't just the order's total — it's Total + Shipping cost. We keep
@@ -2128,7 +2129,7 @@
     } else {
       list.innerHTML = editItemsList.map((it, i) => `
         <div class="items-editor-row">
-          <span class="ie-name">${escapeHtml(it.name)}${it.manual ? '<span class="ie-tag-custom">custom</span>' : ''}${it.custom ? '' : `<span class="ie-sub">${it.salePrice} EGP · ${it.weight} kg each</span>`}</span>
+          <span class="ie-name">${escapeHtml(it.name)}${it.manual ? '<span class="ie-tag-custom">custom</span>' : ''}${it.custom ? '' : `<span class="ie-sub">${+Number(it.salePrice).toFixed(2)} EGP · ${+Number(it.weight).toFixed(3)} kg each${it.estimated ? ' (est.)' : ''}</span>`}</span>
           <input type="number" class="ie-qty" min="1" value="${it.qty}" data-idx="${i}">
           <button type="button" class="ie-remove" data-idx="${i}" title="Remove">×</button>
         </div>
@@ -2236,6 +2237,14 @@
     const sheetRows = allOrderItems.filter(it => String(it.orderSerial) === String(serial));
     if(sheetRows.length){
       editItemsList = sheetRows.map(row => {
+        // Custom items are saved to the Items sheet with an empty SKU and the
+        // marker "[custom]" in the option column (see syncOrderItemsSheet), so
+        // their own price/weight/qty come back as a normal, fully editable row
+        // that counts in total/weight/COD/pieces — and never touches stock
+        // (stock is matched by SKU only, and they have none).
+        if(String(row.option || '').trim() === CUSTOM_ITEM_MARK){
+          return { name: row.item || '(custom item)', qty: Math.max(1, Number(row.quantity) || 1), salePrice: Number(row.salePrice) || 0, weight: Number(row.weight) || 0, sku: '', option: CUSTOM_ITEM_MARK, date: row.date || '', manual: true };
+        }
         const product = findProductBySku(row.sku) || findProductByName(row.item);
         // السعر بيتاخد من شيت Items نفسه (سعر وقت الأوردر)، مش من شيت
         // products اللايف — لأن سعر المنتج ممكن يتغيّر بعد كذا، وده كان
@@ -2300,6 +2309,30 @@
       total: (parseFloat(order.total) || 0) - matchedPrice,
       weight: (parseFloat(order.weight) || 0) - matchedWeight
     };
+    // Rows we couldn't price (custom items saved before their price/weight were
+    // stored, or unmatched legacy lines) used to be frozen "reference" rows: the
+    // money/weight they carry sat in the base, so changing their qty or removing
+    // them did nothing to total/weight/COD. Instead, hand that leftover amount
+    // to those rows (spread per unit), so every row on screen moves the numbers
+    // live. Saved with the order, the estimate becomes their real stored price.
+    const unpriced = editItemsList.filter(it => it.custom);
+    const unpricedUnits = unpriced.reduce((n, it) => n + it.qty, 0);
+    if(unpriced.length && unpricedUnits > 0 && editItemsBase.total >= -0.005 && editItemsBase.weight >= -0.0005){
+      const perUnitPrice = Math.max(0, editItemsBase.total) / unpricedUnits;
+      const perUnitWeight = Math.max(0, editItemsBase.weight) / unpricedUnits;
+      unpriced.forEach(it => {
+        it.salePrice = perUnitPrice;
+        it.weight = perUnitWeight;
+        it.custom = false;
+        it.estimated = true;
+        if(!it.sku){            // no SKU => hand-typed/legacy line: keep it stock-free
+          it.manual = true;
+          it.textOnly = false;
+          it.option = CUSTOM_ITEM_MARK;
+        }
+      });
+      editItemsBase = { total: 0, weight: 0 };
+    }
     // COD should track Total + Shipping cost, reading the shipping fee from
     // the order's own "Shipping cost" column (same column used for the
     // "shipping X EGP" badge on the card) rather than guessing it from
@@ -2414,8 +2447,8 @@
 
   // ---- Custom (manual) item: free name/price/weight/qty typed by hand. It's
   // flagged `manual` so it counts in total/weight/COD/pieces like any priced
-  // item, but it's kept out of the Items-sheet sync entirely (see
-  // syncOrderItemsSheet), so stock is never deducted or restored for it. ----
+  // item. It's saved to the Items sheet with no SKU (see syncOrderItemsSheet),
+  // so it persists with the order but stock is never deducted or restored. ----
   $('ieCustomToggle').addEventListener('click', () => {
     $('ieCustomBox').classList.toggle('show');
     if($('ieCustomBox').classList.contains('show')) $('ieCustomName').focus();
@@ -2426,7 +2459,7 @@
     const price = Math.max(0, parseFloat($('ieCustomPrice').value) || 0);
     const weight = Math.max(0, parseFloat($('ieCustomWeight').value) || 0);
     const qty = Math.max(1, parseInt($('ieCustomQty').value, 10) || 1);
-    editItemsList.push({ name, qty, salePrice: price, weight, sku: '', option: '', date: '', manual: true });
+    editItemsList.push({ name, qty, salePrice: price, weight, sku: '', option: CUSTOM_ITEM_MARK, date: '', manual: true });
     $('ieCustomName').value = '';
     $('ieCustomPrice').value = '';
     $('ieCustomWeight').value = '';
@@ -2499,13 +2532,16 @@
       orderSerial: serial,
       customerName: payload['Customer Name'] || '',
       phone: payload['Phone'] || '',
-      // Custom/text-only items are deliberately NOT written to the Items sheet:
-      // that sheet drives the stock diff, and these must never affect stock.
-      items: editItemsList.filter(it => !it.manual && !it.textOnly).map(it => ({
+      // Custom (hand-typed) items ARE written, with an EMPTY sku and the
+      // "[custom]" marker, so their price/weight/qty survive re-opening the
+      // order. Stock is adjusted by SKU only, so an empty SKU can never
+      // deduct or restore anything. Only legacy text-only lines (no price/
+      // weight data at all) are left out.
+      items: editItemsList.filter(it => !it.textOnly).map(it => ({
         item: it.name,
-        option: it.option || '',
+        option: it.manual ? CUSTOM_ITEM_MARK : (it.option || ''),
         quantity: it.qty,
-        sku: it.sku || '',
+        sku: it.manual ? '' : (it.sku || ''),
         date: it.date || '',
         salePrice: it.salePrice || 0,
         weight: it.weight || 0
