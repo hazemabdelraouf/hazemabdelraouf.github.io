@@ -2264,6 +2264,27 @@
       // الحر المحفوظ فى عمود "items" كما كان.
       editItemsList = parseItemsText(order.items);
     }
+    // Custom items live ONLY in the order's "items" text + totals (never in
+    // the Items sheet, so they can't touch stock). When re-opening an order
+    // that has Items-sheet rows, bring back any text lines that have no
+    // matching Items row, so they stay on the order instead of vanishing on
+    // the next save. Their price/weight already sit in the base amount below.
+    if(sheetRows.length){
+      const parsed = parseItemsText(order.items);
+      let room = parsed.length - sheetRows.length;
+      parsed.forEach(pi => {
+        if(room <= 0) return;
+        const a = normItemName(pi.name);
+        const covered = sheetRows.some(r => {
+          const b = normItemName(r.item);
+          return a && b && (a === b || a.includes(b) || b.includes(a));
+        });
+        if(!covered && a){
+          editItemsList.push({ name: pi.name, qty: pi.qty, salePrice: 0, weight: 0, sku: '', custom: true, textOnly: true, option: '', date: '' });
+          room--;
+        }
+      });
+    }
     // Whatever the order's total/weight already were, minus what we can
     // now attribute to matched products, is the "base" contributed by
     // items we couldn't match (or by shipping/rounding on the original
@@ -2393,8 +2414,8 @@
 
   // ---- Custom (manual) item: free name/price/weight/qty typed by hand. It's
   // flagged `manual` so it counts in total/weight/COD/pieces like any priced
-  // item, but it's always saved with an EMPTY sku (+ noStock flag) so the
-  // backend's stock diff never deducts or restores anything for it. ----
+  // item, but it's kept out of the Items-sheet sync entirely (see
+  // syncOrderItemsSheet), so stock is never deducted or restored for it. ----
   $('ieCustomToggle').addEventListener('click', () => {
     $('ieCustomBox').classList.toggle('show');
     if($('ieCustomBox').classList.contains('show')) $('ieCustomName').focus();
@@ -2478,15 +2499,16 @@
       orderSerial: serial,
       customerName: payload['Customer Name'] || '',
       phone: payload['Phone'] || '',
-      items: editItemsList.map(it => ({
+      // Custom/text-only items are deliberately NOT written to the Items sheet:
+      // that sheet drives the stock diff, and these must never affect stock.
+      items: editItemsList.filter(it => !it.manual && !it.textOnly).map(it => ({
         item: it.name,
         option: it.option || '',
         quantity: it.qty,
-        sku: it.manual ? '' : (it.sku || ''),
+        sku: it.sku || '',
         date: it.date || '',
         salePrice: it.salePrice || 0,
-        weight: it.weight || 0,
-        noStock: it.manual ? true : false
+        weight: it.weight || 0
       }))
     };
     await sendUpdateOrderItems(body);
