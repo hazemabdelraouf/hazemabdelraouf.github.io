@@ -1088,6 +1088,7 @@
         <option value="Ycloud">Ycloud</option>
         <option value="Purchase">Purchase</option>
         <option value="Others">Others</option>
+        <option value="حق الله">حق الله</option>
       </select>
     </div>
     <div class="edit-field-group" id="expItemsGroup" style="display:none;">
@@ -1314,6 +1315,21 @@
     </div>
 
     <button class="modal-cancel" id="closeSummaryModalBtn" style="margin-top:14px;">Close</button>
+  </div>
+</div>
+
+<!-- ============ PAY HAQ ALLAH MODAL ============ -->
+<div class="modal-overlay" id="zakatPayModal">
+  <div class="modal-card">
+    <div class="modal-title">دفع حق الله</div>
+    <div class="modal-sub" id="zakatPayModalSub"></div>
+    <div class="modal-options">
+      <button class="modal-opt-btn" data-zakat-payer="Bedir">Bedir</button>
+      <button class="modal-opt-btn" data-zakat-payer="Hazem">Hazem</button>
+      <button class="modal-opt-btn" data-zakat-payer="UVA">UVA (company account)</button>
+    </div>
+    <div class="modal-field-error" id="zakatPayError"></div>
+    <button class="modal-cancel" id="closeZakatPayModalBtn">Cancel</button>
   </div>
 </div>
 
@@ -5466,33 +5482,29 @@
     }
   }
 
+  const ZAKAT_CATEGORY = 'حق الله';
+  let summaryZakatAmount = 0;
+
+  // آخر مرة اتدفع فيها حق الله = أحدث حركة في Expenses كاتيجوريها "حق الله"
+  function getLastZakatPaymentDate(){
+    let last = null;
+    allExpenses.forEach(row=>{
+      if(String(row['Category'] || '').trim() !== ZAKAT_CATEGORY) return;
+      const d = new Date(row['Date']);
+      if(!isNaN(d.getTime()) && (!last || d > last)) last = d;
+    });
+    return last;
+  }
+
   function renderSummary(){
-    // 1) Physical inventory value = Σ (balance × cost) across the Items sheet.
     const inventoryValue = allProducts.reduce((sum,p)=> sum + ((Number(p.balance)||0) * (Number(p.cost)||0)), 0);
 
-    // 2) Internal (Bedir/Hazem/UVA) balances + external debts, shown as a
-    // breakdown rather than one blended figure since "company owes them"
-    // and "they owe the company" point in opposite directions. A negative
-    // internal balance still represents company money sitting with that
-    // person (not a loss), so each account counts in full regardless of
-    // sign — summed as absolute values, not netted against each other.
-    // Also split into "owed to company" (negative balances — an asset) vs
-    // "owed by company" (positive balances — a liability) for Main budget.
     const internalNet = Math.abs(expenseBalances.Bedir||0) + Math.abs(expenseBalances.Hazem||0) + Math.abs(expenseBalances.UVA||0);
     const internalOwedToCompany = ['Bedir','Hazem','UVA'].reduce((s,p)=> s + Math.max(0, -(expenseBalances[p]||0)), 0);
     const internalOwedByCompany = ['Bedir','Hazem','UVA'].reduce((s,p)=> s + Math.max(0, (expenseBalances[p]||0)), 0);
     const owedToUs = debtTotals.owedToUs || 0;
     const weOwe = debtTotals.weOwe || 0;
 
-    // 3) Not-yet-paid orders = every order whose payment isn't PAID —
-    // covers "pending" plus any blank/unspecified payment status — across
-    // every shipping status except Cancelled (never happened) and Returned
-    // (item came back, so that money is never coming in). Delivered orders
-    // are included on purpose: a delivered order can still be unpaid (COD
-    // collected by the courier but not yet remitted to the company). This
-    // money is still expected to come into the company soon, so it's
-    // summed by COD (what the customer actually pays, total + shipping),
-    // falling back to total if COD is blank.
     const pendingOrders = allOrders.filter(o=>{
       const ship = normStatus(o.shipping_status);
       return normStatus(o.payment_status) !== 'paid' && !['cancelled','returned'].includes(ship);
@@ -5502,91 +5514,62 @@
       return sum + (!isNaN(cod) ? cod : (parseFloat(o.total)||0));
     }, 0);
 
-    // 4 & 5) Sales + profit from the start of this month through today.
-    // Cancelled/returned orders never became real sales, so they're excluded.
-    // The order date lives in the sheet's "created at" column (o.date isn't
-    // a real field), so it's resolved the same way the order cards do —
-    // otherwise every date parses to NaN and the whole month comes back empty.
-    // Profit = sales total minus cost of goods sold, where each item's cost
-    // is looked up live from the products sheet's "cost" column, matched by
-    // SKU (from the Items sheet) rather than by name — names can change or
-    // repeat between variants, SKUs don't.
+    // بداية الفترة: آخر دفع لحق الله (ريسيت)، ولو عمره ما اتدفع → أول الشهر
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthOrders = allOrders.filter(o=>{
+    const lastZakatDate = getLastZakatPaymentDate();
+    const periodStart = lastZakatDate || monthStart;
+    const periodLabel = lastZakatDate ? 'since last payment (' + fmtShortDate(lastZakatDate) + ')' : 'this month';
+
+    const periodOrders = allOrders.filter(o=>{
       if(['cancelled','returned'].includes(normStatus(o.shipping_status))) return false;
       const d = new Date(o[resolveCreatedAtKey(o)] || o.Updated);
-      return !isNaN(d.getTime()) && d >= monthStart && d <= now;
+      return !isNaN(d.getTime()) && d >= periodStart && d <= now;
     });
-    let monthSales = 0, monthCOGS = 0;
-    monthOrders.forEach(o=>{
-      monthSales += parseFloat(o.total) || 0;
+    let periodSales = 0, periodCOGS = 0;
+    periodOrders.forEach(o=>{
+      periodSales += parseFloat(o.total) || 0;
       const serial = o['Order Serial'];
       const lineItems = allOrderItems.filter(it => String(it.orderSerial) === String(serial));
       if(lineItems.length){
         lineItems.forEach(it=>{
           const product = findProductBySku(it.sku);
-          const unitCost = product ? (Number(product.cost)||0) : 0;
-          monthCOGS += unitCost * (Number(it.quantity)||0);
+          periodCOGS += (product ? (Number(product.cost)||0) : 0) * (Number(it.quantity)||0);
         });
       } else {
-        // Orders that predate the Items sheet have no SKU rows to match —
-        // fall back to the legacy free-text parse/by-name match so their
-        // cost isn't silently dropped from the total.
         parseItemsText(o.items).forEach(it=>{
           const product = findProductByName(it.name);
-          const unitCost = product ? (Number(product.cost)||0) : 0;
-          monthCOGS += unitCost * (Number(it.qty)||0);
+          periodCOGS += (product ? (Number(product.cost)||0) : 0) * (Number(it.qty)||0);
         });
       }
     });
-    const monthProfit = monthSales - monthCOGS;
+    const periodProfit = periodSales - periodCOGS;
 
-    // 6) Operating expenses this month — every internal transaction whose
-    // category is one of the fixed P&L categories (Aramex, Tips Saad,
-    // Delivery, Facebook ads, Make, Ycloud, Others — "Order collection" and
-    // "Purchase" are deliberately excluded: Order collection is just
-    // cash-in-transit tracking, and Purchase is money spent buying
-    // merchandise, which is already reflected in COGS/gross profit above,
-    // not a separate operating cost), dated within this same month window.
-    // These get deducted from gross profit before net profit (and حق الله)
-    // are computed, regardless of which account (Bedir/Hazem/UVA) the
-    // amount sits under or which direction it's recorded in — the category
-    // alone decides whether it's a cost to the business.
-    //
-    // Commission handling: a transaction's stored amount already includes
-    // its commission (they're combined when the account balance is
-    // recorded), so for a matching category the full amount is correct as
-    // -is. But a transaction in an EXCLUDED category (Purchase, Order
-    // collection) still had a real payment/transfer commission on it if one
-    // was entered — that fee is a genuine operating cost even though the
-    // underlying purchase/collection itself isn't, so it's added back in on
-    // its own for those rows.
+    // المصروفات: بس الكاتيجوريز اللي في الداشبورد (ماعدا Purchase و Order collection).
+    // أي كاتيجوري تانية (مضافة manual في الشيت أو بالـ API) مش بتتحسب.
+    // Purchase / Order collection: بيتحسب بس العمولة (commission) اللي اتدفعت عليهم.
     const PL_EXPENSE_CATEGORIES = ['aramex','tips saad','delivery','facebook ads','make','ycloud','others'];
-    const monthCategoryExpenses = allExpenses.reduce((sum, row) => {
+    const COMMISSION_ONLY_CATEGORIES = ['purchase','order collection'];
+    const periodExpenses = allExpenses.reduce((sum, row) => {
       const d = new Date(row['Date']);
-      if(isNaN(d.getTime()) || d < monthStart || d > now) return sum;
+      if(isNaN(d.getTime()) || d < periodStart || d > now) return sum;
       const cat = String(row['Category'] || '').trim().toLowerCase();
-      const commission = Number(row['Commission']) || 0;
       if(PL_EXPENSE_CATEGORIES.includes(cat)){
         let amount = 0;
         ['Bedir','Hazem','UVA'].forEach(p=>{
           const n = Number(row[p]);
           if(row[p] !== '' && row[p] !== null && row[p] !== undefined && !isNaN(n) && n !== 0) amount = n;
         });
-        return sum + Math.abs(amount); // already includes this row's commission
+        return sum + Math.abs(amount);
       }
-      return sum + Math.abs(commission); // excluded category — only its commission counts
+      if(COMMISSION_ONLY_CATEGORIES.includes(cat)) return sum + Math.abs(Number(row['Commission']) || 0);
+      return sum; // أي كاتيجوري تانية → ماتتحسبش
     }, 0);
-    const netProfit = monthProfit - monthCategoryExpenses;
+    const netProfit = periodProfit - periodExpenses;
 
-    // 7) 1% of this month's NET profit (after the category expenses above) — حق الله.
     const zakat = netProfit * 0.01;
+    summaryZakatAmount = zakat > 0 ? zakat : 0;
 
-    // 8) Main budget = everything that belongs to the company (inventory +
-    // not-yet-paid orders + what's owed to the company, internally and
-    // externally) minus everything the company owes (internally and
-    // externally) — a single "what's actually ours right now" figure.
     const mainBudget = inventoryValue + pendingOrdersTotal + internalOwedToCompany + owedToUs
                       - internalOwedByCompany - weOwe;
 
@@ -5599,16 +5582,69 @@
       row('— We owe (external)', fmtEGP(-weOwe)),
       row('Not-yet-paid orders total', fmtEGP(pendingOrdersTotal) + ' (' + pendingOrders.length + ' orders)'),
       row('Main budget', fmtEGP(mainBudget)),
-      row('Sales this month', fmtEGP(monthSales)),
-      row('Gross profit this month', fmtEGP(monthProfit)),
-      row('— Operating expenses this month', fmtEGP(-monthCategoryExpenses)),
-      row('Net profit this month', fmtEGP(netProfit)),
-      row('1% of net profit (حق الله)', fmtEGP(zakat)),
-    ].join('');
+      row('Sales ' + periodLabel, fmtEGP(periodSales)),
+      row('Gross profit ' + periodLabel, fmtEGP(periodProfit)),
+      row('— Operating expenses ' + periodLabel, fmtEGP(-periodExpenses)),
+      row('Net profit ' + periodLabel, fmtEGP(netProfit)),
+      row('1% of net profit (حق الله)', fmtEGP(summaryZakatAmount)),
+    ].join('') +
+      `<button class="btn" id="payZakatBtn" style="max-width:none;${summaryZakatAmount > 0 ? '' : 'opacity:.5;'}" ${summaryZakatAmount > 0 ? '' : 'disabled'}>💸 دفع حق الله (${fmtEGP(summaryZakatAmount)})</button>`;
+
+    const payBtn = $('payZakatBtn');
+    if(payBtn) payBtn.addEventListener('click', openZakatPayModal);
   }
   $('summaryBtn').addEventListener('click', openSummaryModal);
   $('closeSummaryModalBtn').addEventListener('click', ()=> $('summaryModal').classList.remove('active'));
   $('summaryModal').addEventListener('click', (e)=>{ if(e.target === $('summaryModal')) $('summaryModal').classList.remove('active'); });
+
+  function openZakatPayModal(){
+    if(summaryZakatAmount <= 0) return;
+    $('zakatPayModalSub').textContent = 'المبلغ: ' + fmtEGP(summaryZakatAmount) + ' — مين اللي دفعهم من جيبه؟';
+    $('zakatPayError').textContent = '';
+    $('zakatPayModal').classList.add('active');
+  }
+  function hideZakatPayModal(){ $('zakatPayModal').classList.remove('active'); }
+  $('closeZakatPayModalBtn').addEventListener('click', hideZakatPayModal);
+  $('zakatPayModal').addEventListener('click', (e)=>{ if(e.target === $('zakatPayModal')) hideZakatPayModal(); });
+
+  document.querySelectorAll('#zakatPayModal [data-zakat-payer]').forEach(optBtn=>{
+    optBtn.addEventListener('click', async ()=>{
+      const person = optBtn.getAttribute('data-zakat-payer');
+      const amount = Math.round(summaryZakatAmount * 100) / 100;
+      if(amount <= 0) return;
+      const btns = document.querySelectorAll('#zakatPayModal .modal-opt-btn');
+      btns.forEach(b => b.disabled = true);
+      $('zakatPayError').textContent = '';
+      try{
+        const paramsObj = {
+          action: 'addExpense',
+          account: person,
+          direction: 'positive', // دفعها من جيبه → الشركة مديونة له
+          amount: String(amount),
+          commission: '0',
+          category: ZAKAT_CATEGORY,
+          description: 'دفع حق الله (1% من صافي الربح)',
+          date: new Date().toISOString()
+        };
+        const sep = API_URL.includes('?') ? '&' : '?';
+        const res = await fetch(API_URL + sep + new URLSearchParams(paramsObj).toString(), { method:'GET', redirect:'follow' });
+        const data = await res.json();
+        if(data && data.error){
+          $('zakatPayError').textContent = 'Sheet error: ' + data.error;
+          return;
+        }
+        sendExpensesWebhook('expense_added', Object.assign({ row: data && data.row }, paramsObj));
+        hideZakatPayModal();
+        await fetchExpenses();
+        renderSummary(); // الحسبة بتبدأ من دلوقتي
+      }catch(err){
+        console.error('pay zakat error:', err);
+        $('zakatPayError').textContent = 'Something went wrong, please try again.';
+      }finally{
+        btns.forEach(b => b.disabled = false);
+      }
+    });
+  });
 
   $('confirmTransferBtn').addEventListener('click', async ()=>{
     const amount = parseFloat($('trAmount').value);
