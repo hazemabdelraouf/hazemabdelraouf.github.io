@@ -944,6 +944,19 @@
   </div>
 </div>
 
+<!-- ============ MODAL (Mark as paid: set COD to 0?) ============ -->
+<div class="modal-overlay" id="codZeroModal">
+  <div class="modal-card">
+    <div class="modal-title" id="codZeroModalTitle">Set COD to 0?</div>
+    <div class="modal-sub" id="codZeroModalSub">Mark this order as paid.</div>
+    <div class="modal-options">
+      <button class="modal-opt-btn" id="codZeroYesBtn">Yes — set COD to 0</button>
+      <button class="modal-opt-btn" id="codZeroNoBtn">No — keep the COD</button>
+    </div>
+    <button class="modal-cancel" id="codZeroCancelBtn">Cancel</button>
+  </div>
+</div>
+
 <!-- ============ MODAL (For AWB Pickup Date) ============ -->
 <div class="modal-overlay" id="pickupDateModal">
   <div class="modal-card">
@@ -1956,24 +1969,60 @@
       hideCollectorModal();
       pendingCollector = null;
       if(!ctx) return;
+      // "Mark as paid" only: ask whether the COD should become 0 before sending.
+      if(ctx.kind !== 'delivered'){
+        promptCodZero(ctx, person);
+        return;
+      }
       await runCollectorAction(ctx.btn, ctx.serial, ctx.kind, person);
     });
   });
 
-  async function runCollectorAction(btn, serial, kind, person){
+  // ---- "Mark as paid" -> "Set COD to 0?" ----
+  // Yes: the webhook carries COD = 0 (and no cash is logged against the
+  // collector, since nothing is due on delivery). No: behaves exactly as before.
+  let pendingCodCtx = null; // { ctx, person }
+  function promptCodZero(ctx, person){
+    pendingCodCtx = { ctx, person };
+    const order = allOrders.find(o => String(o['Order Serial']) === String(ctx.serial)) || {};
+    const cod = parseFloat(order.COD);
+    $('codZeroModalTitle').textContent = 'Set COD to 0 for #' + ctx.serial + '?';
+    $('codZeroModalSub').textContent = isNaN(cod) ? 'Mark this order as paid.' : 'Current COD: ' + cod + ' EGP.';
+    $('codZeroModal').classList.add('active');
+  }
+  function hideCodZeroModal(){ $('codZeroModal').classList.remove('active'); }
+  async function finishCodChoice(setZero){
+    const pending = pendingCodCtx;
+    hideCodZeroModal();
+    pendingCodCtx = null;
+    if(!pending) return;
+    await runCollectorAction(pending.ctx.btn, pending.ctx.serial, pending.ctx.kind, pending.person, { codZero: setZero });
+  }
+  $('codZeroYesBtn').addEventListener('click', ()=> finishCodChoice(true));
+  $('codZeroNoBtn').addEventListener('click', ()=> finishCodChoice(false));
+  $('codZeroCancelBtn').addEventListener('click', ()=>{ hideCodZeroModal(); pendingCodCtx = null; });
+  $('codZeroModal').addEventListener('click', (e)=>{
+    if(e.target === $('codZeroModal')){ hideCodZeroModal(); pendingCodCtx = null; }
+  });
+
+  async function runCollectorAction(btn, serial, kind, person, opts){
+    opts = opts || {};
     const isDelivered = kind === 'delivered';
-    logOrderAction(serial, isDelivered ? 'Marked delivered locally' : 'Marked as paid', 'Received by ' + person);
+    logOrderAction(serial, isDelivered ? 'Marked delivered locally' : 'Marked as paid', 'Received by ' + person + (opts.codZero ? ' — COD set to 0' : ''));
 
     // 1) Original webhook, unchanged, plus who received it.
-    await sendMakeWebhook(btn, {
+    const markPayload = {
       "order serial": serial,
       "event": isDelivered ? "delivered locally" : "mark as paid",
       "received by": person
-    }, isDelivered ? 'Marked delivered' : 'Marked paid', MARK_WEBHOOK_URL);
+    };
+    if(opts.codZero) markPayload["COD"] = 0; // only when chosen; otherwise the payload is unchanged
+    await sendMakeWebhook(btn, markPayload, isDelivered ? 'Marked delivered' : 'Marked paid', MARK_WEBHOOK_URL);
 
     // 2) Credit the order's cash against that person's account right away.
     const order = allOrders.find(o => String(o['Order Serial']) === String(serial)) || {};
-    const amount = Math.abs(parseFloat(order.COD)) || Math.abs(parseFloat(order.total)) || 0;
+    // COD set to 0 => nothing is due on delivery, so no cash is logged against the collector.
+    const amount = opts.codZero ? 0 : (Math.abs(parseFloat(order.COD)) || Math.abs(parseFloat(order.total)) || 0);
     if(amount > 0 && API_URL){
       try{
         const paramsObj = {
