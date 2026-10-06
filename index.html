@@ -2216,9 +2216,10 @@
         qty = Math.max(1, parseInt(oldFormat[1], 10) || 1);
         name = oldFormat[2].trim();
       }
-      const product = findProductByName(name);
+      name = cleanItemName(name);
+      const product = findProductSmart(name);
       if(product) return { name: product.name, qty, salePrice: product.salePrice, weight: product.weight, sku: product.sku, option: '', date: '' };
-      return { name, qty, salePrice: 0, weight: 0, custom: true, option: '', date: '' };
+      return { name, qty, salePrice: 0, weight: 0, custom: true, unlinked: true, option: '', date: '' };
     });
   }
   async function initItemsEditor(order){
@@ -2243,9 +2244,16 @@
         // that counts in total/weight/COD/pieces — and never touches stock
         // (stock is matched by SKU only, and they have none).
         if(String(row.option || '').trim() === CUSTOM_ITEM_MARK){
+          // A "[custom]" row whose name IS a catalogue product was written by
+          // mistake (an unmatched text line saved as custom): link it back to
+          // the product so saving this order deducts its stock.
+          const linked = findProductSmart(row.item);
+          if(linked){
+            return { name: linked.name, qty: Math.max(1, Number(row.quantity) || 1), salePrice: Number(row.salePrice) || linked.salePrice, weight: Number(row.weight) || linked.weight, sku: linked.sku, option: '', date: row.date || '' };
+          }
           return { name: row.item || '(custom item)', qty: Math.max(1, Number(row.quantity) || 1), salePrice: Number(row.salePrice) || 0, weight: Number(row.weight) || 0, sku: '', option: CUSTOM_ITEM_MARK, date: row.date || '', manual: true };
         }
-        const product = findProductBySku(row.sku) || findProductByName(row.item);
+        const product = findProductBySku(row.sku) || findProductSmart(row.item);
         // السعر بيتاخد من شيت Items نفسه (سعر وقت الأوردر)، مش من شيت
         // products اللايف — لأن سعر المنتج ممكن يتغيّر بعد كذا، وده كان
         // بيبوّظ حساب الأوردرات القديمة. بيرجع لسعر شيت products بس لو
@@ -2266,7 +2274,7 @@
         // صنف فى شيت Items مالوش SKU متطابق فى شيت المنتجات دلوقتي (مثلاً
         // منتج بايع أو الاسم اتغيّر) — يفضل يظهر للمراجعة بسعره المحفوظ
         // (لو موجود)، وقيمته الأصلية بتتحفظ فى الـ base بدل ما تضيع.
-        return { name: row.item || '(unknown item)', qty: Math.max(1, Number(row.quantity) || 1), salePrice: salePrice, weight: weight, sku: row.sku || '', custom: !salePrice, option: row.option || '', date: row.date || '' };
+        return { name: cleanItemName(row.item) || row.item || '(unknown item)', qty: Math.max(1, Number(row.quantity) || 1), salePrice: salePrice, weight: weight, sku: row.sku || '', custom: !salePrice, unlinked: !row.sku, option: row.option || '', date: row.date || '' };
       });
     } else {
       // أوردر قديم قبل ما شيت Items يتضاف لهذا الأوردر — نرجع لتحليل النص
@@ -2289,7 +2297,7 @@
           return a && b && (a === b || a.includes(b) || b.includes(a));
         });
         if(!covered && a){
-          editItemsList.push({ name: pi.name, qty: pi.qty, salePrice: 0, weight: 0, sku: '', custom: true, textOnly: true, option: '', date: '' });
+          editItemsList.push({ name: pi.name, qty: pi.qty, salePrice: 0, weight: 0, sku: '', custom: true, textOnly: true, unlinked: true, option: '', date: '' });
           room--;
         }
       });
@@ -2325,11 +2333,10 @@
         it.weight = perUnitWeight;
         it.custom = false;
         it.estimated = true;
-        if(!it.sku){            // no SKU => hand-typed/legacy line: keep it stock-free
-          it.manual = true;
-          it.textOnly = false;
-          it.option = CUSTOM_ITEM_MARK;
-        }
+        it.textOnly = false;     // now has a price, so it is saved with the order
+        // NOT marked "[custom]": that marker is only for items typed on purpose.
+        // A line without a SKU stays flagged "unlinked" and the save step warns
+        // that it won't be deducted from stock.
       });
       editItemsBase = { total: 0, weight: 0 };
     }
@@ -2355,7 +2362,30 @@
   function normSearch(str){
     return String(str || '').toLowerCase()
       .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
-      .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه');
+      .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+      .replace(/\s+/g, ' ');
+  }
+  // Order text from the store often has list decoration in front of the name
+  // ("• Product", "- Product", "1. Product") and invisible direction marks.
+  // Those must never stop a line from matching its product (an unmatched line
+  // has no SKU, so it would silently skip the stock deduction).
+  function cleanItemName(name){
+    return String(name || '')
+      .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '')
+      .replace(/^[\s•·●▪■◦‣▫○\-–—*+>#]+/, '')
+      .replace(/^\d+\s*[.)]\s+/, '')
+      .trim();
+  }
+  // Exact name first, then a spelling-tolerant match on the Arabic name OR the
+  // English title (same normalisation the search boxes use).
+  function findProductSmart(name){
+    const clean = cleanItemName(name);
+    if(!clean) return null;
+    const exact = findProductByName(clean);
+    if(exact) return exact;
+    const n = normSearch(clean).trim();
+    if(!n) return null;
+    return allProducts.find(p => normSearch(p.name).trim() === n || (p.nameEn && normSearch(p.nameEn).trim() === n)) || null;
   }
   function productMatchesQuery(p, q){
     const nq = normSearch(q).trim();
@@ -2508,6 +2538,16 @@
     // own newline-based representation.
     if(payload.items){
       payload.items = String(payload.items).split(/\r?\n/).map(s=>s.trim()).filter(Boolean).join(', ');
+    }
+
+    // Lines that matched no product have no SKU, so saving them deducts
+    // nothing from stock. Say so BEFORE saving instead of failing silently.
+    const unlinkedRows = editItemsList.filter(it => it.unlinked && !it.manual && !it.sku);
+    if(unlinkedRows.length){
+      const ok = confirm('These items are not linked to a product in the products sheet, so they will NOT be deducted from stock:\n\n' +
+        unlinkedRows.map(it => '• ' + it.name + ' (' + it.qty + ')').join('\n') +
+        '\n\nPress Cancel to go back and replace them with a product from the search box, or OK to save anyway.');
+      if(!ok) return;
     }
 
     hideEditOrderModal();
