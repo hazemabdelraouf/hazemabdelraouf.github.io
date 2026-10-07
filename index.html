@@ -1203,10 +1203,24 @@
         <input type="number" id="piPrice" min="0" step="0.01" placeholder="Unit cost" style="width:80px;">
         <button type="button" id="piAddBtn" class="btn ghost" style="width:auto;padding:8px 14px;">Add</button>
       </div>
+      <div class="pi-total-row" id="piSubtotalRow" style="display:none;">
+        <span>Products subtotal</span>
+        <span id="piSubtotal">0 EGP</span>
+      </div>
+      <div class="pi-total-row" id="piDeliveryRow" style="display:none;">
+        <span>Delivery</span>
+        <span id="piDeliveryShown">0 EGP</span>
+      </div>
       <div class="pi-total-row">
         <span>Total</span>
         <span id="piTotal">0 EGP</span>
       </div>
+    </div>
+
+    <div class="edit-field-group">
+      <label>Delivery cost (optional)</label>
+      <input type="number" id="piDelivery" min="0" step="0.01" placeholder="0 — leave empty if no delivery">
+      <div class="modal-field-note" id="piDeliveryHint" style="margin-top:4px;">If there is delivery, it is split equally across every piece in the invoice and added to each unit's cost.</div>
     </div>
 
     <div class="edit-field-group">
@@ -5216,9 +5230,32 @@
         });
       });
     }
-    const total = piItems.reduce((sum, it) => sum + (it.qty * it.price), 0);
-    $('piTotal').textContent = total.toFixed(2) + ' EGP';
+    piUpdateTotals();
   }
+
+  // Delivery is split equally per piece: every unit in the invoice gets
+  // delivery / totalPieces added to its unit cost.
+  function piGetDelivery(){
+    return Math.max(0, parseFloat($('piDelivery').value) || 0);
+  }
+  function piTotalPieces(){
+    return piItems.reduce((sum, it) => sum + it.qty, 0);
+  }
+  function piUpdateTotals(){
+    const subtotal = piItems.reduce((sum, it) => sum + (it.qty * it.price), 0);
+    const delivery = piGetDelivery();
+    const pieces = piTotalPieces();
+    const perPiece = (delivery > 0 && pieces > 0) ? delivery / pieces : 0;
+    $('piSubtotal').textContent = subtotal.toFixed(2) + ' EGP';
+    $('piDeliveryShown').textContent = delivery.toFixed(2) + ' EGP';
+    $('piSubtotalRow').style.display = delivery > 0 ? 'flex' : 'none';
+    $('piDeliveryRow').style.display = delivery > 0 ? 'flex' : 'none';
+    $('piTotal').textContent = (subtotal + delivery).toFixed(2) + ' EGP';
+    $('piDeliveryHint').textContent = perPiece > 0
+      ? '+' + perPiece.toFixed(2) + ' EGP added to the cost of each piece (' + pieces + ' pieces).'
+      : 'If there is delivery, it is split equally across every piece in the invoice and added to each unit\'s cost.';
+  }
+  $('piDelivery').addEventListener('input', piUpdateTotals);
 
   function piHideSearchResults(){
     $('piSearchResults').classList.remove('show');
@@ -5313,6 +5350,7 @@
     $('piAccount').value = 'Bedir';
     $('piCategory').value = 'Purchase';
     $('piDescription').value = '';
+    $('piDelivery').value = '';
     $('piDate').value = nowLocalDateTime();
     $('piSearch').value = '';
     $('piQty').value = '1';
@@ -5345,6 +5383,7 @@
       lines.push('• ' + it.name + ' — ' + it.quantity + ' × ' + (Number(it.price) || 0).toFixed(2) + ' = ' + lineTotal.toFixed(2) + ' EGP');
     });
     lines.push('');
+    if(Number(payload.delivery) > 0) lines.push('Delivery: ' + Number(payload.delivery).toFixed(2) + ' EGP (included in unit cost)');
     lines.push('Total: ' + (Number(total) || 0).toFixed(2) + ' EGP');
     lines.push(payload.paymentType === 'credit' ? 'Payment: On credit (to be paid later)' : 'Payment: Paid now by ' + payload.account);
     if(payload.category) lines.push('Category: ' + payload.category);
@@ -5482,15 +5521,24 @@
       // the person actually picked, same as every other saved timestamp.
       const rawDateTime = $('piDate').value;
       const dateIso = rawDateTime ? new Date(rawDateTime).toISOString() : new Date().toISOString();
+      // Delivery (if any) is split equally per piece and added to each
+      // unit's cost, so stock average cost / invoice total already include
+      // it — no backend change needed.
+      const delivery = piGetDelivery();
+      const pieces = piTotalPieces();
+      const perPiece = (delivery > 0 && pieces > 0) ? delivery / pieces : 0;
+      const userNote = $('piDescription').value.trim();
+      const deliveryNote = delivery > 0 ? ('Delivery ' + delivery.toFixed(2) + ' EGP included in unit cost') : '';
       const payload = {
         action: 'addPurchase',
         merchant: $('piMerchant').value.trim(),
         paymentType: paymentType,
         account: $('piAccount').value,
         category: $('piCategory').value,
-        description: $('piDescription').value.trim(),
+        description: [userNote, deliveryNote].filter(Boolean).join(' | '),
         date: dateIso,
-        items: piItems.map(it => ({ row: it.row, name: it.name, quantity: it.qty, price: it.price }))
+        delivery: delivery,
+        items: piItems.map(it => ({ row: it.row, name: it.name, quantity: it.qty, price: Math.round((it.price + perPiece) * 10000) / 10000 }))
       };
       // Sent as POST with a JSON string body and no explicit Content-Type
       // header (so it stays a CORS-"simple" request the Apps Script web
@@ -5505,7 +5553,11 @@
       $('purchaseModal').classList.remove('active');
       // Offer to share the invoice right away (shown once, only after a successful save).
       const savedTotal = (data && data.total != null) ? data.total : payload.items.reduce((sum, it) => sum + (Number(it.quantity) || 0) * (Number(it.price) || 0), 0);
-      showPurchaseSavedModal(payload, savedTotal, true);
+      const sharePayload = Object.assign({}, payload, {
+        description: userNote,
+        items: piItems.map(it => ({ row: it.row, name: it.name, quantity: it.qty, price: it.price }))
+      });
+      showPurchaseSavedModal(sharePayload, savedTotal, true);
       fetchPurchases().catch(()=>{}); // so its row's Share button opens instantly
       await fetchProducts(true); // refresh cached stock/cost for next time
       renderInventory(); // keep the Inventory view in sync if it's open
