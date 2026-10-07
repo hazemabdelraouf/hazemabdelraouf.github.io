@@ -697,6 +697,14 @@
   .exp-empty{text-align:center;color:var(--cream-dim);font-size:13px;padding:30px 10px;}
   .debt-status-open{color:var(--amber);}
   .debt-status-settled{color:var(--sage);}
+  /* Closed = a deferred item that has been paid in full */
+  .exp-row.closed, .debt-row.closed{border-color:var(--sage);background:#f0fdf4;}
+  .exp-row.closed .exp-desc, .debt-row.closed .exp-desc{color:#15803d;}
+  .exp-row.closed .exp-amount, .debt-row.closed .exp-amount{opacity:.65;}
+  .closed-badge{
+    display:inline-block;align-self:flex-start;font-size:11px;font-weight:800;padding:3px 9px;
+    border-radius:999px;background:var(--sage);color:#fff;
+  }
   .debt-settle-btn{
     margin-top:9px;background:var(--panel-2);border:1px solid var(--line);
     color:var(--cream);font-size:12px;font-weight:700;padding:7px 12px;
@@ -4357,11 +4365,13 @@
       const linkType = String(row['LinkType'] || '').trim();
       const linkLabel = LINK_TYPE_LABELS[linkType];
       const commission = Number(row['Commission']) || 0;
-      return `<div class="exp-row">
+      const isClosed = linkType === 'debt_settlement'; // full payment of a deferred item
+      return `<div class="exp-row${isClosed ? ' closed' : ''}">
         <div class="exp-row-top">
           <div>
             <div class="exp-desc">${escapeHtml(row['Description'] || 'No description')}</div>
             <div class="exp-meta">
+              ${isClosed ? '<span class="closed-badge">✓ Closed</span>' : ''}
               <span>${escapeHtml(accountLabel)}</span>
               ${row['Category'] ? `<span class="exp-badge">${escapeHtml(row['Category'])}</span>` : ''}
               <span>${escapeHtml(fmtShortDateTime(row['Date']))}</span>
@@ -4536,14 +4546,14 @@
       const isSettled = String(row['Status']||'').trim() === 'Settled';
       const purchaseLinkId = String(row['PurchaseLinkID']||'').trim();
       const linkLabel = purchaseLinkId ? 'Linked · purchase invoice' : '';
-      return `<div class="debt-row">
+      return `<div class="debt-row${isSettled ? ' closed' : ''}">
         <div class="debt-row-top">
           <div>
             <div class="exp-desc">${escapeHtml(row['Party'] || '')}</div>
             <div class="exp-meta">
               <span>${escapeHtml(dirLabel)}</span>
               <span>${escapeHtml(fmtShortDateTime(row['Date']))}</span>
-              <span class="${isSettled ? 'debt-status-settled' : 'debt-status-open'}">${isSettled ? 'Settled' : 'Open'}</span>
+              ${isSettled ? '<span class="closed-badge">✓ Closed</span>' : '<span class="debt-status-open">Open</span>'}
               ${linkLabel ? `<span>${escapeHtml(linkLabel)}</span>` : ''}
             </div>
             ${row['Description'] ? `<div class="exp-meta">${escapeHtml(row['Description'])}</div>` : ''}
