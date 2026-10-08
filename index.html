@@ -5805,21 +5805,61 @@
       return !isNaN(d.getTime()) && d >= periodStart && d <= now;
     });
     let periodSales = 0, periodCOGS = 0;
+    // للتشخيص: عدد الوحدات، الأوردرات اللي من غير صفوف في شيت Items (بتتقرا من
+    // نص الأصناف)، والأصناف اللي اتتجاهلت لأنها custom/من غير تكلفة.
+    let periodUnits = 0, ordersWithoutItems = 0;
+    const missingCost = {}; // name -> qty
+    const productLines = {}; // key -> {name, qty, price, cost} (للمراجعة: بيتعرض في Profit details)
+    const addLine = (key, name, qty, price, cost) => {
+      const l = productLines[key] || (productLines[key] = { name: name, qty: 0, price: price, cost: cost });
+      l.qty += qty;
+    };
+    const addMissing = (name, qty) => { const k = String(name || '(no name)').trim(); missingCost[k] = (missingCost[k] || 0) + (Number(qty) || 0); };
+    let ordersCounted = 0, customOnlyIgnored = 0, customRowsIgnored = 0;
+    // الصنف "الحقيقي" = موجود في شيت products وليه تكلفة (cost > 0). أي صنف تاني
+    // (مكتوب بإيد [custom]، أو مالوش منتج، أو التكلفة بتاعته صفر) بيتعتبر custom
+    // بدون تكلفة وبيتتجاهل بسعره وتكلفته. لو الأوردر مفيهوش ولا صنف حقيقي
+    // بيتتجاهل كله من الإجمالي، ولو فيه حقيقي + custom بيتحسب الحقيقي بس.
+    const resolveReal = (name, sku, isMarkedCustom) => {
+      if(isMarkedCustom) return null;
+      const product = findProductBySku(sku) || findProductSmart(name);
+      return (product && (Number(product.cost) || 0) > 0) ? product : null;
+    };
     periodOrders.forEach(o=>{
-      periodSales += parseFloat(o.total) || 0;
       const serial = o['Order Serial'];
       const lineItems = allOrderItems.filter(it => String(it.orderSerial) === String(serial));
+      const real = []; // { product, qty }
       if(lineItems.length){
         lineItems.forEach(it=>{
-          const product = findProductBySku(it.sku);
-          periodCOGS += (product ? (Number(product.cost)||0) : 0) * (Number(it.quantity)||0);
+          const qty = Number(it.quantity) || 0;
+          if(!qty) return;
+          const marked = String(it.option || '').trim() === CUSTOM_ITEM_MARK;
+          const product = resolveReal(it.item, it.sku, marked);
+          if(product) real.push({ product, qty });
+          else { customRowsIgnored++; addMissing(it.item, qty); }
         });
       } else {
+        // أوردر قديم من غير صفوف في Items: الأصناف من نص عمود items.
         parseItemsText(o.items).forEach(it=>{
-          const product = findProductByName(it.name);
-          periodCOGS += (product ? (Number(product.cost)||0) : 0) * (Number(it.qty)||0);
+          const qty = Number(it.qty) || 0;
+          if(!qty) return;
+          const product = resolveReal(it.name, '', false);
+          if(product) real.push({ product, qty });
+          else { customRowsIgnored++; addMissing(it.name, qty); }
         });
+        ordersWithoutItems++;
       }
+      if(!real.length){ customOnlyIgnored++; return; }
+      ordersCounted++;
+      // البروفيت لكل صنف = (Sale Price - Cost) × الكمية، الاتنين من شيت products.
+      real.forEach(({product, qty})=>{
+        const price = Number(product.salePrice) || 0;
+        const cost = Number(product.cost) || 0;
+        periodSales += price * qty;
+        periodCOGS += cost * qty;
+        periodUnits += qty;
+        addLine(product.sku || product.name, product.name, qty, price, cost);
+      });
     });
 
     // Order collection بيتحسب زي الأوردر: التكلفة (cost) من شيت المنتجات حسب
@@ -5901,6 +5941,7 @@
     const mainBudget = inventoryValue + pendingOrdersTotal + internalOwedToCompany + owedToUs
                       - internalOwedByCompany - weOwe;
 
+    const missingCostNames = Object.keys(missingCost);
     const row = (label, value) => `<div class="detail-row"><span class="detail-label">${label}</span><span class="detail-value">${value}</span></div>`;
 
     $('summaryContent').innerHTML = [
@@ -5912,11 +5953,24 @@
       row('Not-yet-paid orders total', fmtEGP(pendingOrdersTotal) + ' (' + pendingOrders.length + ' orders)'),
       row('Main budget', fmtEGP(mainBudget)),
       row('Sales ' + periodLabel, fmtEGP(periodSales)),
+      row('— Cost of goods ' + periodLabel, fmtEGP(-periodCOGS)),
       row('Gross profit ' + periodLabel, fmtEGP(periodProfit)),
       row('— Operating expenses ' + periodLabel, fmtEGP(-periodExpenses)),
       row('Net profit ' + periodLabel, fmtEGP(netProfit)),
       row('1% of net profit (حق الله)', fmtEGP(summaryZakatAmount)),
     ].join('') +
+      `<details style="margin:10px 0;"><summary style="cursor:pointer;font-weight:600;">Profit details (للمراجعة)</summary>` +
+      row('Orders counted', ordersCounted + (ordersWithoutItems ? ' (' + ordersWithoutItems + ' read from order text, no Items rows)' : '')) +
+      row('Orders ignored (custom / no cost)', String(customOnlyIgnored)) +
+      row('Item lines ignored (custom / no cost)', String(customRowsIgnored)) +
+      row('Units sold', String(periodUnits)) +
+      row('Order collection', fmtEGP(collectionSales) + ' sales / ' + fmtEGP(collectionCOGS) + ' cost (' + collectionCount + ')') +
+      row('Per product (qty × [sale − cost])', Object.keys(productLines).length ? '' : 'none') +
+      Object.keys(productLines).map(k => productLines[k]).sort((x,y)=> (y.qty*(y.price-y.cost)) - (x.qty*(x.price-x.cost))).map(l =>
+        row(escapeHtml(l.name), l.qty + ' × [' + +l.price.toFixed(2) + ' − ' + +l.cost.toFixed(2) + '] = ' + fmtEGP(l.qty*(l.price-l.cost)))
+      ).join('') +
+      row('Ignored items', missingCostNames.length ? missingCostNames.map(n => escapeHtml(n) + ' ×' + missingCost[n]).join('، ') : 'none') +
+      `</details>` +
       `<button class="btn" id="payZakatBtn" style="max-width:none;${summaryZakatAmount > 0 ? '' : 'opacity:.5;'}" ${summaryZakatAmount > 0 ? '' : 'disabled'}>💸 دفع حق الله (${fmtEGP(summaryZakatAmount)})</button>`;
 
     const payBtn = $('payZakatBtn');
