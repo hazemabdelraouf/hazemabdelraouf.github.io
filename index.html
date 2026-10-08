@@ -5945,29 +5945,29 @@
     const row = (label, value) => `<div class="detail-row"><span class="detail-label">${label}</span><span class="detail-value">${value}</span></div>`;
 
     $('summaryContent').innerHTML = [
-      row('Calculated from', fmtShortDate(periodStart) + (lastZakatDate ? ' (last حق الله payment)' : ' (last 3 months)')),
-      row('Physical inventory value', fmtEGP(inventoryValue)),
-      row('— Internal balance (Bedir/Hazem/UVA)', fmtEGP(internalNet)),
-      row('— Owed to us (external)', fmtEGP(owedToUs)),
-      row('— We owe (external)', fmtEGP(-weOwe)),
-      row('Not-yet-paid orders total', fmtEGP(pendingOrdersTotal) + ' (' + pendingOrders.length + ' orders)'),
+      row('Since', fmtShortDate(periodStart) + (lastZakatDate ? ' (last payment)' : ' (3 months)')),
+      row('Inventory value', fmtEGP(inventoryValue)),
+      row('— Internal balance', fmtEGP(internalNet)),
+      row('— Owed to us', fmtEGP(owedToUs)),
+      row('— We owe', fmtEGP(-weOwe)),
+      row('Unpaid orders', fmtEGP(pendingOrdersTotal) + ' (' + pendingOrders.length + ')'),
       row('Main budget', fmtEGP(mainBudget)),
-      row('Sales ' + periodLabel, fmtEGP(periodSales)),
-      row('— Cost of goods ' + periodLabel, fmtEGP(-periodCOGS)),
-      row('Gross profit ' + periodLabel, fmtEGP(periodProfit)),
-      row('— Operating expenses ' + periodLabel, fmtEGP(-periodExpenses)),
-      row('Net profit ' + periodLabel, fmtEGP(netProfit)),
-      row('1% of net profit (حق الله)', fmtEGP(summaryZakatAmount)),
+      row('Sales', fmtEGP(periodSales)),
+      row('— Cost of goods', fmtEGP(-periodCOGS)),
+      row('Gross profit', fmtEGP(periodProfit)),
+      row('— Expenses', fmtEGP(-periodExpenses)),
+      row('Net profit', fmtEGP(netProfit)),
+      row('حق الله (1%)', fmtEGP(summaryZakatAmount)),
     ].join('') +
-      `<details style="margin:10px 0;"><summary style="cursor:pointer;font-weight:600;">Profit details (للمراجعة)</summary>` +
-      row('Orders counted', ordersCounted + (ordersWithoutItems ? ' (' + ordersWithoutItems + ' read from order text, no Items rows)' : '')) +
-      row('Orders ignored (custom / no cost)', String(customOnlyIgnored)) +
-      row('Item lines ignored (custom / no cost)', String(customRowsIgnored)) +
+      `<details style="margin:10px 0;"><summary style="cursor:pointer;font-weight:600;">Profit details</summary>` +
+      row('Orders counted', ordersCounted + (ordersWithoutItems ? ' (' + ordersWithoutItems + ' no Items rows)' : '')) +
+      row('Orders ignored', String(customOnlyIgnored)) +
+      row('Lines ignored', String(customRowsIgnored)) +
       row('Units sold', String(periodUnits)) +
-      row('Order collection', fmtEGP(collectionSales) + ' sales / ' + fmtEGP(collectionCOGS) + ' cost (' + collectionCount + ')') +
-      row('Per product (qty × [sale − cost])', Object.keys(productLines).length ? '' : 'none') +
+      row('Collections', fmtEGP(collectionSales) + ' / ' + fmtEGP(collectionCOGS) + ' (' + collectionCount + ')') +
+      row('Per product', Object.keys(productLines).length ? '' : 'none') +
       Object.keys(productLines).map(k => productLines[k]).sort((x,y)=> (y.qty*(y.price-y.cost)) - (x.qty*(x.price-x.cost))).map(l =>
-        row(escapeHtml(l.name), l.qty + ' × [' + +l.price.toFixed(2) + ' − ' + +l.cost.toFixed(2) + '] = ' + fmtEGP(l.qty*(l.price-l.cost)))
+        row(escapeHtml(l.name), l.qty + '×(' + +l.price.toFixed(2) + '−' + +l.cost.toFixed(2) + ') = ' + fmtEGP(l.qty*(l.price-l.cost)))
       ).join('') +
       row('Ignored items', missingCostNames.length ? missingCostNames.map(n => escapeHtml(n) + ' ×' + missingCost[n]).join('، ') : 'none') +
       `</details>` +
