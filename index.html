@@ -1243,6 +1243,7 @@
     <div class="edit-field-group" id="piAccountGroup">
       <label>Paid from</label>
       <select id="piAccount">
+        <option value="" disabled selected>Select account…</option>
         <option value="Bedir">Bedir</option>
         <option value="Hazem">Hazem</option>
         <option value="UVA">UVA (company account)</option>
@@ -1303,6 +1304,7 @@
     <div class="edit-field-group">
       <label>From</label>
       <select id="trFrom">
+        <option value="" disabled selected>Select account…</option>
         <option value="Bedir">Bedir</option>
         <option value="Hazem">Hazem</option>
         <option value="UVA">UVA (company account)</option>
@@ -1311,6 +1313,7 @@
     <div class="edit-field-group">
       <label>To</label>
       <select id="trTo">
+        <option value="" disabled selected>Select account…</option>
         <option value="Hazem">Hazem</option>
         <option value="Bedir">Bedir</option>
         <option value="UVA">UVA (company account)</option>
@@ -1388,6 +1391,7 @@
     <div class="edit-field-group">
       <label id="settleAccountLabel">Paid from</label>
       <select id="settleAccount">
+        <option value="" disabled selected>Select account…</option>
         <option value="Bedir">Bedir</option>
         <option value="Hazem">Hazem</option>
         <option value="UVA">UVA (company account)</option>
@@ -5458,7 +5462,7 @@
     $('piMerchantSelect').value = '';
     piSyncMerchantFromSelect();
     $('piPaymentType').value = 'paid';
-    $('piAccount').value = 'Bedir';
+    $('piAccount').value = '';
     $('piCategory').value = 'Purchase';
     $('piDescription').value = '';
     $('piDelivery').value = '';
@@ -5705,20 +5709,18 @@
   $('trFrom').addEventListener('change', ()=>{
     // Keep From/To from pointing at the same account.
     if($('trFrom').value === $('trTo').value){
-      const other = ['Bedir','Hazem','UVA'].find(a => a !== $('trFrom').value);
-      $('trTo').value = other;
+      $('trTo').value = '';
     }
   });
   $('trTo').addEventListener('change', ()=>{
     if($('trTo').value === $('trFrom').value){
-      const other = ['Bedir','Hazem','UVA'].find(a => a !== $('trTo').value);
-      $('trFrom').value = other;
+      $('trFrom').value = '';
     }
   });
 
   function openTransferModal(){
-    $('trFrom').value = 'Hazem';
-    $('trTo').value = 'Bedir';
+    $('trFrom').value = '';
+    $('trTo').value = '';
     $('trAmount').value = '';
     $('trFee').value = '0';
     $('trDescription').value = '';
@@ -6044,6 +6046,10 @@
       $('trError').textContent = 'Enter a valid amount greater than zero.';
       return;
     }
+    if(!$('trFrom').value || !$('trTo').value){
+      $('trError').textContent = 'Choose both the sending and receiving accounts.';
+      return;
+    }
     if($('trFrom').value === $('trTo').value){
       $('trError').textContent = 'Choose two different accounts.';
       return;
@@ -6110,7 +6116,7 @@
     $('settleAmount').value = remaining;
     $('settleAmount').max = remaining;
     $('settleAmountNote').textContent = `Remaining balance: ${fmtEGP(remaining)}. Leave as-is to settle completely, or lower it for a partial payment.`;
-    $('settleAccount').value = 'Bedir';
+    $('settleAccount').value = '';
     $('settleHasFee').checked = false;
     $('settleFeeGroup').style.display = 'none';
     $('settleFee').value = '';
@@ -6188,6 +6194,10 @@
   $('confirmSettleDebtBtn').addEventListener('click', async ()=>{
     if(!settlePending) return;
     $('settleDebtError').textContent = '';
+    if(!$('settleAccount').value){
+      $('settleDebtError').textContent = settlePending.amount < 0 ? 'Choose which account paid.' : 'Choose which account received the money.';
+      return;
+    }
     const remaining = Math.abs(settlePending.amount);
     let payAmount = parseFloat($('settleAmount').value);
     if(!payAmount || payAmount <= 0){
