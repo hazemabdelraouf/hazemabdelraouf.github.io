@@ -5759,7 +5759,6 @@
   }
 
   const ZAKAT_CATEGORY = 'حق الله';
-  const ITEMS_KEEP_DAYS = 7; // بعد دفع حق الله: شيت Items يفضل فيه آخر 7 أيام بس
   let summaryZakatAmount = 0;
 
   // آخر مرة اتدفع فيها حق الله = أحدث حركة في Expenses كاتيجوريها "حق الله"
@@ -5964,10 +5963,10 @@
         }
         sendExpensesWebhook('expense_added', Object.assign({ row: data && data.row }, paramsObj));
         hideZakatPayModal();
-        // تنضيف شيت Items: يمسح كل الصفوف ويسيب آخر 7 أيام بس
+        // تنضيف شيت Items: يمسح صفوف الأوردرات Delivered بس ويسيب الباقى
         let pruneFailed = '';
         try{
-          const pr = await fetch(API_URL, { method:'POST', redirect:'follow', body: JSON.stringify({ action:'pruneOrderItems', keepDays: ITEMS_KEEP_DAYS }) });
+          const pr = await fetch(API_URL, { method:'POST', redirect:'follow', body: JSON.stringify({ action:'pruneOrderItems' }) });
           const pd = await pr.json();
           if(pd && pd.error) pruneFailed = pd.error;
         }catch(err){ console.error('pruneOrderItems error:', err); pruneFailed = 'network error'; }
