@@ -711,6 +711,12 @@
     border-radius:10px;cursor:pointer;
   }
   .debt-settle-btn:hover{background:var(--sage);border-color:var(--sage);color:#fff;}
+  .sup-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--shadow-sm);}
+  .sup-card-top{display:flex;justify-content:space-between;align-items:center;gap:10px;}
+  .sup-name{font-weight:700;color:var(--cream);}
+  .sup-meta{font-size:12px;color:var(--cream-dim);margin-top:2px;}
+  .sup-owed{font-weight:700;color:var(--rust);white-space:nowrap;}
+  .sup-head{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--cream-dim);margin:4px 2px 8px;}
   .exp-actions{display:flex;gap:8px;margin-top:9px;}
   .exp-action-btn{
     background:var(--panel-2);border:1px solid var(--line);
@@ -878,6 +884,7 @@
   </div>
 
   <div class="exp-section" id="expSectionExternal">
+    <div id="supplierDebtsSummary"></div>
     <div id="debtsList"></div>
     <div class="exp-empty" id="debtsEmpty" style="display:none;">No external debts recorded.</div>
   </div>
@@ -1188,8 +1195,10 @@
 
     <div class="edit-field-group">
       <label>Merchant / supplier name</label>
-      <input type="text" id="piMerchant" list="piSupplierList" placeholder="e.g. Lavazza distributor">
-      <datalist id="piSupplierList"></datalist>
+      <select id="piMerchantSelect">
+        <option value="">Choose supplier…</option>
+      </select>
+      <input type="text" id="piMerchant" placeholder="New supplier name" style="display:none;margin-top:8px;">
     </div>
 
     <div class="edit-field-group">
@@ -4164,6 +4173,29 @@
   // and refreshed after every saved purchase. ----
   let allSuppliers = [];
   let isFetchingSuppliers = false;
+  const PI_NEW_SUPPLIER = '__new__';
+  // The dropdown lists known suppliers + "New supplier…"; the (hidden unless
+  // new) text input stays the single source of truth for the merchant name.
+  function piRenderSupplierOptions(){
+    const sel = $('piMerchantSelect');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">Choose supplier…</option>'
+      + allSuppliers.map(n => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join('')
+      + `<option value="${PI_NEW_SUPPLIER}">+ New supplier…</option>`;
+    if(current && Array.from(sel.options).some(o => o.value === current)) sel.value = current;
+  }
+  function piSyncMerchantFromSelect(){
+    const sel = $('piMerchantSelect'), inp = $('piMerchant');
+    if(sel.value === PI_NEW_SUPPLIER){
+      inp.style.display = '';
+      inp.value = '';
+      inp.focus();
+    } else {
+      inp.style.display = 'none';
+      inp.value = sel.value;
+    }
+  }
+  $('piMerchantSelect').addEventListener('change', piSyncMerchantFromSelect);
   async function fetchSuppliers(){
     if(isFetchingSuppliers || !API_URL) return;
     isFetchingSuppliers = true;
@@ -4172,7 +4204,7 @@
       const res = await fetch(API_URL + sep + 'action=listSuppliers', { method:'GET', redirect:'follow' });
       const data = await res.json();
       allSuppliers = Array.isArray(data.suppliers) ? data.suppliers : [];
-      $('piSupplierList').innerHTML = allSuppliers.map(s => `<option value="${escapeHtml(s)}"></option>`).join('');
+      piRenderSupplierOptions();
     } catch(err){
       console.error('fetchSuppliers error:', err);
     } finally {
@@ -4570,8 +4602,56 @@
     $('addExpenseModal').classList.add('active');
   }
 
+  // ---- Per-supplier totals: every open debt where the company owes a party,
+  // grouped by supplier name (case-insensitive), oldest invoice first. ----
+  function getSupplierGroups(){
+    const map = new Map();
+    allDebts.forEach(d=>{
+      const amt = Number(d['Amount']) || 0;
+      if(String(d['Status'] || '').trim() === 'Settled' || amt >= 0) return;
+      const name = String(d['Party'] || '').trim();
+      if(!name) return;
+      const key = name.toLowerCase();
+      if(!map.has(key)) map.set(key, { name, debts: [], total: 0 });
+      const g = map.get(key);
+      g.debts.push(d);
+      g.total += Math.abs(amt);
+    });
+    map.forEach(g=>{
+      g.total = Math.round(g.total * 100) / 100;
+      g.debts.sort((a,b)=>{
+        const da = new Date(a['Date']).getTime() || 0, db = new Date(b['Date']).getTime() || 0;
+        return da - db || (a._row - b._row);
+      });
+    });
+    return Array.from(map.values()).sort((a,b)=> b.total - a.total);
+  }
+  function renderSupplierSummary(){
+    const box = $('supplierDebtsSummary');
+    const groups = getSupplierGroups();
+    if(!groups.length){ box.innerHTML = ''; return; }
+    box.innerHTML = '<div class="sup-head">Owed to suppliers</div>' + groups.map((g,i)=>`
+      <div class="sup-card">
+        <div class="sup-card-top">
+          <div>
+            <div class="sup-name">${escapeHtml(g.name)}</div>
+            <div class="sup-meta">${g.debts.length} open invoice${g.debts.length>1?'s':''}</div>
+          </div>
+          <div class="sup-owed">${fmtEGP(g.total)}</div>
+        </div>
+        <button class="debt-settle-btn" data-pay-supplier="${i}">Pay supplier</button>
+      </div>`).join('');
+    box.querySelectorAll('[data-pay-supplier]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const g = groups[Number(btn.getAttribute('data-pay-supplier'))];
+        openSettleDebtModal({ supplier: true, party: g.name, debts: g.debts, total: g.total, amount: -g.total });
+      });
+    });
+  }
+
   function renderDebtsList(){
     const list = $('debtsList');
+    renderSupplierSummary();
     if(!allDebts.length){
       list.innerHTML = '';
       $('debtsEmpty').style.display = 'block';
@@ -5374,7 +5454,9 @@
     if(!allSuppliers.length) fetchSuppliers();
     piItems = [];
     piSelectedIdx = null;
-    $('piMerchant').value = '';
+    piRenderSupplierOptions();
+    $('piMerchantSelect').value = '';
+    piSyncMerchantFromSelect();
     $('piPaymentType').value = 'paid';
     $('piAccount').value = 'Bedir';
     $('piCategory').value = 'Purchase';
@@ -5536,6 +5618,10 @@
       return;
     }
     const paymentType = $('piPaymentType').value;
+    if(paymentType !== 'paid' && !$('piMerchant').value.trim()){
+      $('piError').textContent = 'Choose the supplier — credit invoices are tracked per supplier.';
+      return;
+    }
     if(paymentType === 'paid' && !$('piAccount').value){
       $('piError').textContent = 'Choose which account paid.';
       return;
@@ -5943,7 +6029,9 @@
     settlePending = info;
     const payingOut = info.amount < 0;
     const remaining = Math.abs(info.amount);
-    $('settleDebtSub').textContent = payingOut
+    $('settleDebtSub').textContent = info.supplier
+      ? `Paying ${info.party} — ${info.debts.length} open invoice${info.debts.length>1?'s':''}, total ${fmtEGP(remaining)}. The payment closes the oldest invoices first and the rest stays on the next one.`
+      : payingOut
       ? `Paying ${fmtEGP(remaining)} to ${info.party || 'the supplier'} — which account paid it?`
       : `Receiving ${fmtEGP(remaining)} from ${info.party || 'the party'} — which account received it?`;
     $('settleAccountLabel').textContent = payingOut ? 'Paid from' : 'Received into';
@@ -5965,6 +6053,66 @@
   $('closeSettleDebtModalBtn').addEventListener('click', ()=> $('settleDebtModal').classList.remove('active'));
   $('settleDebtModal').addEventListener('click', (e)=>{ if(e.target === $('settleDebtModal')) $('settleDebtModal').classList.remove('active'); });
 
+  // Applies one payment across a supplier's open invoices, oldest first:
+  // each fully-covered invoice is closed, the last one touched keeps the
+  // remainder. Uses the existing settleDebt action once per invoice (fee
+  // only on the first). One summary webhook is sent at the end.
+  async function paySupplierFifo(payAmount){
+    const ctx = settlePending;
+    const r2 = n => Math.round(n * 100) / 100;
+    const account = $('settleAccount').value;
+    const rawDateTime = $('settleDate').value;
+    const dateIso = rawDateTime ? new Date(rawDateTime).toISOString() : new Date().toISOString();
+    const fee = $('settleHasFee').checked ? (parseFloat($('settleFee').value) || 0) : 0;
+    const sep = API_URL.includes('?') ? '&' : '?';
+    let left = r2(payAmount), paid = 0, feeSent = false, failed = '';
+    const breakdown = [];
+    for(const d of ctx.debts){
+      if(left <= 0.004) break;
+      const rem = r2(Math.abs(Number(d['Amount']) || 0));
+      const portion = r2(Math.min(rem, left));
+      const closes = portion >= rem - 0.004;
+      try{
+        const params = new URLSearchParams({
+          action: 'settleDebt', row: String(d._row), account,
+          amount: String(closes ? rem : portion),
+          fee: String(feeSent ? 0 : fee), date: dateIso
+        });
+        const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
+        const data = await res.json();
+        if(data && data.error){ failed = data.error; break; }
+      } catch(err){
+        console.error('paySupplier error:', err);
+        failed = 'Network error';
+        break;
+      }
+      feeSent = true;
+      paid = r2(paid + portion);
+      left = r2(left - portion);
+      breakdown.push({ row: d._row, invoice_date: d['Date'], paid: portion, closed: closes, remaining_after: closes ? 0 : r2(rem - portion) });
+    }
+    if(paid > 0){
+      sendExpensesWebhook('supplier_payment', {
+        supplier: ctx.party,
+        paid_amount: paid,
+        remaining_amount: r2(ctx.total - paid),
+        fee: feeSent ? fee : 0,
+        account,
+        date: dateIso,
+        invoices_closed: breakdown.filter(b => b.closed).length,
+        breakdown
+      });
+    }
+    if(failed){
+      $('settleDebtError').textContent = (paid > 0 ? `Paid ${fmtEGP(paid)} before an error: ` : 'Sheet error: ') + failed;
+    } else {
+      $('settleDebtModal').classList.remove('active');
+      settlePending = null;
+    }
+    await fetchDebts();
+    await fetchExpenses();
+  }
+
   $('confirmSettleDebtBtn').addEventListener('click', async ()=>{
     if(!settlePending) return;
     $('settleDebtError').textContent = '';
@@ -5979,6 +6127,12 @@
     const btn = $('confirmSettleDebtBtn');
     btn.disabled = true;
     btn.textContent = 'Saving...';
+    if(settlePending.supplier){
+      await paySupplierFifo(payAmount);
+      btn.disabled = false;
+      btn.textContent = 'Confirm settled';
+      return;
+    }
     try{
       const rawDateTime = $('settleDate').value;
       const dateIso = rawDateTime ? new Date(rawDateTime).toISOString() : new Date().toISOString();
