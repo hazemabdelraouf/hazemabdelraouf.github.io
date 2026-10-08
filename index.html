@@ -5759,6 +5759,7 @@
   }
 
   const ZAKAT_CATEGORY = 'حق الله';
+  const ITEMS_KEEP_DAYS = 7; // بعد دفع حق الله: شيت Items يفضل فيه آخر 7 أيام بس
   let summaryZakatAmount = 0;
 
   // آخر مرة اتدفع فيها حق الله = أحدث حركة في Expenses كاتيجوريها "حق الله"
@@ -5805,8 +5806,15 @@
       return !isNaN(d.getTime()) && d >= periodStart && d <= now;
     });
     let periodSales = 0, periodCOGS = 0;
+    // إجمالي مصاريف الشحن (عمود "Shipping cost") لكل أوردرات الفترة —
+    // بيتخصم من البروفيت. مصروفات Aramex اتشالت من الـ Operating expenses
+    // (PL_EXPENSE_CATEGORIES) عشان ماتتخصمش مرتين.
+    let periodShipping = 0, periodShippingCount = 0;
     periodOrders.forEach(o=>{
       periodSales += parseFloat(o.total) || 0;
+      const shipAmtKey = resolveShippingAmountKey(o);
+      const shipAmt = shipAmtKey ? parseFloat(o[shipAmtKey]) : NaN;
+      if(!isNaN(shipAmt) && shipAmt){ periodShipping += Math.abs(shipAmt); periodShippingCount++; }
       const serial = o['Order Serial'];
       const lineItems = allOrderItems.filter(it => String(it.orderSerial) === String(serial));
       if(lineItems.length){
@@ -5862,12 +5870,12 @@
     });
     periodSales += collectionSales;
     periodCOGS += collectionCOGS;
-    const periodProfit = periodSales - periodCOGS;
+    const periodProfit = periodSales - periodCOGS - periodShipping;
 
     // المصروفات: بس الكاتيجوريز اللي في الداشبورد (ماعدا Purchase و Order collection).
     // أي كاتيجوري تانية (مضافة manual في الشيت أو بالـ API) مش بتتحسب.
     // Purchase / Order collection: بيتحسب بس العمولة (commission) اللي اتدفعت عليهم.
-    const PL_EXPENSE_CATEGORIES = ['aramex','tips saad','delivery','facebook ads','make','ycloud','others'];
+    const PL_EXPENSE_CATEGORIES = ['tips saad','delivery','facebook ads','make','ycloud','others'];
     const COMMISSION_ONLY_CATEGORIES = ['purchase','order collection'];
     const periodExpenses = allExpenses.reduce((sum, row) => {
       const d = new Date(row['Date']);
@@ -5903,6 +5911,7 @@
       row('Not-yet-paid orders total', fmtEGP(pendingOrdersTotal) + ' (' + pendingOrders.length + ' orders)'),
       row('Main budget', fmtEGP(mainBudget)),
       row('Sales ' + periodLabel, fmtEGP(periodSales)),
+      row('— Shipping cost ' + periodLabel, fmtEGP(-periodShipping) + ' (' + periodShippingCount + ' orders)'),
       row('Gross profit ' + periodLabel, fmtEGP(periodProfit)),
       row('— Operating expenses ' + periodLabel, fmtEGP(-periodExpenses)),
       row('Net profit ' + periodLabel, fmtEGP(netProfit)),
@@ -5955,8 +5964,17 @@
         }
         sendExpensesWebhook('expense_added', Object.assign({ row: data && data.row }, paramsObj));
         hideZakatPayModal();
+        // تنضيف شيت Items: يمسح كل الصفوف ويسيب آخر 7 أيام بس
+        let pruneFailed = '';
+        try{
+          const pr = await fetch(API_URL, { method:'POST', redirect:'follow', body: JSON.stringify({ action:'pruneOrderItems', keepDays: ITEMS_KEEP_DAYS }) });
+          const pd = await pr.json();
+          if(pd && pd.error) pruneFailed = pd.error;
+        }catch(err){ console.error('pruneOrderItems error:', err); pruneFailed = 'network error'; }
         await fetchExpenses();
+        await fetchOrderItems();
         renderSummary(); // الحسبة بتبدأ من دلوقتي
+        if(pruneFailed) alert('تم دفع حق الله، لكن تنضيف شيت Items ماتمش: ' + pruneFailed);
       }catch(err){
         console.error('pay zakat error:', err);
         $('zakatPayError').textContent = 'Something went wrong, please try again.';
