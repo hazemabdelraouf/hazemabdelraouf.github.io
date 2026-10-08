@@ -1218,7 +1218,7 @@
         <span id="piSubtotal">0 EGP</span>
       </div>
       <div class="pi-total-row" id="piDeliveryRow" style="display:none;">
-        <span>Delivery</span>
+        <span>Delivery &amp; transfer fee</span>
         <span id="piDeliveryShown">0 EGP</span>
       </div>
       <div class="pi-total-row">
@@ -1231,6 +1231,11 @@
       <label>Delivery cost (optional)</label>
       <input type="number" id="piDelivery" min="0" step="0.01" placeholder="0 — leave empty if no delivery">
       <div class="modal-field-note" id="piDeliveryHint" style="margin-top:4px;">If there is delivery, it is split equally across every piece in the invoice and added to each unit's cost.</div>
+    </div>
+    <div class="edit-field-group">
+      <label>Transfer fee (optional)</label>
+      <input type="number" id="piTransferFee" min="0" step="0.01" placeholder="0 — leave empty if no transfer fee">
+      <div class="modal-field-note" style="margin-top:4px;">Same as delivery: split across every piece in the invoice and added to each unit's cost (not counted as a separate expense).</div>
     </div>
 
     <div class="edit-field-group">
@@ -5351,12 +5356,19 @@
   function piGetDelivery(){
     return Math.max(0, parseFloat($('piDelivery').value) || 0);
   }
+  function piGetTransferFee(){
+    return Math.max(0, parseFloat($('piTransferFee').value) || 0);
+  }
+  // Delivery + transfer fee together: both get spread over the invoice's items.
+  function piGetExtras(){
+    return piGetDelivery() + piGetTransferFee();
+  }
   function piTotalPieces(){
     return piItems.reduce((sum, it) => sum + it.qty, 0);
   }
   function piUpdateTotals(){
     const subtotal = piItems.reduce((sum, it) => sum + (it.qty * it.price), 0);
-    const delivery = piGetDelivery();
+    const delivery = piGetExtras();
     const pieces = piTotalPieces();
     const perPiece = (delivery > 0 && pieces > 0) ? delivery / pieces : 0;
     $('piSubtotal').textContent = subtotal.toFixed(2) + ' EGP';
@@ -5369,6 +5381,7 @@
       : 'If there is delivery, it is split equally across every piece in the invoice and added to each unit\'s cost.';
   }
   $('piDelivery').addEventListener('input', piUpdateTotals);
+  $('piTransferFee').addEventListener('input', piUpdateTotals);
 
   function piHideSearchResults(){
     $('piSearchResults').classList.remove('show');
@@ -5466,6 +5479,7 @@
     $('piCategory').value = 'Purchase';
     $('piDescription').value = '';
     $('piDelivery').value = '';
+    $('piTransferFee').value = '';
     $('piDate').value = nowLocalDateTime();
     $('piSearch').value = '';
     $('piQty').value = '1';
@@ -5499,6 +5513,7 @@
     });
     lines.push('');
     if(Number(payload.delivery) > 0) lines.push('Delivery: ' + Number(payload.delivery).toFixed(2) + ' EGP (included in unit cost)');
+    if(Number(payload.transferFee) > 0) lines.push('Transfer fee: ' + Number(payload.transferFee).toFixed(2) + ' EGP (included in unit cost)');
     lines.push('Total: ' + (Number(total) || 0).toFixed(2) + ' EGP');
     lines.push(payload.paymentType === 'credit' ? 'Payment: On credit (to be paid later)' : 'Payment: Paid now by ' + payload.account);
     if(payload.category) lines.push('Category: ' + payload.category);
@@ -5644,19 +5659,26 @@
       // unit's cost, so stock average cost / invoice total already include
       // it — no backend change needed.
       const delivery = piGetDelivery();
+      const transferFee = piGetTransferFee();
       const pieces = piTotalPieces();
-      const perPiece = (delivery > 0 && pieces > 0) ? delivery / pieces : 0;
+      const extras = delivery + transferFee;
+      const perPiece = (extras > 0 && pieces > 0) ? extras / pieces : 0;
       const userNote = $('piDescription').value.trim();
-      const deliveryNote = delivery > 0 ? ('Delivery ' + delivery.toFixed(2) + ' EGP included in unit cost') : '';
+      const deliveryNote = [
+        delivery > 0 ? ('Delivery ' + delivery.toFixed(2) + ' EGP') : '',
+        transferFee > 0 ? ('Transfer fee ' + transferFee.toFixed(2) + ' EGP') : ''
+      ].filter(Boolean).join(' + ');
+      const deliveryNoteFull = deliveryNote ? (deliveryNote + ' included in unit cost') : '';
       const payload = {
         action: 'addPurchase',
         merchant: $('piMerchant').value.trim(),
         paymentType: paymentType,
         account: $('piAccount').value,
         category: $('piCategory').value,
-        description: [userNote, deliveryNote].filter(Boolean).join(' | '),
+        description: [userNote, deliveryNoteFull].filter(Boolean).join(' | '),
         date: dateIso,
         delivery: delivery,
+        transferFee: transferFee,
         items: piItems.map(it => ({ row: it.row, name: it.name, quantity: it.qty, price: Math.round((it.price + perPiece) * 10000) / 10000 }))
       };
       // Sent as POST with a JSON string body and no explicit Content-Type
@@ -5920,10 +5942,35 @@
     const PL_EXPENSE_CATEGORIES = Array.from($('expCategory').options)
       .map(o => String(o.value || '').trim().toLowerCase())
       .filter(c => c && !NON_EXPENSE_CATEGORIES.includes(c));
+    // رسوم التحويل/السداد: أي fee اتدفع مع سداد دين (كامل أو جزئي) أو تحويل بين
+    // الحسابات بيتحسب مصروف. بنقراه من عمود Commission، ولو فاضي بنطلعه من
+    // الوصف "(incl. X fee)". بيتحسب مرة واحدة بس لكل حركة، والتحويل بيتحسب من
+    // جهة المُرسل (الرقم السالب) عشان ماتتعدش مرتين.
+    const paymentFeeOf = (row) => {
+      const lt = String(row['LinkType'] || '').trim();
+      const cat = String(row['Category'] || '').trim().toLowerCase();
+      const isSettle = lt === 'debt_settlement' || lt === 'debt_settlement_partial' || cat === 'debt settlement';
+      const isTransfer = lt === 'transfer';
+      if(!isSettle && !isTransfer) return 0;
+      if(isTransfer){
+        let amt = 0;
+        ['Bedir','Hazem','UVA'].forEach(p=>{
+          const n = Number(row[p]);
+          if(row[p] !== '' && row[p] !== null && row[p] !== undefined && !isNaN(n) && n !== 0) amt = n;
+        });
+        if(amt >= 0) return 0; // جهة المستلم مفيهاش fee
+      }
+      const c = Math.abs(Number(row['Commission']) || 0);
+      if(c > 0) return c;
+      const m = String(row['Description'] || '').match(/incl\.?\s*([\d.,]+)\s*fee/i);
+      return m ? (Number(m[1].replace(/,/g,'')) || 0) : 0;
+    };
     const periodExpenses = allExpenses.reduce((sum, row) => {
       const d = new Date(row['Date']);
       if(isNaN(d.getTime()) || d < periodStart || d > now) return sum;
       const cat = String(row['Category'] || '').trim().toLowerCase();
+      const payFee = paymentFeeOf(row);
+      if(payFee > 0 && !PL_EXPENSE_CATEGORIES.includes(cat)) return sum + payFee;
       if(PL_EXPENSE_CATEGORIES.includes(cat)){
         let amount = 0;
         ['Bedir','Hazem','UVA'].forEach(p=>{
