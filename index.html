@@ -5805,15 +5805,8 @@
       return !isNaN(d.getTime()) && d >= periodStart && d <= now;
     });
     let periodSales = 0, periodCOGS = 0;
-    // إجمالي مصاريف الشحن (عمود "Shipping cost") لكل أوردرات الفترة —
-    // بيتخصم من البروفيت. مصروفات Aramex اتشالت من الـ Operating expenses
-    // (PL_EXPENSE_CATEGORIES) عشان ماتتخصمش مرتين.
-    let periodShipping = 0, periodShippingCount = 0;
     periodOrders.forEach(o=>{
       periodSales += parseFloat(o.total) || 0;
-      const shipAmtKey = resolveShippingAmountKey(o);
-      const shipAmt = shipAmtKey ? parseFloat(o[shipAmtKey]) : NaN;
-      if(!isNaN(shipAmt) && shipAmt){ periodShipping += Math.abs(shipAmt); periodShippingCount++; }
       const serial = o['Order Serial'];
       const lineItems = allOrderItems.filter(it => String(it.orderSerial) === String(serial));
       if(lineItems.length){
@@ -5869,13 +5862,22 @@
     });
     periodSales += collectionSales;
     periodCOGS += collectionCOGS;
-    const periodProfit = periodSales - periodCOGS - periodShipping;
+    // البروفيت = سعر البيع - التكلفة (من شيت products) — ده صافي، ومفيش خصم لمصاريف الشحن هنا.
+    const periodProfit = periodSales - periodCOGS;
 
     // المصروفات: بس الكاتيجوريز اللي في الداشبورد (ماعدا Purchase و Order collection).
     // أي كاتيجوري تانية (مضافة manual في الشيت أو بالـ API) مش بتتحسب.
     // Purchase / Order collection: بيتحسب بس العمولة (commission) اللي اتدفعت عليهم.
-    const PL_EXPENSE_CATEGORIES = ['tips saad','delivery','facebook ads','make','ycloud','others'];
+    // كل الكاتيجوريز اللي في منيو Add expense (#expCategory) بتتحسب مصروفات
+    // (Aramex, Tips Saad, Delivery, Facebook ads, Make, Ycloud, Others ...) —
+    // ماعدا Purchase و Order collection (بيتحسب منهم العمولة بس)، وحق الله
+    // نفسه (عشان دفعته ماتتخصمش من بروفيت الفترة الجاية). أي كاتيجوري جديدة
+    // تتضاف للمنيو بتتحسب مصروف أوتوماتيك.
     const COMMISSION_ONLY_CATEGORIES = ['purchase','order collection'];
+    const NON_EXPENSE_CATEGORIES = COMMISSION_ONLY_CATEGORIES.concat([ZAKAT_CATEGORY.toLowerCase()]);
+    const PL_EXPENSE_CATEGORIES = Array.from($('expCategory').options)
+      .map(o => String(o.value || '').trim().toLowerCase())
+      .filter(c => c && !NON_EXPENSE_CATEGORIES.includes(c));
     const periodExpenses = allExpenses.reduce((sum, row) => {
       const d = new Date(row['Date']);
       if(isNaN(d.getTime()) || d < periodStart || d > now) return sum;
@@ -5910,7 +5912,6 @@
       row('Not-yet-paid orders total', fmtEGP(pendingOrdersTotal) + ' (' + pendingOrders.length + ' orders)'),
       row('Main budget', fmtEGP(mainBudget)),
       row('Sales ' + periodLabel, fmtEGP(periodSales)),
-      row('— Shipping cost ' + periodLabel, fmtEGP(-periodShipping) + ' (' + periodShippingCount + ' orders)'),
       row('Gross profit ' + periodLabel, fmtEGP(periodProfit)),
       row('— Operating expenses ' + periodLabel, fmtEGP(-periodExpenses)),
       row('Net profit ' + periodLabel, fmtEGP(netProfit)),
