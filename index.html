@@ -720,6 +720,7 @@
   .exp-action-btn:hover{background:var(--sage);border-color:var(--sage);color:#fff;}
   .exp-action-btn.danger:hover{background:var(--rust);border-color:var(--rust);color:#fff;}
   .exp-action-btn:disabled{opacity:0.4;pointer-events:none;}
+  .exp-locked{font-size:12px;color:var(--muted, #8a8a8a);padding:6px 4px;align-self:center;}
   .exp-fab{
     position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
     background:linear-gradient(180deg, var(--gold-soft), var(--gold));
@@ -4150,6 +4151,7 @@
       debtTotals = { owedToUs: data.owedToUs||0, weOwe: data.weOwe||0 };
       renderBalances();
       renderDebtsList();
+      if(allExpenses.length) renderExpensesList();
     } catch(err){
       console.error('fetchDebts error:', err);
     } finally {
@@ -4357,6 +4359,25 @@
     debt_settlement_partial: 'Linked · partial payment'
   };
 
+  // ---- قفل الفواتير المقفولة (Closed): فاتورة اتدفعت كاش (LinkType=purchase)،
+  // أو فاتورة آجل الدين بتاعها Settled (+ حركات السداد المرتبطة بيها) —
+  // مفيش Edit ولا Delete عليها. ----
+  function isPaidInvoiceDebt(d){
+    return !!String(d['PurchaseLinkID'] || '').trim() && String(d['Status'] || '').trim() === 'Settled';
+  }
+  function isLockedExpense(row){
+    const lt = String(row['LinkType'] || '').trim();
+    if(lt === 'purchase') return true;
+    if(lt === 'debt_settlement' || lt === 'debt_settlement_partial'){
+      const id = String(row['LinkID'] || '').trim();
+      if(!id) return false;
+      const d = allDebts.find(x => String(x['PurchaseLinkID'] || '').trim() === id || String(x['LinkID'] || '').trim() === id);
+      return !!d && isPaidInvoiceDebt(d);
+    }
+    return false;
+  }
+  const PAID_LOCK_MSG = 'This purchase invoice is closed, so it is locked — it can no longer be edited or deleted.';
+
   function renderExpensesList(){
     const list = $('expensesList');
     if(!allExpenses.length){
@@ -4397,8 +4418,10 @@
         </div>
         <div class="exp-actions">
           ${(linkType === 'purchase' && String(row['LinkID'] || '').trim()) ? `<button class="exp-action-btn" data-share-purchase="${escapeAttr(String(row['LinkID']).trim())}">Share invoice</button>` : ''}
-          <button class="exp-action-btn" data-edit-expense-row="${row._row}">Edit</button>
-          <button class="exp-action-btn danger" data-delete-expense-row="${row._row}">Delete</button>
+          ${isLockedExpense(row)
+            ? '<span class="exp-locked">🔒 Closed — locked</span>'
+            : `<button class="exp-action-btn" data-edit-expense-row="${row._row}">Edit</button>
+          <button class="exp-action-btn danger" data-delete-expense-row="${row._row}">Delete</button>`}
         </div>
       </div>`;
     }).join('');
@@ -4420,6 +4443,7 @@
   async function handleDeleteExpense(row){
     const item = allExpenses.find(r => r._row === row);
     if(!item) return;
+    if(isLockedExpense(item)){ alert(PAID_LOCK_MSG); return; }
     const linkType = String(item['LinkType'] || '').trim();
     let delAccount = null, delAmount = 0;
     ['Bedir','Hazem','UVA'].forEach(p=>{
@@ -4495,6 +4519,7 @@
   function openEditExpenseModal(row){
     const item = allExpenses.find(r => r._row === row);
     if(!item){ alert('Could not find that transaction to edit.'); return; }
+    if(isLockedExpense(item)){ alert(PAID_LOCK_MSG); return; }
     currentEditExpenseRow = row;
 
     let account = 'Bedir', amount = 0, direction = 'positive';
@@ -4577,8 +4602,10 @@
         ${!isSettled ? `<button class="debt-settle-btn" data-settle-row="${row._row}" data-settle-amount="${amt}" data-settle-party="${escapeHtml(row['Party']||'')}">Settle / pay</button>` : ''}
         <div class="exp-actions">
           ${purchaseLinkId ? `<button class="exp-action-btn" data-share-purchase="${escapeAttr(purchaseLinkId)}">Share invoice</button>` : ''}
-          <button class="exp-action-btn" data-edit-debt-row="${row._row}">Edit</button>
-          <button class="exp-action-btn danger" data-delete-debt-row="${row._row}">Delete</button>
+          ${(purchaseLinkId && isSettled)
+            ? '<span class="exp-locked">🔒 Closed — locked</span>'
+            : `<button class="exp-action-btn" data-edit-debt-row="${row._row}">Edit</button>
+          <button class="exp-action-btn danger" data-delete-debt-row="${row._row}">Delete</button>`}
         </div>
       </div>`;
     }).join('');
@@ -4610,6 +4637,7 @@
   async function handleDeleteDebt(row){
     const item = allDebts.find(r => r._row === row);
     if(!item) return;
+    if(isPaidInvoiceDebt(item)){ alert(PAID_LOCK_MSG); return; }
     const purchaseLinkId = String(item['PurchaseLinkID'] || '').trim();
     const isSettled = String(item['Status'] || '').trim() === 'Settled';
 
@@ -4883,6 +4911,7 @@
   function openEditDebtModal(row){
     const item = allDebts.find(r => r._row === row);
     if(!item){ alert('Could not find that debt to edit.'); return; }
+    if(isPaidInvoiceDebt(item)){ alert(PAID_LOCK_MSG); return; }
     currentEditDebtRow = row;
 
     const amt = Number(item['Amount']) || 0;
