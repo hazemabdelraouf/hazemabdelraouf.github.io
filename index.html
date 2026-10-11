@@ -3250,12 +3250,17 @@
   let productsFetchPromise = null;
   async function fetchProducts(force){
     if(!API_URL) return;
-    if(productsFetchPromise) return productsFetchPromise;
+    if(productsFetchPromise){
+      if(!force) return productsFetchPromise;
+      // Forced refresh: wait for the older request, then fetch again so the
+      // result is guaranteed to be newer than whatever was just saved.
+      try{ await productsFetchPromise; }catch(e){}
+    }
     if(allProducts.length && !force) return;
     productsFetchPromise = (async () => {
       try{
         const sep = API_URL.includes('?') ? '&' : '?';
-        const res = await fetch(API_URL + sep + 'action=listProducts', { method:'GET', redirect:'follow' });
+        const res = await fetch(API_URL + sep + 'action=listProducts&_=' + Date.now(), { method:'GET', redirect:'follow', cache:'no-store' });
         if(!res.ok) throw new Error('HTTP status ' + res.status);
         const data = await res.json();
         allProducts = Array.isArray(data.products) ? data.products : [];
@@ -5872,6 +5877,13 @@
         transferFee > 0 ? ('Transfer fee ' + transferFee.toFixed(2) + ' EGP') : ''
       ].filter(Boolean).join(' + ');
       const deliveryNoteFull = deliveryNote ? (deliveryNote + ' included in unit cost') : '';
+      // Stock balances before saving, so we can verify the sheet really added them.
+      const balancesBefore = {};
+      piItems.forEach(it => {
+        const pr = allProducts.find(x => x._row === it.row);
+        balancesBefore[it.row] = pr ? (Number(pr.balance) || 0) : null;
+      });
+      const savedItemsForCheck = piItems.map(it => ({ row: it.row, name: it.name, qty: it.qty }));
       const payload = {
         action: 'addPurchase',
         merchant: $('piMerchant').value.trim(),
@@ -5905,6 +5917,20 @@
       fetchPurchases().catch(()=>{}); // so its row's Share button opens instantly
       await fetchProducts(true); // refresh cached stock/cost for next time
       renderInventory(); // keep the Inventory view in sync if it's open
+      // Safety check: every product on the invoice should now have a higher
+      // balance. If not, the sheet did not add the stock — tell the person
+      // instead of silently leaving the inventory wrong.
+      const notAdded = savedItemsForCheck.filter(it => {
+        const before = balancesBefore[it.row];
+        const pr = allProducts.find(x => x._row === it.row);
+        if(before === null || before === undefined || !pr) return false;
+        return (Number(pr.balance) || 0) < before + it.qty - 0.0001;
+      });
+      if(notAdded.length){
+        alert('The invoice was saved, but the stock did not increase for:\n\n' +
+          notAdded.map(it => '• ' + it.name + ' (+' + it.qty + ')').join('\n') +
+          '\n\nCheck the Products sheet balance for these items.');
+      }
       fetchSuppliers(); // pick up a newly-typed merchant name for next time
       if(paymentType === 'credit') await fetchDebts();
       else await fetchExpenses();
