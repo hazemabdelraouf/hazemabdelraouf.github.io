@@ -892,6 +892,7 @@
   </div>
 
   <div class="exp-section active" id="expSectionInternal">
+    <div id="expFilterBar"></div>
     <div id="expensesList"></div>
     <div class="exp-empty" id="expensesEmpty" style="display:none;">No transactions yet. Tap + to add one.</div>
   </div>
@@ -4177,6 +4178,7 @@
   let allDebts = [];
   let debtTotals = { owedToUs:0, weOwe:0 };
   let debtFilter = null; // null | 'owedToUs' | 'weOwe'
+  let accountFilter = null; // null | 'Bedir' | 'Hazem' | 'UVA'
   let currentEditDebtRow = null;
   let expActiveTab = 'internal';
   let isFetchingExpenses = false;
@@ -4529,16 +4531,18 @@
   function renderBalances(){
     const b = expenseBalances;
     const cards = [
-      { label:'Bedir balance', val:b.Bedir||0, hint: (b.Bedir||0) >= 0 ? 'Company owes him' : 'He owes the company' },
-      { label:'Hazem balance', val:b.Hazem||0, hint: (b.Hazem||0) >= 0 ? 'Company owes him' : 'He owes the company' },
-      { label:'UVA balance', val:b.UVA||0, hint: (b.UVA||0) >= 0 ? 'Company owes UVA' : 'UVA owes the company' },
+      { label:'Bedir balance', val:b.Bedir||0, hint: (b.Bedir||0) >= 0 ? 'Company owes him' : 'He owes the company', account:'Bedir' },
+      { label:'Hazem balance', val:b.Hazem||0, hint: (b.Hazem||0) >= 0 ? 'Company owes him' : 'He owes the company', account:'Hazem' },
+      { label:'UVA balance', val:b.UVA||0, hint: (b.UVA||0) >= 0 ? 'Company owes UVA' : 'UVA owes the company', account:'UVA' },
       { label:'Owed to us', val:debtTotals.owedToUs||0, hint:'From external customers/parties', forcePos:true, filter:'owedToUs' },
       { label:'We owe', val:debtTotals.weOwe||0, hint:'To external suppliers/parties', forceNeg:true, filter:'weOwe' },
     ];
     $('balanceScroll').innerHTML = cards.map(c=>{
       const cls = c.forcePos ? 'pos' : (c.forceNeg ? 'neg' : balanceClass(c.val));
-      const clickable = c.filter ? ' clickable' + (debtFilter === c.filter ? ' active-filter' : '') : '';
-      return `<div class="balance-card${clickable}"${c.filter ? ` data-debt-filter="${c.filter}"` : ''}>
+      const clickable = c.filter ? ' clickable' + (debtFilter === c.filter ? ' active-filter' : '')
+        : (c.account ? ' clickable' + (accountFilter === c.account ? ' active-filter' : '') : '');
+      const attrs = c.filter ? ` data-debt-filter="${c.filter}"` : (c.account ? ` data-account-filter="${c.account}"` : '');
+      return `<div class="balance-card${clickable}"${attrs}>
         <div class="stat-num ${cls}">${fmtEGP(Math.abs(c.val))}</div>
         <div class="stat-label">${escapeHtml(c.label)}</div>
         <div class="stat-hint">${escapeHtml(c.hint)}</div>
@@ -4547,12 +4551,28 @@
     $('balanceScroll').querySelectorAll('[data-debt-filter]').forEach(el=>{
       el.addEventListener('click', ()=> setDebtFilter(el.getAttribute('data-debt-filter')));
     });
+    $('balanceScroll').querySelectorAll('[data-account-filter]').forEach(el=>{
+      el.addEventListener('click', ()=> setAccountFilter(el.getAttribute('data-account-filter')));
+    });
+  }
+
+  // Tapping Bedir / Hazem / UVA opens Internal transactions filtered to that
+  // account's rows. Tapping the same card again clears the filter.
+  function setAccountFilter(a){
+    accountFilter = (accountFilter === a) ? null : a;
+    if(accountFilter){
+      debtFilter = null; renderDebtsList(); // one active card at a time
+      if(expActiveTab !== 'internal') $('expTabInternal').click();
+    }
+    renderBalances();
+    renderExpensesList();
   }
 
   // Tapping "Owed to us" / "We owe" opens External debts filtered to the open
   // debts behind that number. Tapping the same card again clears the filter.
   function setDebtFilter(f){
     debtFilter = (debtFilter === f) ? null : f;
+    if(debtFilter){ accountFilter = null; renderExpensesList(); }
     if(debtFilter && expActiveTab !== 'external') $('expTabExternal').click();
     renderBalances();
     renderDebtsList();
@@ -4605,13 +4625,33 @@
 
   function renderExpensesList(){
     const list = $('expensesList');
-    if(!allExpenses.length){
+    const fbar = $('expFilterBar');
+    const accAmount = (row, acc) => {
+      const v = row[acc];
+      const n = Number(v);
+      return (v !== '' && v !== null && v !== undefined && !isNaN(n)) ? n : 0;
+    };
+    let expRows = allExpenses;
+    if(accountFilter){
+      expRows = allExpenses.filter(r => accAmount(r, accountFilter) !== 0);
+      const net = expRows.reduce((sum,r)=> sum + accAmount(r, accountFilter), 0);
+      const nm = accountFilter === 'UVA' ? 'UVA (company)' : accountFilter;
+      fbar.innerHTML = `<div class="debt-filter-bar">
+        <div><div>${escapeHtml(nm)} — transactions</div><div class="dfb-sub">${expRows.length} transactions · net ${net < 0 ? '−' : ''}${fmtEGP(Math.abs(net))}</div></div>
+        <button id="clearAccountFilterBtn">Show all</button>
+      </div>`;
+      $('clearAccountFilterBtn').addEventListener('click', ()=> setAccountFilter(accountFilter));
+    } else {
+      fbar.innerHTML = '';
+    }
+    if(!expRows.length){
       list.innerHTML = '';
+      $('expensesEmpty').textContent = accountFilter ? 'No transactions for this account.' : 'No transactions yet. Tap + to add one.';
       $('expensesEmpty').style.display = 'block';
       return;
     }
     $('expensesEmpty').style.display = 'none';
-    list.innerHTML = allExpenses.map(row=>{
+    list.innerHTML = expRows.map(row=>{
       let account = null, amount = 0;
       ['Bedir','Hazem','UVA'].forEach(p=>{
         const n = Number(row[p]);
