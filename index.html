@@ -680,6 +680,12 @@
     border:1px solid var(--line);border-radius:14px;padding:12px 14px;
     box-shadow:var(--shadow-sm);
   }
+  .balance-card.clickable{cursor:pointer;transition:border-color .15s ease, transform .1s ease;}
+  .balance-card.clickable:active{transform:scale(.97);}
+  .balance-card.active-filter{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold);}
+  .debt-filter-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--panel);border:1px solid var(--gold);border-radius:12px;padding:10px 14px;margin-bottom:10px;font-size:13px;font-weight:700;color:var(--cream);}
+  .debt-filter-bar .dfb-sub{font-size:11.5px;font-weight:600;color:var(--cream-dim);margin-top:2px;}
+  .debt-filter-bar button{background:var(--panel-2);border:1px solid var(--line);color:var(--cream);font-size:12px;font-weight:700;padding:6px 12px;border-radius:10px;cursor:pointer;white-space:nowrap;}
   .balance-card .stat-num{font-family:'Cairo';font-weight:800;font-size:19px;line-height:1;}
   .balance-card .stat-num.pos{color:var(--sage);}
   .balance-card .stat-num.neg{color:var(--rust);}
@@ -891,6 +897,7 @@
   </div>
 
   <div class="exp-section" id="expSectionExternal">
+    <div id="debtFilterBar"></div>
     <div id="supplierDebtsSummary"></div>
     <div id="debtsList"></div>
     <div class="exp-empty" id="debtsEmpty" style="display:none;">No external debts recorded.</div>
@@ -4164,6 +4171,7 @@
   let expenseBalances = { Bedir:0, Hazem:0, UVA:0 };
   let allDebts = [];
   let debtTotals = { owedToUs:0, weOwe:0 };
+  let debtFilter = null; // null | 'owedToUs' | 'weOwe'
   let currentEditDebtRow = null;
   let expActiveTab = 'internal';
   let isFetchingExpenses = false;
@@ -4519,18 +4527,32 @@
       { label:'Bedir balance', val:b.Bedir||0, hint: (b.Bedir||0) >= 0 ? 'Company owes him' : 'He owes the company' },
       { label:'Hazem balance', val:b.Hazem||0, hint: (b.Hazem||0) >= 0 ? 'Company owes him' : 'He owes the company' },
       { label:'UVA balance', val:b.UVA||0, hint: (b.UVA||0) >= 0 ? 'Company owes UVA' : 'UVA owes the company' },
-      { label:'Owed to us', val:debtTotals.owedToUs||0, hint:'From external customers/parties', forcePos:true },
-      { label:'We owe', val:debtTotals.weOwe||0, hint:'To external suppliers/parties', forceNeg:true },
+      { label:'Owed to us', val:debtTotals.owedToUs||0, hint:'From external customers/parties', forcePos:true, filter:'owedToUs' },
+      { label:'We owe', val:debtTotals.weOwe||0, hint:'To external suppliers/parties', forceNeg:true, filter:'weOwe' },
     ];
     $('balanceScroll').innerHTML = cards.map(c=>{
       const cls = c.forcePos ? 'pos' : (c.forceNeg ? 'neg' : balanceClass(c.val));
-      return `<div class="balance-card">
+      const clickable = c.filter ? ' clickable' + (debtFilter === c.filter ? ' active-filter' : '') : '';
+      return `<div class="balance-card${clickable}"${c.filter ? ` data-debt-filter="${c.filter}"` : ''}>
         <div class="stat-num ${cls}">${fmtEGP(Math.abs(c.val))}</div>
         <div class="stat-label">${escapeHtml(c.label)}</div>
         <div class="stat-hint">${escapeHtml(c.hint)}</div>
       </div>`;
     }).join('');
+    $('balanceScroll').querySelectorAll('[data-debt-filter]').forEach(el=>{
+      el.addEventListener('click', ()=> setDebtFilter(el.getAttribute('data-debt-filter')));
+    });
   }
+
+  // Tapping "Owed to us" / "We owe" opens External debts filtered to the open
+  // debts behind that number. Tapping the same card again clears the filter.
+  function setDebtFilter(f){
+    debtFilter = (debtFilter === f) ? null : f;
+    if(debtFilter && expActiveTab !== 'external') $('expTabExternal').click();
+    renderBalances();
+    renderDebtsList();
+  }
+  function isOpenDebt(d){ return String(d['Status'] || '').trim() !== 'Settled'; }
 
   // اسم عرض ودي لكل نوع ربط، بيتظهر بجانب الحركات المرتبطة (تحويل/فاتورة/
   // تسوية دين) عشان يبقى واضح إن مسحها أو تعديلها هيأثر على حاجة تانية.
@@ -4803,14 +4825,34 @@
 
   function renderDebtsList(){
     const list = $('debtsList');
-    renderSupplierSummary();
-    if(!allDebts.length){
+    const bar = $('debtFilterBar');
+    let rows = allDebts;
+    if(debtFilter){
+      rows = allDebts.filter(d=>{
+        if(!isOpenDebt(d)) return false;
+        const a = Number(d['Amount']) || 0;
+        return debtFilter === 'owedToUs' ? a > 0 : a < 0;
+      });
+      const total = rows.reduce((sum,d)=> sum + Math.abs(Number(d['Amount']) || 0), 0);
+      const title = debtFilter === 'owedToUs' ? 'Owed to us — from external customers/parties' : 'We owe — to external suppliers/parties';
+      bar.innerHTML = `<div class="debt-filter-bar">
+        <div><div>${escapeHtml(title)}</div><div class="dfb-sub">${rows.length} open · ${fmtEGP(total)}</div></div>
+        <button id="clearDebtFilterBtn">Show all</button>
+      </div>`;
+      $('clearDebtFilterBtn').addEventListener('click', ()=> setDebtFilter(debtFilter));
+    } else {
+      bar.innerHTML = '';
+    }
+    // The per-supplier "Pay supplier" cards only make sense for what we owe.
+    if(!debtFilter || debtFilter === 'weOwe') renderSupplierSummary(); else $('supplierDebtsSummary').innerHTML = '';
+    if(!rows.length){
       list.innerHTML = '';
+      $('debtsEmpty').textContent = debtFilter ? 'No open debts in this category.' : 'No external debts recorded.';
       $('debtsEmpty').style.display = 'block';
       return;
     }
     $('debtsEmpty').style.display = 'none';
-    list.innerHTML = allDebts.map(row=>{
+    list.innerHTML = rows.map(row=>{
       const amt = Number(row['Amount']) || 0;
       const cls = amt >= 0 ? 'pos' : 'neg';
       const dirLabel = amt >= 0 ? 'Owes the company' : 'Company owes them';
