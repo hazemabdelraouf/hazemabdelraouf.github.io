@@ -4399,7 +4399,7 @@
   function renderInventory(){
     const query = $('inventorySearch').value.trim().toLowerCase();
     const rows = allProducts
-      .map(p => ({ row: p._row, name: p.name, nameEn: p.nameEn || '', sku: p.sku || '', qty: Number(p.balance) || 0, cost: Number(p.cost) || 0 }))
+      .map(p => ({ row: p._row, name: p.name, nameEn: p.nameEn || '', sku: p.sku || '', qty: Number(p.balance) || 0, cost: Number(p.cost) || 0, salePrice: Number(p.salePrice !== undefined ? p.salePrice : p['Sale Price']) || 0 }))
       .filter(r => !query || productMatchesQuery(r, query) || r.sku.toLowerCase().includes(query))
       // Below-zero items first (need attention), then in-stock by value, zero-stock last (A→Z).
       .sort((a, b) => {
@@ -4435,12 +4435,12 @@
         <div class="exp-row${r.qty < 0 ? ' neg-stock' : ''}${r.qty === 0 ? ' zero-stock' : ''}">
           <div class="exp-row-top">
             <span class="exp-desc">${r.qty < 0 ? '⚠️ ' : ''}${escapeHtml(r.name)}</span>
-            <span class="exp-amount ${r.qty < 0 ? 'neg' : 'pos'}">${(r.qty * r.cost).toFixed(2)} EGP</span>
+            <span class="exp-amount ${r.qty < 0 ? 'neg' : 'pos'}">${r.qty} units</span>
           </div>
           <div class="exp-meta">
-            <span>${r.qty} units</span>
+            <span>total ${(r.qty * r.cost).toFixed(2)} EGP</span>
             <span>avg cost ${r.cost.toFixed(2)} EGP</span>
-            ${r.sku ? `<span>SKU: ${escapeHtml(r.sku)}</span>` : ''}
+            <span>sale price ${r.salePrice ? r.salePrice.toFixed(2) + ' EGP' : '—'}</span>
           </div>
           <div class="exp-actions" data-stock-actions="${r.row}">
             <button class="exp-action-btn" data-edit-stock="${r.row}">Edit quantity</button>
