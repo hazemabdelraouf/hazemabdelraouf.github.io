@@ -683,6 +683,8 @@
   .balance-card.clickable{cursor:pointer;transition:border-color .15s ease, transform .1s ease;}
   .balance-card.clickable:active{transform:scale(.97);}
   .balance-card.active-filter{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold);}
+  .exp-badge.ref{background:transparent;border:1px dashed var(--gold);color:var(--gold);}
+  .profit-note{display:none;margin-top:6px;font-size:12px;font-weight:600;color:var(--gold);}
   .debt-filter-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--panel);border:1px solid var(--gold);border-radius:12px;padding:10px 14px;margin-bottom:10px;font-size:13px;font-weight:700;color:var(--cream);}
   .debt-filter-bar .dfb-sub{font-size:11.5px;font-weight:600;color:var(--cream-dim);margin-top:2px;}
   .debt-filter-bar button{background:var(--panel-2);border:1px solid var(--line);color:var(--cream);font-size:12px;font-weight:700;padding:6px 12px;border-radius:10px;cursor:pointer;white-space:nowrap;}
@@ -1120,7 +1122,9 @@
         <option value="Purchase">Purchase</option>
         <option value="Others">Others</option>
         <option value="حق الله">حق الله</option>
+        <option value="Profit">Profit</option>
       </select>
+      <div class="profit-note" id="expProfitNote">Profit withdrawal — first clears what this person owes the company (no effect on the Main budget). Any amount beyond that is deducted from the Main budget and recorded only, never as a debt. Not counted in the summary profit.</div>
     </div>
     <div class="edit-field-group" id="expItemsGroup" style="display:none;">
       <label>Products taken (deducted from stock)</label>
@@ -3026,7 +3030,7 @@
       // real Google Apps Script request is still cold-starting.
       const cp = swrLoad('products'); if(Array.isArray(cp) && cp.length) allProducts = cp;
       const ci = swrLoad('items'); if(Array.isArray(ci) && ci.length) allOrderItems = ci;
-      const ce = swrLoad('expenses'); if(ce && Array.isArray(ce.expenses)){ allExpenses = ce.expenses; expenseBalances = ce.balances || expenseBalances; }
+      const ce = swrLoad('expenses'); if(ce && Array.isArray(ce.expenses)){ allExpenses = ce.expenses; rawExpenseBalances = ce.balances || rawExpenseBalances; applyProfitEffects(); }
       const cd = swrLoad('debts'); if(cd && Array.isArray(cd.debts)){ allDebts = cd.debts; debtTotals = cd.totals || debtTotals; }
       const cs = swrLoad('suppliers'); if(Array.isArray(cs) && cs.length){ allSuppliers = cs; piRenderSupplierOptions(); }
       const cached = loadCachedOrders();
@@ -4174,7 +4178,9 @@
 
   /* ================= EXPENSES MODULE ================= */
   let allExpenses = [];
-  let expenseBalances = { Bedir:0, Hazem:0, UVA:0 };
+  let expenseBalances = { Bedir:0, Hazem:0, UVA:0 };      // shown on the cards (after Profit offsets)
+  let rawExpenseBalances = { Bedir:0, Hazem:0, UVA:0 };   // exactly as the sheet reports them
+  let profitInfo = { base:{Bedir:0,Hazem:0,UVA:0}, taken:{Bedir:0,Hazem:0,UVA:0}, offset:{Bedir:0,Hazem:0,UVA:0}, excess:0 };
   let allDebts = [];
   let debtTotals = { owedToUs:0, weOwe:0 };
   let debtFilter = null; // null | 'owedToUs' | 'weOwe'
@@ -4301,8 +4307,9 @@
       const res = await fetch(API_URL + sep + 'action=listExpenses', { method:'GET', redirect:'follow' });
       const data = await res.json();
       allExpenses = Array.isArray(data.expenses) ? data.expenses : [];
-      expenseBalances = data.balances || { Bedir:0, Hazem:0, UVA:0 };
-      swrSave('expenses', { expenses: allExpenses, balances: expenseBalances });
+      rawExpenseBalances = data.balances || { Bedir:0, Hazem:0, UVA:0 };
+      applyProfitEffects();
+      swrSave('expenses', { expenses: allExpenses, balances: rawExpenseBalances });
       renderBalances();
       renderExpensesList();
     } catch(err){
@@ -4634,10 +4641,11 @@
     let expRows = allExpenses;
     if(accountFilter){
       expRows = allExpenses.filter(r => accAmount(r, accountFilter) !== 0);
-      const net = expRows.reduce((sum,r)=> sum + accAmount(r, accountFilter), 0);
+      const net = expRows.reduce((sum,r)=> isProfitRow(r) ? sum : sum + accAmount(r, accountFilter), 0);
+      const profitTaken = expRows.reduce((sum,r)=> isProfitRow(r) ? sum + Math.abs(accAmount(r, accountFilter)) : sum, 0);
       const nm = accountFilter === 'UVA' ? 'UVA (company)' : accountFilter;
       fbar.innerHTML = `<div class="debt-filter-bar">
-        <div><div>${escapeHtml(nm)} — transactions</div><div class="dfb-sub">${expRows.length} transactions · net ${net < 0 ? '−' : ''}${fmtEGP(Math.abs(net))}</div></div>
+        <div><div>${escapeHtml(nm)} — transactions</div><div class="dfb-sub">${expRows.length} transactions · net ${net < 0 ? '−' : ''}${fmtEGP(Math.abs(net))}${profitTaken ? ' · profit drawn ' + fmtEGP(profitTaken) + (profitInfo.offset[accountFilter] ? ' (' + fmtEGP(profitInfo.offset[accountFilter]) + ' cleared debt)' : '') : ''}</div></div>
         <button id="clearAccountFilterBtn">Show all</button>
       </div>`;
       $('clearAccountFilterBtn').addEventListener('click', ()=> setAccountFilter(accountFilter));
@@ -4674,6 +4682,7 @@
               ${isClosed ? '<span class="closed-badge">✓ Closed</span>' : ''}
               <span>${escapeHtml(accountLabel)}</span>
               ${row['Category'] ? `<span class="exp-badge">${escapeHtml(row['Category'])}</span>` : ''}
+              ${isProfitRow(row) ? '<span class="exp-badge ref">Profit draw</span>' : ''}
               <span>${escapeHtml(fmtShortDateTime(row['Date']))}</span>
               ${linkLabel ? `<span>${escapeHtml(linkLabel)}</span>` : ''}
               ${commission > 0 ? `<span>incl. ${fmtEGP(commission)} commission</span>` : ''}
@@ -4811,6 +4820,7 @@
     if(![...$('expCategory').options].some(o => o.value === $('expCategory').value)){
       $('expCategory').value = 'Others';
     }
+    updateProfitNote();
     $('expDescription').value = item['Description'] || '';
     const d = item['Date'] ? new Date(item['Date']) : new Date();
     const pad = n => String(n).padStart(2,'0');
@@ -5188,6 +5198,7 @@
   });
   $('expAmount').addEventListener('input', () => { colAmountTouched = true; });
   $('expCategory').addEventListener('change', colUpdateVisibility);
+  $('expCategory').addEventListener('change', updateProfitNote);
   $('expAccount').addEventListener('change', colEnsureNegativeDirection);
   function colReset(){
     colItems = [];
@@ -5213,6 +5224,7 @@
     $('expAmount').value = '';
     $('expCommission').value = '';
     $('expCategory').value = 'Others';
+    updateProfitNote();
     $('expDescription').value = '';
     $('expDate').value = nowLocalDateTime();
     $('expError').textContent = '';
@@ -6053,6 +6065,48 @@
   }
 
   const ZAKAT_CATEGORY = 'حق الله';
+  // Profit = a partner took part of the profits. Reference record only: it must
+  // not move anyone's balance, create a debt, or count in the summary profit.
+  const PROFIT_CATEGORY = 'Profit';
+  function isProfitRow(row){ return String(row['Category'] || '').trim().toLowerCase() === PROFIT_CATEGORY.toLowerCase(); }
+  function profitAmountOf(row, acc){
+    const v = row[acc]; const n = Number(v);
+    return (v !== '' && v !== null && v !== undefined && !isNaN(n)) ? n : 0;
+  }
+  // Profit draw rules, per person:
+  //  1) Take the Profit rows out of the sheet's balance (base balance).
+  //  2) If the person owes the company, the draw first clears that debt
+  //     (their balance moves toward zero) — no effect on the Main budget.
+  //  3) Whatever is left over (or the whole amount when they owe nothing) is
+  //     money leaving the company: deducted from the Main budget and kept as a
+  //     record only — never a debt on the person.
+  function applyProfitEffects(){
+    const base = Object.assign({ Bedir:0, Hazem:0, UVA:0 }, rawExpenseBalances || {});
+    const taken = { Bedir:0, Hazem:0, UVA:0 };
+    (allExpenses || []).forEach(r=>{
+      if(!isProfitRow(r)) return;
+      ['Bedir','Hazem','UVA'].forEach(p=>{
+        const n = profitAmountOf(r, p);
+        if(n !== 0){ base[p] = (Number(base[p]) || 0) - n; taken[p] += Math.abs(n); }
+      });
+    });
+    const offset = { Bedir:0, Hazem:0, UVA:0 };
+    const adjusted = {};
+    let excess = 0;
+    ['Bedir','Hazem','UVA'].forEach(p=>{
+      const b = Number(base[p]) || 0;
+      const debt = Math.max(0, -b);
+      offset[p] = Math.min(taken[p], debt);
+      adjusted[p] = b + offset[p];
+      excess += taken[p] - offset[p];
+    });
+    profitInfo = { base, taken, offset, excess };
+    expenseBalances = adjusted;
+  }
+  function updateProfitNote(){
+    const el = $('expProfitNote');
+    if(el) el.style.display = ($('expCategory').value === PROFIT_CATEGORY) ? 'block' : 'none';
+  }
   let summaryZakatAmount = 0;
 
   // آخر مرة اتدفع فيها حق الله = أحدث حركة في Expenses كاتيجوريها "حق الله"
@@ -6069,9 +6123,12 @@
   function renderSummary(){
     const inventoryValue = allProducts.reduce((sum,p)=> sum + ((Number(p.balance)||0) * (Number(p.cost)||0)), 0);
 
-    const internalNet = Math.abs(expenseBalances.Bedir||0) + Math.abs(expenseBalances.Hazem||0) + Math.abs(expenseBalances.UVA||0);
-    const internalOwedToCompany = ['Bedir','Hazem','UVA'].reduce((s,p)=> s + Math.max(0, -(expenseBalances[p]||0)), 0);
-    const internalOwedByCompany = ['Bedir','Hazem','UVA'].reduce((s,p)=> s + Math.max(0, (expenseBalances[p]||0)), 0);
+    // Summary uses the balances WITHOUT profit draws, so a draw that only clears
+    // a person's debt never moves the Main budget.
+    const sb = profitInfo.base;
+    const internalNet = Math.abs(sb.Bedir||0) + Math.abs(sb.Hazem||0) + Math.abs(sb.UVA||0);
+    const internalOwedToCompany = ['Bedir','Hazem','UVA'].reduce((s,p)=> s + Math.max(0, -(sb[p]||0)), 0);
+    const internalOwedByCompany = ['Bedir','Hazem','UVA'].reduce((s,p)=> s + Math.max(0, (sb[p]||0)), 0);
     const owedToUs = debtTotals.owedToUs || 0;
     const weOwe = debtTotals.weOwe || 0;
 
@@ -6208,7 +6265,7 @@
     // نفسه (عشان دفعته ماتتخصمش من بروفيت الفترة الجاية). أي كاتيجوري جديدة
     // تتضاف للمنيو بتتحسب مصروف أوتوماتيك.
     const COMMISSION_ONLY_CATEGORIES = ['purchase','order collection'];
-    const NON_EXPENSE_CATEGORIES = COMMISSION_ONLY_CATEGORIES.concat([ZAKAT_CATEGORY.toLowerCase()]);
+    const NON_EXPENSE_CATEGORIES = COMMISSION_ONLY_CATEGORIES.concat([ZAKAT_CATEGORY.toLowerCase(), PROFIT_CATEGORY.toLowerCase()]);
     const PL_EXPENSE_CATEGORIES = Array.from($('expCategory').options)
       .map(o => String(o.value || '').trim().toLowerCase())
       .filter(c => c && !NON_EXPENSE_CATEGORIES.includes(c));
@@ -6239,6 +6296,7 @@
       const d = new Date(row['Date']);
       if(isNaN(d.getTime()) || d < periodStart || d > now) return sum;
       const cat = String(row['Category'] || '').trim().toLowerCase();
+      if(cat === PROFIT_CATEGORY.toLowerCase()) return sum; // reference only
       const payFee = paymentFeeOf(row);
       if(payFee > 0 && !PL_EXPENSE_CATEGORIES.includes(cat)) return sum + payFee;
       if(PL_EXPENSE_CATEGORIES.includes(cat)){
@@ -6257,8 +6315,10 @@
     const zakat = netProfit * 0.01;
     summaryZakatAmount = zakat > 0 ? zakat : 0;
 
+    // Profit drawn beyond what the person owed = cash that left the company.
+    const profitTaken = profitInfo.excess;
     const mainBudget = inventoryValue + pendingOrdersTotal + internalOwedToCompany + owedToUs
-                      - internalOwedByCompany - weOwe;
+                      - internalOwedByCompany - weOwe - profitTaken;
 
     const missingCostNames = Object.keys(missingCost);
     const row = (label, value) => `<div class="detail-row"><span class="detail-label">${label}</span><span class="detail-value">${value}</span></div>`;
@@ -6269,6 +6329,7 @@
       row('— Internal balance', fmtEGP(internalNet)),
       row('— Owed to us', fmtEGP(owedToUs)),
       row('— We owe', fmtEGP(-weOwe)),
+      row('— Profit taken', fmtEGP(-profitTaken)),
       row('Unpaid orders', fmtEGP(pendingOrdersTotal) + ' (' + pendingOrders.length + ')'),
       row('Main budget', fmtEGP(mainBudget)),
       row('Sales', fmtEGP(periodSales)),
