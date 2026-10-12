@@ -932,6 +932,7 @@
   <div class="filters">
     <div class="search-row">
       <input type="search" id="inventorySearch" placeholder="Search product (Arabic / English) or SKU...">
+      <button class="exp-action-btn" id="exportStockBtn" style="white-space:nowrap;" title="Download the stock list as a CSV file (opens in Excel / Google Sheets)">⬇ Export</button>
     </div>
   </div>
 
@@ -4527,6 +4528,50 @@
   }
   $('inventoryRefreshBtn').addEventListener('click', refreshInventoryView);
   $('inventorySearch').addEventListener('input', renderInventory);
+
+  // ---- Export the stock list (whatever the search box currently shows) as CSV.
+  // UTF-8 with BOM so Arabic names open correctly in Excel. ----
+  function exportStockCsv(){
+    const query = $('inventorySearch').value.trim().toLowerCase();
+    const items = allProducts
+      .map(p => ({
+        name: p.name || '', nameEn: p.nameEn || '', sku: p.sku || '',
+        qty: Number(p.balance) || 0, cost: Number(p.cost) || 0,
+        salePrice: Number(p.salePrice !== undefined ? p.salePrice : p['Sale Price']) || 0
+      }))
+      .filter(r => !query || productMatchesQuery(r, query) || r.sku.toLowerCase().includes(query))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    if(!items.length){ alert('No products to export.'); return; }
+    const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
+    const num = n => (Math.round(n * 100) / 100).toString();
+    const header = ['Product','SKU','Quantity','Avg cost','Total value','Sale price'];
+    const lines = [header.map(esc).join(',')];
+    items.forEach(r => lines.push([
+      esc(r.name), esc(r.sku), r.qty, num(r.cost), num(r.qty * r.cost), num(r.salePrice)
+    ].join(',')));
+    const totalQty = items.filter(r => r.qty > 0).reduce((s, r) => s + r.qty, 0);
+    const totalVal = items.filter(r => r.qty > 0).reduce((s, r) => s + r.qty * r.cost, 0);
+    lines.push(['"TOTAL (in-stock items)"', '""', totalQty, '""', num(totalVal), '""'].join(','));
+    const csv = '\uFEFF' + lines.join('\r\n');
+    const d = new Date();
+    const stamp = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    const fileName = 'stock-' + stamp + '.csv';
+    const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
+    // Mobile: use the share sheet when the browser can share files (lets you save to Files / send).
+    try{
+      const file = new File([blob], fileName, { type:'text/csv' });
+      if(navigator.canShare && navigator.canShare({ files:[file] }) && /Android|iPhone|iPad/i.test(navigator.userAgent)){
+        navigator.share({ files:[file], title: fileName }).catch(()=>{});
+        return;
+      }
+    }catch(e){}
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  $('exportStockBtn').addEventListener('click', exportStockCsv);
 
   function balanceClass(n){
     if(n > 0.5) return 'pos';
