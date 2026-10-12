@@ -1121,7 +1121,6 @@
         <option value="Ycloud">Ycloud</option>
         <option value="Purchase">Purchase</option>
         <option value="Others">Others</option>
-        <option value="حق الله">حق الله</option>
         <option value="Profit">Profit</option>
       </select>
       <div class="profit-note" id="expProfitNote">Profit withdrawal — first clears what this person owes the company (no effect on the Main budget). Any amount beyond that is deducted from the Main budget and recorded only, never as a debt. Not counted in the summary profit.</div>
@@ -4816,10 +4815,16 @@
     $('expDirection').value = direction;
     $('expAmount').value = baseAmount || '';
     $('expCommission').value = commission || '';
-    $('expCategory').value = item['Category'] || 'Others';
-    if(![...$('expCategory').options].some(o => o.value === $('expCategory').value)){
-      $('expCategory').value = 'Others';
+    // Categories that aren't in the menu (e.g. حق الله, paid from the Summary
+    // button) are kept as-is when editing, via a temporary option.
+    [...$('expCategory').options].forEach(o => { if(o.dataset.temp) o.remove(); });
+    const editCat = String(item['Category'] || '').trim();
+    if(editCat && ![...$('expCategory').options].some(o => o.value === editCat)){
+      const tmp = document.createElement('option');
+      tmp.value = editCat; tmp.textContent = editCat; tmp.dataset.temp = '1';
+      $('expCategory').appendChild(tmp);
     }
+    $('expCategory').value = editCat || 'Others';
     updateProfitNote();
     $('expDescription').value = item['Description'] || '';
     const d = item['Date'] ? new Date(item['Date']) : new Date();
@@ -5223,6 +5228,7 @@
     refreshExpDirectionOptions();
     $('expAmount').value = '';
     $('expCommission').value = '';
+    [...$('expCategory').options].forEach(o => { if(o.dataset.temp) o.remove(); });
     $('expCategory').value = 'Others';
     updateProfitNote();
     $('expDescription').value = '';
@@ -6266,7 +6272,7 @@
     // تتضاف للمنيو بتتحسب مصروف أوتوماتيك.
     const COMMISSION_ONLY_CATEGORIES = ['purchase','order collection'];
     const NON_EXPENSE_CATEGORIES = COMMISSION_ONLY_CATEGORIES.concat([ZAKAT_CATEGORY.toLowerCase(), PROFIT_CATEGORY.toLowerCase()]);
-    const PL_EXPENSE_CATEGORIES = Array.from($('expCategory').options)
+    const PL_EXPENSE_CATEGORIES = Array.from($('expCategory').options).filter(o => !o.dataset.temp)
       .map(o => String(o.value || '').trim().toLowerCase())
       .filter(c => c && !NON_EXPENSE_CATEGORIES.includes(c));
     // رسوم التحويل/السداد: أي fee اتدفع مع سداد دين (كامل أو جزئي) أو تحويل بين
