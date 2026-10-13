@@ -3975,6 +3975,10 @@
           ${(isRequestNeeded && !isPaid) ? `<button class="card-btn mark-paid-btn" data-mark-paid data-serial="${escapeAttr(serial)}">💰 Mark as paid</button>` : ''}
         </div>
         <div class="action-row">
+          <button type="button" class="action-link" data-invoice data-serial="${escapeAttr(serial)}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+            Invoice (PDF)
+          </button>
           ${o.tracking_number ? `
           <a class="action-link" href="${escapeAttr(trackUrl(o.tracking_number))}" target="_blank" rel="noopener">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -4027,6 +4031,95 @@
       </div>
     </div>`;
   }
+
+  // ================= Customer invoice (English, print / Save as PDF) =================
+  // Opens from "View details" -> "Invoice (PDF)". Nothing is added to the card itself.
+  const INVOICE_STORE_NAME = ''; // <-- اكتب اسم المتجر هنا ليظهر أعلى الفاتورة (اختياري)
+  function invoiceLines(o){
+    const serial = o['Order Serial'];
+    const rows = allOrderItems.filter(it => String(it.orderSerial) === String(serial));
+    const lines = [];
+    if(rows.length){
+      rows.forEach(r => {
+        const isCustom = String(r.option||'').trim() === CUSTOM_ITEM_MARK;
+        const prod = isCustom ? findProductSmart(r.item) : (findProductBySku(r.sku) || findProductSmart(r.item));
+        const rp = Number(r.salePrice);
+        const price = (!isNaN(rp) && rp > 0) ? rp : (prod ? Number(prod.salePrice)||0 : 0);
+        lines.push({ name: (prod && (prod.nameEn || prod.name)) || cleanItemName(r.item) || 'Item', qty: Math.max(1, Number(r.quantity)||1), price });
+      });
+    } else {
+      parseItemsText(o.items).forEach(it => {
+        const prod = findProductSmart(it.name);
+        lines.push({ name: (prod && (prod.nameEn || prod.name)) || it.name, qty: it.qty, price: Number(it.salePrice)||0 });
+      });
+    }
+    return lines;
+  }
+  async function printInvoice(serial){
+    const o = allOrders.find(x => String(x['Order Serial']) === String(serial));
+    if(!o) return;
+    if(!allProducts.length) await fetchProducts();
+    if(!allOrderItems.length) await fetchOrderItems();
+    const money = n => (Math.round((Number(n)||0)*100)/100).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2});
+    const lines = invoiceLines(o);
+    const subtotal = lines.reduce((a,l)=>a+l.qty*l.price,0);
+    const totalNum = parseFloat(o.total);
+    const orderTotal = !isNaN(totalNum) ? totalNum : subtotal;
+    const sk = resolveShippingAmountKey(o);
+    let ship = sk ? parseFloat(o[sk]) : NaN;
+    const codNum = parseFloat(o.COD);
+    if(isNaN(ship)) ship = !isNaN(codNum) ? Math.max(0, codNum - orderTotal) : 0;
+    const grand = orderTotal + ship;
+    const adj = orderTotal - subtotal;
+    const addr = [o.Address_line1, o.Address_line2, o.Address, o.city, o.Gov].filter(Boolean).join(', ');
+    const pay = o.payment_status === 'PAID' ? 'Paid' : 'Cash on delivery';
+    const date = fmtDate(o[resolveCreatedAtKey(o)] || o.date || o.Updated);
+    const rowsHtml = lines.map((l,i)=>`<tr><td>${i+1}</td><td class="n">${escapeHtml(l.name)}</td><td>${l.qty}</td><td>${money(l.price)}</td><td>${money(l.qty*l.price)}</td></tr>`).join('');
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Invoice ${escapeHtml(pkLabel(o))}</title>
+<style>
+  @page{size:A4;margin:14mm}
+  *{box-sizing:border-box}
+  body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:24px;font-size:13px}
+  .top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:12px}
+  h1{margin:0;font-size:26px;letter-spacing:2px}.store{font-size:16px;font-weight:700}
+  .meta{text-align:right;line-height:1.7}
+  .bill{margin:18px 0;line-height:1.7}.bill b{display:block;font-size:11px;text-transform:uppercase;color:#666;letter-spacing:1px}
+  table{width:100%;border-collapse:collapse;margin-top:6px}
+  th{background:#f1f1f1;text-align:center;padding:8px;border-bottom:1px solid #999;font-size:12px}
+  td{padding:8px;border-bottom:1px solid #ddd;text-align:center}
+  th:nth-child(2),td.n{text-align:left}
+  .tot{margin:16px 0 0 auto;width:280px}
+  .tot div{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee}
+  .tot .g{font-size:16px;font-weight:700;border-top:2px solid #111;border-bottom:none;margin-top:4px;padding-top:10px}
+  .foot{margin-top:40px;text-align:center;color:#666;font-size:12px}
+  .bar{position:fixed;top:0;left:0;right:0;background:#111;color:#fff;padding:10px;text-align:center}
+  .bar button{padding:7px 18px;border:none;border-radius:6px;font-weight:700;cursor:pointer}
+  body.has-bar{padding-top:64px}
+  @media print{.bar{display:none}body.has-bar{padding-top:0}}
+</style></head><body class="has-bar">
+<div class="bar"><button onclick="window.print()">Print / Save as PDF</button></div>
+<div class="top"><div>${INVOICE_STORE_NAME?`<div class="store">${escapeHtml(INVOICE_STORE_NAME)}</div>`:''}<h1>INVOICE</h1></div>
+<div class="meta"><div><b>Order:</b> ${escapeHtml(pkLabel(o))}</div><div><b>Date:</b> ${escapeHtml(date)}</div><div><b>Payment:</b> ${pay}</div></div></div>
+<div class="bill"><b>Bill to</b>${escapeHtml(o['Customer Name']||'')}<br>${escapeHtml(o.Phone||'')}${addr?'<br>'+escapeHtml(addr):''}</div>
+<table><thead><tr><th>#</th><th>Product</th><th>Qty</th><th>Unit price (EGP)</th><th>Amount (EGP)</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+<div class="tot">
+  <div><span>Subtotal</span><span>${money(subtotal)} EGP</span></div>
+  ${Math.abs(adj)>=0.5?`<div><span>${adj<0?'Discount':'Adjustment'}</span><span>${money(adj)} EGP</span></div>`:''}
+  <div><span>Total (products)</span><span>${money(orderTotal)} EGP</span></div>
+  <div><span>Shipping</span><span>${money(ship)} EGP</span></div>
+  <div class="g"><span>Total with shipping</span><span>${money(grand)} EGP</span></div>
+</div>
+<div class="foot">Thank you for your order!</div>
+</body></html>`;
+    const w = window.open('', '_blank');
+    if(!w){ alert('Please allow pop-ups to open the invoice.'); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+    setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 400);
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('[data-invoice]');
+    if(b){ printInvoice(b.getAttribute('data-serial')); }
+  });
 
   function detailRow(label, value){
     if(value === undefined || value === null || value === '') return '';
