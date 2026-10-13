@@ -414,6 +414,8 @@
   }
   .whatsapp-btn:active{transform:scale(0.94);}
 
+  .invoice-row{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);}
+  .invoice-row .action-link{width:100%;flex:none;}
   .log-section{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);}
   .log-toggle{
     display:flex;align-items:center;justify-content:space-between;
@@ -3975,10 +3977,6 @@
           ${(isRequestNeeded && !isPaid) ? `<button class="card-btn mark-paid-btn" data-mark-paid data-serial="${escapeAttr(serial)}">💰 Mark as paid</button>` : ''}
         </div>
         <div class="action-row">
-          <button type="button" class="action-link" data-invoice data-serial="${escapeAttr(serial)}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
-            Invoice (PDF)
-          </button>
           ${o.tracking_number ? `
           <a class="action-link" href="${escapeAttr(trackUrl(o.tracking_number))}" target="_blank" rel="noopener">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
@@ -4027,7 +4025,12 @@
           ${detailRow('Last updated', fmtDate(o.Updated))}
         </div>
         ${o.note ? `<div class="note-line" style="margin-top:10px;">📝 ${escapeHtml(o.note)}</div>` : ''}
-        ${renderLogSection(serial)}
+        <div class="invoice-row">
+          <button type="button" class="action-link" data-invoice data-serial="${escapeAttr(serial)}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+            Invoice (PDF)
+          </button>
+        </div>
       </div>
     </div>`;
   }
@@ -4077,7 +4080,7 @@
     const rowsHtml = lines.map((l,i)=>`<tr><td>${i+1}</td><td class="n">${escapeHtml(l.name)}</td><td>${l.qty}</td><td>${money(l.price)}</td><td>${money(l.qty*l.price)}</td></tr>`).join('');
     const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Invoice ${escapeHtml(pkLabel(o))}</title>
 <style>
-  @page{size:A4;margin:14mm}
+  @page{size:A4;margin:0}
   *{box-sizing:border-box}
   body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:24px;font-size:13px}
   .top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:12px}
@@ -4092,13 +4095,14 @@
   .tot div{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee}
   .tot .g{font-size:16px;font-weight:700;border-top:2px solid #111;border-bottom:none;margin-top:4px;padding-top:10px}
   .foot{margin-top:40px;text-align:center;color:#666;font-size:13px}
-  .foot .logo{display:block;margin:14px auto 0;width:90px;height:auto}
-  .bar{position:fixed;top:0;left:0;right:0;background:#111;color:#fff;padding:10px;text-align:center}
+  .foot .logo{display:block;margin:14px auto 0;width:60px;height:auto}
+  .bar{position:fixed;top:0;left:0;right:0;background:#111;color:#fff;padding:10px 52px;text-align:center}
+  .bar .x{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:34px;height:34px;padding:0;border-radius:50%;background:#333;color:#fff;font-size:20px;line-height:1}
   .bar button{padding:7px 18px;border:none;border-radius:6px;font-weight:700;cursor:pointer}
   body.has-bar{padding-top:64px}
-  @media print{.bar{display:none}body.has-bar{padding-top:0}}
+  @media print{.bar{display:none}body,body.has-bar{padding:14mm}}
 </style></head><body class="has-bar">
-<div class="bar"><button onclick="window.print()">Print / Save as PDF</button></div>
+<div class="bar"><button onclick="window.print()">Print / Save as PDF</button><button class="x" aria-label="Close" onclick="window.close();setTimeout(function(){history.back()},200)">&times;</button></div>
 <div class="top"><div>${INVOICE_STORE_NAME?`<div class="store">${escapeHtml(INVOICE_STORE_NAME)}</div>`:''}<h1>INVOICE</h1></div>
 <div class="meta"><div><b>Order:</b> ${escapeHtml(pkLabel(o))}</div><div><b>Date:</b> ${escapeHtml(date)}</div><div><b>Payment:</b> ${pay}</div></div></div>
 <div class="bill"><b>Bill to</b>${escapeHtml(o['Customer Name']||'')}<br>${escapeHtml(o.Phone||'')}${addr?'<br>'+escapeHtml(addr):''}</div>
