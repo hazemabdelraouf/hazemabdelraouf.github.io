@@ -3043,8 +3043,13 @@
       }
       // Orders first; once they are in, warm the expenses/debts sheets in the
       // background so the Expenses view and Summary open with fresh data.
-      fetchOrders().then(ok => { if(ok){ fetchExpenses(); fetchDebts(); } });
-      fetchOrderItems();
+      fetchOrders().then(ok => {
+        // With the new backend everything already arrived in the same response.
+        if(!bootstrapSupported || !ok){
+          if(ok){ fetchExpenses(); fetchDebts(); }
+          fetchOrderItems();
+        }
+      });
     }
   }
 
@@ -3123,6 +3128,68 @@
   // happen to land at once.
   let isFetchingOrders = false;
 
+  // ---- One-request loading ('bootstrap' action) ----
+  // The backend returns orders + products + items + expenses + debts + suppliers
+  // in ONE Apps Script execution (one cold start instead of 5-6).
+  let bootstrapSupported = true;   // flips to false if the deployed Code.gs is older
+  let bootstrapFull = true;        // first load asks for everything; refreshes only orders+products
+  let lastFetchHadProducts = false;
+
+  function applyBootstrapExtras(data){
+    try{
+      if(data.products && Array.isArray(data.products.products)){
+        allProducts = data.products.products;
+        if(allProducts.length) swrSave('products', allProducts);
+      }
+      if(data.items && Array.isArray(data.items.items)){
+        allOrderItems = data.items.items;
+        swrSave('items', allOrderItems);
+      }
+      if(data.expenses && Array.isArray(data.expenses.expenses)){
+        allExpenses = data.expenses.expenses;
+        rawExpenseBalances = data.expenses.balances || { Bedir:0, Hazem:0, UVA:0 };
+        applyProfitEffects();
+        swrSave('expenses', { expenses: allExpenses, balances: rawExpenseBalances });
+      }
+      if(data.debts && Array.isArray(data.debts.debts)){
+        allDebts = data.debts.debts;
+        debtTotals = { owedToUs: data.debts.owedToUs||0, weOwe: data.debts.weOwe||0 };
+        swrSave('debts', { debts: allDebts, totals: debtTotals });
+      }
+      if(data.suppliers && Array.isArray(data.suppliers.suppliers)){
+        allSuppliers = data.suppliers.suppliers;
+        swrSave('suppliers', allSuppliers);
+        piRenderSupplierOptions();
+      }
+      if(data.items || data.products) repatchItemsHolders();
+      if(data.expenses || data.debts){
+        renderBalances();
+        renderExpensesList();
+        renderDebtsList();
+      }
+    }catch(e){ console.error('applyBootstrapExtras error:', e); }
+  }
+
+  // Fetch a subset of sheets in a single request (used by the Summary screen).
+  // Returns true on success, false if unsupported/failed (caller falls back to the old calls).
+  async function fetchParts(parts){
+    if(!API_URL || !bootstrapSupported) return false;
+    try{
+      const sep = API_URL.includes('?') ? '&' : '?';
+      const res = await fetch(API_URL + sep + 'action=bootstrap&parts=' + encodeURIComponent(parts), { method:'GET', redirect:'follow' });
+      const data = await res.json();
+      if(!data || data.error){
+        if(data && data.error === 'unknown action') bootstrapSupported = false;
+        return false;
+      }
+      applyBootstrapExtras(data);
+      return true;
+    }catch(err){
+      console.error('fetchParts error:', err);
+      return false;
+    }
+  }
+
   async function fetchOrders(){
     if(isFetchingOrders) return false;
     isFetchingOrders = true;
@@ -3137,7 +3204,8 @@
         // Re-read the products sheet on every refresh so the Balance column is
         // always live (stock changes whenever orders are created/edited), then
         // re-color the Items rows. Not awaited: the list shouldn't wait on it.
-        fetchProducts(true).then(()=>{ repatchItemsHolders(); });
+        if(lastFetchHadProducts){ try{ repatchItemsHolders(); }catch(e){} }
+        else fetchProducts(true).then(()=>{ repatchItemsHolders(); });
         // Light the dot up green for a moment so a finished update is
         // actually noticeable, not just "still green like before".
         const dot = $('statusDot');
@@ -3182,7 +3250,9 @@
     try{
       const sep = API_URL.includes('?') ? '&' : '?';
       const res = await Promise.race([
-        fetch(API_URL + sep + 'action=list', {
+        fetch(API_URL + sep + (bootstrapSupported
+          ? 'action=bootstrap&parts=' + (bootstrapFull ? 'orders,products,items,expenses,debts,suppliers' : 'orders,products')
+          : 'action=list'), {
           method: 'GET',
           redirect: 'follow'
         }),
@@ -3194,6 +3264,11 @@
       }
       
       const data = await res.json();
+      // Backend not updated with the 'bootstrap' action yet -> fall back to the old single 'list' call.
+      if(bootstrapSupported && data && data.error === 'unknown action'){
+        bootstrapSupported = false;
+        return await fetchOrdersInner();
+      }
       if(data.error){
         $('setup-error').textContent = 'Sheet error: ' + data.error;
         if($('loadingSpinner')) $('loadingSpinner').style.display = 'none';
@@ -3202,6 +3277,7 @@
       
       allOrders = Array.isArray(data.orders) ? data.orders : [];
       headers = Array.isArray(data.headers) ? data.headers : [];
+      lastFetchHadProducts = !!(data.products && Array.isArray(data.products.products));
 
       // Orders with no pickup location assigned yet are ignored entirely —
       // not shown in the list, not counted in totals, not included in any stat.
@@ -3232,6 +3308,11 @@
         checkAndOpenTargetOrder();
       }catch(renderErr){
         console.error('fetchOrders render error:', renderErr);
+      }
+      // Products / items / expenses / debts / suppliers arrive in the same response.
+      if(bootstrapSupported){
+        applyBootstrapExtras(data);
+        if(data.expenses && data.debts) bootstrapFull = false;
       }
       return true;
     }catch(err){
@@ -6105,7 +6186,8 @@
       $('summaryContent').innerHTML = `<div class="detail-row"><span class="detail-label">Loading…</span><span class="detail-value"></span></div>`;
     }
     try{
-      const tasks = [fetchProducts(true), fetchExpenses(), fetchDebts(), fetchOrderItems()];
+      const gotAll = await fetchParts('products,items,expenses,debts');
+      const tasks = gotAll ? [] : [fetchProducts(true), fetchExpenses(), fetchDebts(), fetchOrderItems()];
       if(!allOrders.length) tasks.push(fetchOrders());
       await Promise.all(tasks);
       renderSummary();
@@ -6187,9 +6269,15 @@
       const ship = normStatus(o.shipping_status);
       return normStatus(o.payment_status) !== 'paid' && !['cancelled','returned'].includes(ship);
     });
+    // Unpaid orders value = COD minus the order's "Shipping cost" column
+    // (the net amount that is ours). If an order has no COD we fall back to its
+    // total, which doesn't include shipping, so nothing is subtracted there.
     const pendingOrdersTotal = pendingOrders.reduce((sum,o)=>{
       const cod = parseFloat(o.COD);
-      return sum + (!isNaN(cod) ? cod : (parseFloat(o.total)||0));
+      if(isNaN(cod)) return sum + (parseFloat(o.total)||0);
+      const shipKey = resolveShippingAmountKey(o);
+      const ship = shipKey ? parseFloat(o[shipKey]) : NaN;
+      return sum + cod - (isNaN(ship) ? 0 : ship);
     }, 0);
 
     // بداية الفترة: آخر دفع لحق الله (ريسيت)، ولو عمره ما اتدفع → أول الشهر
