@@ -6528,8 +6528,6 @@ ${invoiceFootHtml('')}`;
       return !isNaN(d.getTime()) && d >= periodStart && d <= now;
     });
     let periodSales = 0, periodCOGS = 0;
-    // مصاريف شحن الأوردرات اللي اتحسبت في المبيعات (من عمود "Shipping cost")
-    let periodShipping = 0, shippingMissing = 0;
     // للتشخيص: عدد الوحدات، الأوردرات اللي من غير صفوف في شيت Items (بتتقرا من
     // نص الأصناف)، والأصناف اللي اتتجاهلت لأنها custom/من غير تكلفة.
     let periodUnits = 0, ordersWithoutItems = 0;
@@ -6576,9 +6574,6 @@ ${invoiceFootHtml('')}`;
       }
       if(!real.length){ customOnlyIgnored++; return; }
       ordersCounted++;
-      const shipKey = resolveShippingAmountKey(o);
-      const shipVal = shipKey ? parseFloat(o[shipKey]) : NaN;
-      if(isNaN(shipVal)) shippingMissing++; else periodShipping += shipVal;
       // البروفيت لكل صنف = (Sale Price - Cost) × الكمية، الاتنين من شيت products.
       real.forEach(({product, qty})=>{
         const price = Number(product.salePrice) || 0;
@@ -6687,7 +6682,7 @@ ${invoiceFootHtml('')}`;
       if(COMMISSION_ONLY_CATEGORIES.includes(cat)) return sum + Math.abs(Number(row['Commission']) || 0);
       return sum; // أي كاتيجوري تانية → ماتتحسبش
     }, 0);
-    const netProfit = periodProfit - periodShipping - periodExpenses;
+    const netProfit = periodProfit - periodExpenses; // الشحن مش داخل في المبيعات (سعر الصنف × الكمية بس) فمفيش خصم ليه
 
     const zakat = netProfit * 0.01;
     summaryZakatAmount = zakat > 0 ? zakat : 0;
@@ -6712,7 +6707,6 @@ ${invoiceFootHtml('')}`;
       row('Sales', fmtEGP(periodSales)),
       row('— Cost of goods', fmtEGP(-periodCOGS)),
       row('Gross profit', fmtEGP(periodProfit)),
-      row('— Shipping', fmtEGP(-periodShipping)),
       row('— Expenses', fmtEGP(-periodExpenses)),
       row('Net profit', fmtEGP(netProfit)),
       row('حق الله (1%)', fmtEGP(summaryZakatAmount)),
@@ -6720,7 +6714,6 @@ ${invoiceFootHtml('')}`;
       `<details style="margin:10px 0;"><summary style="cursor:pointer;font-weight:600;">Profit details</summary>` +
       row('Orders counted', ordersCounted + (ordersWithoutItems ? ' (' + ordersWithoutItems + ' no Items rows)' : '')) +
       row('Orders ignored', String(customOnlyIgnored)) +
-      row('No shipping cost', String(shippingMissing)) +
       row('Lines ignored', String(customRowsIgnored)) +
       row('Units sold', String(periodUnits)) +
       row('Collections', fmtEGP(collectionSales) + ' / ' + fmtEGP(collectionCOGS) + ' (' + collectionCount + ')') +
