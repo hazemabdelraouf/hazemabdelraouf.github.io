@@ -3500,6 +3500,7 @@ try{
       }
       
       allOrders = Array.isArray(data.orders) ? data.orders : [];
+      buildPhoneOrderCounts(allOrders); // delivered orders per phone, counted BEFORE the pickup-location filter below
       headers = Array.isArray(data.headers) ? data.headers : [];
       lastFetchHadProducts = !!(data.products && Array.isArray(data.products.products));
 
@@ -4099,13 +4100,33 @@ try{
     const short = fmtDateShort(iso);
     return short ? ` (${short})` : '';
   }
+  // Customer order count, matched by phone number (local/international formats are
+  // normalised by normPhone). Only DELIVERED orders are counted, over ALL rows of the
+  // orders table (before the "no pickup location" filter). The order being shown counts
+  // too if it isn't delivered yet, so a first-time customer's first order reads
+  // "New Customer" and a returning customer's next order reads e.g. "2 orders".
+  let phoneOrderCounts = {};
+  function buildPhoneOrderCounts(list){
+    const m = {};
+    (list || []).forEach(o => {
+      if(!o || normStatus(o.shipping_status) !== 'delivered') return;
+      const k = normPhone(o.Phone);
+      if(k) m[k] = (m[k] || 0) + 1;
+    });
+    phoneOrderCounts = m;
+  }
   function deliveredCountBadge(o){
-    const key = resolveOrdersCountKey(o);
-    if(!key) return '';
-    const count = parseInt(o[key], 10);
-    if(!count || count <= 0) return '';
-    if(count === 1) return ` <span class="customer-delivered-count">New Customer</span>`;
-    return ` <span class="customer-delivered-count">${count} orders</span>`;
+    const k = normPhone(o && o.Phone);
+    if(!k) return '';
+    const delivered = phoneOrderCounts[k] || 0;
+    const st = normStatus(o.shipping_status);
+    let total;
+    if(st === 'delivered') total = delivered;                          // this order is already in the delivered count
+    else if(st === 'cancelled' || st === 'returned') total = delivered; // never completed: show only completed orders
+    else total = delivered + 1;                                         // in progress: delivered ones + this one
+    if(total <= 0 || (total === 1 && (st === 'delivered' || delivered === 0))) return ` <span class="customer-delivered-count">New Customer</span>`;
+    if(total === 1 && delivered === 1) return ` <span class="customer-delivered-count">1 order</span>`;
+    return ` <span class="customer-delivered-count">${total} orders</span>`;
   }
 
   function orderCard(o){
@@ -6750,8 +6771,6 @@ ${invoiceFootHtml('')}`;
       return !isNaN(d.getTime()) && d >= periodStart && d <= now;
     });
     let periodSales = 0, periodCOGS = 0;
-    // مصاريف شحن الأوردرات اللي اتحسبت في المبيعات (من عمود "Shipping cost")
-    let periodShipping = 0, shippingMissing = 0;
     // للتشخيص: عدد الوحدات، الأوردرات اللي من غير صفوف في شيت Items (بتتقرا من
     // نص الأصناف)، والأصناف اللي اتتجاهلت لأنها custom/من غير تكلفة.
     let periodUnits = 0, ordersWithoutItems = 0;
@@ -6798,9 +6817,6 @@ ${invoiceFootHtml('')}`;
       }
       if(!real.length){ customOnlyIgnored++; return; }
       ordersCounted++;
-      const shipKey = resolveShippingAmountKey(o);
-      const shipVal = shipKey ? parseFloat(o[shipKey]) : NaN;
-      if(isNaN(shipVal)) shippingMissing++; else periodShipping += shipVal;
       // البروفيت لكل صنف = (Sale Price - Cost) × الكمية، الاتنين من شيت products.
       real.forEach(({product, qty})=>{
         const price = Number(product.salePrice) || 0;
@@ -6909,7 +6925,7 @@ ${invoiceFootHtml('')}`;
       if(COMMISSION_ONLY_CATEGORIES.includes(cat)) return sum + Math.abs(Number(row['Commission']) || 0);
       return sum; // أي كاتيجوري تانية → ماتتحسبش
     }, 0);
-    const netProfit = periodProfit - periodShipping - periodExpenses; // الشحن مش داخل في المبيعات (سعر الصنف × الكمية بس) فمفيش خصم ليه
+    const netProfit = periodProfit - periodExpenses; // الشحن مش داخل في المبيعات (سعر الصنف × الكمية بس) فمفيش خصم ليه
 
     const zakat = netProfit * 0.01;
     summaryZakatAmount = zakat > 0 ? zakat : 0;
@@ -6934,7 +6950,6 @@ ${invoiceFootHtml('')}`;
       row('Sales', fmtEGP(periodSales)),
       row('— Cost of goods', fmtEGP(-periodCOGS)),
       row('Gross profit', fmtEGP(periodProfit)),
-      row('— Shipping', fmtEGP(-periodShipping)),
       row('— Expenses', fmtEGP(-periodExpenses)),
       row('Net profit', fmtEGP(netProfit)),
       row('حق الله (1%)', fmtEGP(summaryZakatAmount)),
@@ -6942,7 +6957,6 @@ ${invoiceFootHtml('')}`;
       `<details style="margin:10px 0;"><summary style="cursor:pointer;font-weight:600;">Profit details</summary>` +
       row('Orders counted', ordersCounted + (ordersWithoutItems ? ' (' + ordersWithoutItems + ' no Items rows)' : '')) +
       row('Orders ignored', String(customOnlyIgnored)) +
-      row('No shipping cost', String(shippingMissing)) +
       row('Lines ignored', String(customRowsIgnored)) +
       row('Units sold', String(periodUnits)) +
       row('Collections', fmtEGP(collectionSales) + ' / ' + fmtEGP(collectionCOGS) + ' (' + collectionCount + ')') +
