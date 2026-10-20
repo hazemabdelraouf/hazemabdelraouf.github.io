@@ -873,6 +873,7 @@
       <div id="pushDebug" style="font-size:11.5px;color:var(--cream-dim);margin-top:10px;text-align:left;line-height:1.8;"></div>
     </div>
   </details>
+  <div id="buildStamp" style="font-size:11px;color:var(--cream-dim);opacity:.7;margin-top:6px;">Build 2026-10-19 · customer order badge v2</div>
 </div>
 
 <!-- ============ APP ============ -->
@@ -2376,8 +2377,8 @@ try{
   });
 
   // ---- "Mark as paid" -> "Set COD to 0?" ----
-  // Yes: the webhook carries COD = 0 (and no cash is logged against the
-  // collector, since nothing is due on delivery). No: behaves exactly as before.
+  // Yes: the webhook carries COD = 0. The cash is still logged against the
+  // collector in both cases (Yes / No).
   let pendingCodCtx = null; // { ctx, person }
   function promptCodZero(ctx, person){
     pendingCodCtx = { ctx, person };
@@ -2412,6 +2413,11 @@ try{
     const isDelivered = kind === 'delivered';
     logOrderAction(serial, isDelivered ? 'Marked delivered locally' : 'Marked as paid', 'Received by ' + person + (opts.codZero ? ' — COD set to 0' : ''));
 
+    // Capture the cash amount BEFORE the webhook runs (with "Set COD to 0" the order's
+    // COD becomes 0 afterwards, but the collector is still holding the original cash).
+    const orderBefore = allOrders.find(o => String(o['Order Serial']) === String(serial)) || {};
+    const cashAmount = Math.abs(parseFloat(orderBefore.COD)) || Math.abs(parseFloat(orderBefore.total)) || 0;
+
     // 1) Original webhook, unchanged, plus who received it.
     const markPayload = {
       "order serial": serial,
@@ -2422,9 +2428,9 @@ try{
     await sendMakeWebhook(btn, markPayload, isDelivered ? 'Marked delivered' : 'Marked paid', MARK_WEBHOOK_URL);
 
     // 2) Credit the order's cash against that person's account right away.
-    const order = allOrders.find(o => String(o['Order Serial']) === String(serial)) || {};
-    // COD set to 0 => nothing is due on delivery, so no cash is logged against the collector.
-    const amount = opts.codZero ? 0 : (Math.abs(parseFloat(order.COD)) || Math.abs(parseFloat(order.total)) || 0);
+    // Cash is ALWAYS logged against the chosen person, even when COD is set to 0
+    // (uses the order's COD / total as it was before the change).
+    const amount = cashAmount;
     if(amount > 0 && API_URL){
       try{
         const paramsObj = {
@@ -2445,9 +2451,11 @@ try{
           await fetchExpenses(); // refresh balances immediately
         } else if(data && data.error){
           console.error('addExpense error:', data.error);
+          alert('The order was updated, but logging the cash in Expenses FAILED:\n' + data.error);
         }
       } catch(err){
         console.error('Collector addExpense error:', err);
+        alert('The order was updated, but logging the cash in Expenses FAILED:\n' + (err && err.message || err));
       }
     }
   }
@@ -6932,6 +6940,10 @@ ${invoiceFootHtml('')}`;
 
     // Profit drawn beyond what the person owed = cash that left the company.
     const profitTaken = profitInfo.excess;
+    // Info only (does not touch any total): everything drawn as "Profit", and how much of it
+    // just cleared the person's debt. The rest is exactly "Profit taken" above.
+    const profitDrawnTotal = ['Bedir','Hazem','UVA'].reduce((s,p)=> s + (Number(profitInfo.taken[p]) || 0), 0);
+    const profitToDebt = ['Bedir','Hazem','UVA'].reduce((s,p)=> s + (Number(profitInfo.offset[p]) || 0), 0);
     const mainBudget = inventoryValue + pendingOrdersTotal + internalOwedToCompany + owedToUs
                       - internalOwedByCompany - weOwe - profitTaken;
 
@@ -6945,6 +6957,7 @@ ${invoiceFootHtml('')}`;
       row('— Owed to us', fmtEGP(owedToUs)),
       row('— We owe', fmtEGP(-weOwe)),
       row('— Profit taken', fmtEGP(-profitTaken)),
+      (profitDrawnTotal > 0 ? `<div class="detail-row" style="opacity:.65;"><span class="detail-label">Profit drawn (info)</span><span class="detail-value">${fmtEGP(profitDrawnTotal)}${profitToDebt > 0 ? ' · ' + fmtEGP(profitToDebt) + ' to debt' : ''}</span></div>` : ''),
       row('Unpaid orders', fmtEGP(pendingOrdersTotal) + ' (' + pendingOrders.length + ')'),
       row('Main budget', fmtEGP(mainBudget)),
       row('Sales', fmtEGP(periodSales)),
