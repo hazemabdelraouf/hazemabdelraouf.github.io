@@ -334,6 +334,7 @@
   .order-id{font-family:'Cairo';font-weight:800;font-size:15px;color:var(--gold);}
   .order-id-sub{font-size:10.5px;color:var(--cream-dim);margin-top:1px;word-break:break-all;}
   .order-date{color:var(--cream-dim);font-size:11.5px;}
+  .order-time{color:var(--cream-dim);font-size:9.5px;opacity:.85;margin-inline-start:5px;font-weight:500;letter-spacing:.2px;}
   .order-name{font-size:14.5px;font-weight:700;margin-top:4px;color:var(--cream);}
   .customer-delivered-count{
     font-size:10.5px;font-weight:700;color:var(--sage);
@@ -3803,6 +3804,13 @@ try{
     if(isNaN(d)) return '';
     return d.toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'});
   }
+  // Exact time of day (e.g. "3:45 PM") shown in small text next to the order date.
+  function fmtTime(iso){
+    if(!iso) return '';
+    const d = new Date(iso);
+    if(isNaN(d)) return '';
+    return d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
+  }
   function fmtDateShort(iso){
     if(!iso) return '';
     const d = new Date(iso);
@@ -4196,7 +4204,7 @@ try{
         <div style="text-align:right;">
           <div class="order-total">${total}</div>
           ${shippingDiff !== null ? `<div class="order-shipping">shipping ${shippingDiff} EGP</div>` : ''}
-          <div class="order-date" style="margin-top:6px;">${fmtDate(o[resolveCreatedAtKey(o)] || o.Updated)}</div>
+          <div class="order-date" style="margin-top:6px;">${fmtDate(o[resolveCreatedAtKey(o)] || o.Updated)}${(()=>{ const t = fmtTime(o[resolveCreatedAtKey(o)] || o.Updated); return t ? `<span class="order-time">${t}</span>` : ''; })()}</div>
           ${o.pickup_location ? `<div class="order-date">Shipped from ${escapeHtml(o.pickup_location)}</div>` : ''}
         </div>
       </div>
