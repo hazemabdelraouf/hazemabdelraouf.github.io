@@ -334,6 +334,13 @@
   .order-id{font-family:'Cairo';font-weight:800;font-size:15px;color:var(--gold);}
   .order-id-sub{font-size:10.5px;color:var(--cream-dim);margin-top:1px;word-break:break-all;}
   .order-date{color:var(--cream-dim);font-size:11.5px;}
+  #noError:not(:empty){display:block;}
+  .no-status{font-size:12px;color:var(--cream-dim);margin:6px 2px 0;}
+  .no-status.ok{color:var(--sage);}
+  .no-low{color:var(--rust)!important;}
+  .no-sum{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12.5px;color:var(--cream-dim);margin:4px 0 8px;padding:10px;border:1px solid var(--line);border-radius:10px;}
+  .no-sum b{color:var(--cream);font-weight:700;}
+  .no-sum .no-cod{grid-column:1 / -1;font-size:14px;color:var(--cream);}
   .order-time{color:var(--cream-dim);font-size:9.5px;opacity:.85;margin-inline-start:5px;font-weight:500;letter-spacing:.2px;}
   .order-name{font-size:14.5px;font-weight:700;margin-top:4px;color:var(--cream);}
   .customer-delivered-count{
@@ -892,6 +899,9 @@
       <div class="topbar-right">
         <span class="last-update-text" id="ordersLastUpdate"></span>
         <div style="display:flex;gap:8px;">
+        <div class="icon-btn" id="newOrderBtn" title="New order">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        </div>
         <div class="icon-btn" id="bellBtn" title="Today's Notifications">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
           <span class="notif-badge-count" id="notifBadge">0</span>
@@ -1153,6 +1163,49 @@
       <button class="modal-opt-btn" id="confirmEditOrderBtn">Save & send</button>
     </div>
     <button class="modal-cancel" id="closeEditOrderModalBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ NEW ORDER MODAL ============ -->
+<div class="modal-overlay" id="newOrderModal">
+  <div class="modal-card edit-card">
+    <div class="modal-title">New order</div>
+    <div class="modal-sub">Search an existing customer, or type a new one.</div>
+    <div class="edit-field-group">
+      <label>Find customer</label>
+      <div class="items-editor-search-wrap">
+        <input type="text" id="noCustSearch" placeholder="Name or phone..." autocomplete="off">
+        <div class="items-editor-search-results" id="noCustResults"></div>
+      </div>
+      <div class="no-status" id="noCustStatus"></div>
+    </div>
+    <div class="edit-field-group"><label>Customer name</label><input type="text" id="noName"></div>
+    <div class="edit-field-group"><label>Phone</label><input type="text" id="noPhone" inputmode="tel"></div>
+    <div class="edit-field-group"><label>Phone 2</label><input type="text" id="noPhone2" inputmode="tel"></div>
+    <div class="edit-field-group"><label>Governorate</label><input type="text" id="noGov"></div>
+    <div class="edit-field-group"><label>City</label><input type="text" id="noCity"></div>
+    <div class="edit-field-group"><label>Address line 1</label><input type="text" id="noAddr1"></div>
+    <div class="edit-field-group"><label>Address line 2</label><input type="text" id="noAddr2"></div>
+    <div class="edit-field-group">
+      <label>Items</label>
+      <div class="items-editor-list" id="noItemsList"></div>
+      <div class="items-editor-add">
+        <div class="items-editor-search-wrap">
+          <input type="text" id="noProdSearch" placeholder="Search product..." autocomplete="off">
+          <div class="items-editor-search-results" id="noProdResults"></div>
+        </div>
+        <input type="number" id="noQty" min="1" value="1">
+      </div>
+      <div class="no-status">Tap a product to add it with the quantity on the right.</div>
+    </div>
+    <div class="edit-field-group"><label>Shipping cost (EGP)</label><input type="number" id="noShip" min="0" step="any" inputmode="decimal" placeholder="0"></div>
+    <div class="edit-field-group"><label>Note</label><textarea id="noNote"></textarea></div>
+    <div class="no-sum" id="noSummary"></div>
+    <div class="modal-field-error" id="noError"></div>
+    <div class="modal-options" style="margin-top:6px;">
+      <button class="modal-opt-btn" id="noSaveBtn">Create order</button>
+    </div>
+    <button class="modal-cancel" id="noCancelBtn">Cancel</button>
   </div>
 </div>
 
@@ -1540,7 +1593,7 @@ const SB_WRITES = {
   addExpense: 'api_add_expense', editExpense: 'api_edit_expense', deleteExpense: 'api_delete_expense',
   addDebt: 'api_add_debt', settleDebt: 'api_settle_debt', editDebt: 'api_edit_debt', deleteDebt: 'api_delete_debt',
   addTransfer: 'api_add_transfer', addPurchase: 'api_add_purchase', updateOrderItems: 'api_update_order_items',
-  pruneOrderItems: 'api_prune_order_items', setProductBalance: 'api_set_product_balance'
+  pruneOrderItems: 'api_prune_order_items', createOrder: 'api_create_order', searchCustomers: 'api_search_customers', setProductBalance: 'api_set_product_balance'
 };
 window.sb = null;
 try{
@@ -1756,6 +1809,7 @@ try{
   const MAKE_WEBHOOK_URL = 'https://hook.eu1.make.com/cbsn3w2zotz94kq1kw5w988o34al5874';
   const CANCEL_WEBHOOK_URL = 'https://hook.eu1.make.com/5wlzhqmoeu266mzqwoad9lfxwlsm8zmf';
   const MARK_WEBHOOK_URL = 'https://hook.eu1.make.com/45hb9q9fcwpu6oym3271jufqba2pr7fk';
+  const NEW_ORDER_WEBHOOK_URL = 'https://hook.eu1.make.com/vugukxiswymy13vrvvkabt1l91ji6wuy';
   const EDIT_WEBHOOK_URL = 'https://hook.eu1.make.com/yfgnigygeuy1tpb6kdjn9iy7n4t8fgka';
   // إشعارات موديول Expenses (مصاريف/ديون/فواتير/تحويلات) — بتتبعت من هنا
   // على طول بعد كل عملية ناجحة، بنفس الطريقة اللي إشعارات الأوردرات
@@ -2974,6 +3028,168 @@ try{
     initItemsEditor(order);
     $('editOrderModal').classList.add('active');
   }
+  // ============ NEW ORDER (created from the dashboard) ============
+  // The order row goes in through api_create_order (serial from 20261, status
+  // "request needed", payment "PENDING"); the customer is created/linked by the
+  // DB trigger. Items + stock deduction reuse the same updateOrderItems call the
+  // edit flow uses, and Make gets the same comma-joined items as "update order".
+  let noItems = [];      // [{name, qty, salePrice, weight, sku, balance}]
+  let noCustomer = null; // customer picked from search (null = new / typed by hand)
+  let noSearchTimer = null;
+  function noStdPhone(p){
+    const d = String(p || '').replace(/\D/g, ''), k = normPhone(p);
+    return (d.length >= 10 && d.length <= 13 && k.length === 10) ? '+20' + k : String(p || '').trim();
+  }
+  function noTotals(){
+    let total = 0, weight = 0, pieces = 0;
+    noItems.forEach(it => { total += it.salePrice * it.qty; weight += it.weight * it.qty; pieces += it.qty; });
+    const ship = Math.max(0, parseFloat($('noShip').value) || 0);
+    const r = n => Math.round(n * 1000) / 1000;
+    return { total: r(total), weight: r(weight), pieces, ship, cod: r(total + ship) };
+  }
+  function noRender(){
+    const list = $('noItemsList');
+    list.innerHTML = noItems.length ? noItems.map((it, i) => {
+      const low = it.balance !== undefined && it.balance !== null && it.qty > Number(it.balance);
+      return `<div class="items-editor-row">
+        <span class="ie-name">${escapeHtml(it.name)}<span class="ie-sub${low ? ' no-low' : ''}">${+Number(it.salePrice).toFixed(2)} EGP · ${+Number(it.weight).toFixed(3)} kg${it.balance !== undefined && it.balance !== null ? ' · stock ' + it.balance : ''}${low ? ' (not enough)' : ''}</span></span>
+        <input type="number" class="ie-qty" min="1" value="${it.qty}" data-idx="${i}">
+        <button type="button" class="ie-remove" data-idx="${i}">×</button></div>`;
+    }).join('') : '<div class="items-editor-empty">No items added yet.</div>';
+    list.querySelectorAll('.ie-qty').forEach(inp => inp.addEventListener('input', () => {
+      noItems[+inp.dataset.idx].qty = Math.max(1, parseInt(inp.value, 10) || 1); noSummary();
+    }));
+    list.querySelectorAll('.ie-remove').forEach(b => b.addEventListener('click', () => { noItems.splice(+b.dataset.idx, 1); noRender(); }));
+    noSummary();
+  }
+  function noSummary(){
+    const t = noTotals(), f = n => n.toLocaleString('en-US', {maximumFractionDigits: 2});
+    $('noSummary').innerHTML = `<span>Total <b>${f(t.total)}</b></span><span>Shipping <b>${f(t.ship)}</b></span>
+      <span>Pieces <b>${t.pieces}</b></span><span>Weight <b>${f(t.weight)} kg</b></span>
+      <span class="no-cod">COD (total + shipping) <b>${f(t.cod)} EGP</b></span>`;
+  }
+  function noCustStatus(){
+    const el = $('noCustStatus');
+    if(noCustomer){ el.className = 'no-status ok'; el.textContent = '✔ Existing customer · ' + (noCustomer.orders_count || 0) + ' orders · ' + Math.round(noCustomer.total_spending || 0) + ' EGP'; }
+    else if($('noPhone').value.trim()){ el.className = 'no-status'; el.textContent = 'New customer — will be added to customers (or linked if the number already exists).'; }
+    else { el.className = 'no-status'; el.textContent = ''; }
+  }
+  function noReset(){
+    ['noCustSearch','noName','noPhone','noPhone2','noGov','noCity','noAddr1','noAddr2','noProdSearch','noShip','noNote'].forEach(id => $(id).value = '');
+    $('noQty').value = '1'; $('noError').textContent = '';
+    $('noCustResults').classList.remove('show'); $('noProdResults').classList.remove('show');
+    noItems = []; noCustomer = null; noCustStatus(); noRender();
+  }
+  async function openNewOrderModal(){
+    noReset();
+    $('newOrderModal').classList.add('active');
+    if(!allProducts.length) await fetchProducts();
+  }
+  function noPickCustomer(c){
+    noCustomer = c;
+    $('noName').value = c.name || ''; $('noPhone').value = c.phone || ''; $('noPhone2').value = c.phone2 || '';
+    $('noGov').value = c.gov || ''; $('noCity').value = c.city || '';
+    $('noAddr1').value = c.address_line1 || ''; $('noAddr2').value = c.address_line2 || '';
+    $('noCustSearch').value = ''; $('noCustResults').classList.remove('show');
+    noCustStatus();
+  }
+  $('noCustSearch').addEventListener('input', () => {
+    clearTimeout(noSearchTimer);
+    const q = $('noCustSearch').value.trim(), box = $('noCustResults');
+    if(q.length < 2){ box.classList.remove('show'); return; }
+    noSearchTimer = setTimeout(async () => {
+      try{
+        const res = await fetch(API_URL, { method:'POST', redirect:'follow', body: JSON.stringify({ action:'searchCustomers', q }) });
+        const rows = await res.json();
+        if($('noCustSearch').value.trim() !== q) return; // stale response
+        if(!Array.isArray(rows) || !rows.length){ box.innerHTML = '<div class="items-editor-search-empty">No customer found — fill the fields below to add a new one.</div>'; }
+        else {
+          box.innerHTML = rows.map((c, i) => `<div class="items-editor-search-result" data-i="${i}">${escapeHtml(c.name || '(no name)')}<div class="ie-sr-price">${escapeHtml(c.phone || '')}${c.city ? ' · ' + escapeHtml(c.city) : ''} · ${c.orders_count || 0} orders</div></div>`).join('');
+          box.querySelectorAll('[data-i]').forEach(el => el.addEventListener('click', () => noPickCustomer(rows[+el.dataset.i])));
+        }
+        box.classList.add('show');
+      }catch(err){ console.error('searchCustomers failed:', err); }
+    }, 250);
+  });
+  $('noPhone').addEventListener('input', () => {
+    if(noCustomer && normPhone($('noPhone').value) !== normPhone(noCustomer.phone)) noCustomer = null;
+    noCustStatus();
+  });
+  function noRenderProducts(){
+    const q = $('noProdSearch').value.trim(), box = $('noProdResults');
+    if(!q){ box.classList.remove('show'); return; }
+    const matches = allProducts.filter(p => productMatchesQuery(p, q))
+      .sort((a, b) => productSearchRank(a, q) - productSearchRank(b, q) || a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+    box.innerHTML = matches.length ? matches.map(p => `<div class="items-editor-search-result" data-sku="${escapeHtml(String(p.sku || ''))}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)}<div class="ie-sr-price">${p.salePrice} EGP · ${p.weight} kg${p.balance !== undefined && p.balance !== null ? ' · stock ' + p.balance : ''}</div></div>`).join('')
+      : '<div class="items-editor-search-empty">No matching products</div>';
+    box.querySelectorAll('[data-name]').forEach(el => el.addEventListener('click', () => {
+      const p = (el.dataset.sku && findProductBySku(el.dataset.sku)) || findProductByName(el.dataset.name);
+      if(!p) return;
+      const qty = Math.max(1, parseInt($('noQty').value, 10) || 1);
+      const ex = noItems.find(it => it.sku && it.sku === p.sku);
+      if(ex) ex.qty += qty;
+      else noItems.push({ name: p.name, qty, salePrice: Number(p.salePrice) || 0, weight: Number(p.weight) || 0, sku: p.sku, balance: p.balance });
+      $('noProdSearch').value = ''; $('noQty').value = '1'; box.classList.remove('show'); noRender();
+    }));
+    box.classList.add('show');
+  }
+  $('noProdSearch').addEventListener('input', noRenderProducts);
+  $('noProdSearch').addEventListener('focus', noRenderProducts);
+  $('noShip').addEventListener('input', noSummary);
+  document.addEventListener('click', (e) => {
+    if(!e.target.closest('#newOrderModal .items-editor-search-wrap')) $('noCustResults').classList.remove('show');
+  });
+  function hideNewOrderModal(){ $('newOrderModal').classList.remove('active'); }
+  $('newOrderBtn').addEventListener('click', openNewOrderModal);
+  $('noCancelBtn').addEventListener('click', hideNewOrderModal);
+  $('newOrderModal').addEventListener('click', (e) => { if(e.target === $('newOrderModal')) hideNewOrderModal(); });
+
+  $('noSaveBtn').addEventListener('click', async () => {
+    const err = $('noError'); err.textContent = '';
+    const v = id => $(id).value.trim();
+    if(!v('noName')){ err.textContent = 'Customer name is required.'; return; }
+    if(normPhone($('noPhone').value).length < 7){ err.textContent = 'Enter a valid phone number.'; return; }
+    if(!v('noGov') || !v('noCity')){ err.textContent = 'Governorate and city are required for shipping.'; return; }
+    if(!noItems.length){ err.textContent = 'Add at least one item.'; return; }
+    const low = noItems.filter(it => it.balance !== undefined && it.balance !== null && it.qty > Number(it.balance));
+    if(low.length && !confirm('Not enough stock for:\n\n' + low.map(it => '• ' + it.name + ' (' + it.qty + ' > ' + it.balance + ')').join('\n') + '\n\nStock will go below zero. Continue?')) return;
+
+    const t = noTotals();
+    // Same single-line, comma-separated format the "update order" flow sends.
+    const itemsText = noItems.map(it => `${it.name} (${it.qty} قطعة )`).join(', ');
+    const fields = { customerName: v('noName'), phone: noStdPhone($('noPhone').value), phone2: v('noPhone2') ? noStdPhone($('noPhone2').value) : '',
+      gov: v('noGov'), city: v('noCity'), addressLine1: v('noAddr1'), addressLine2: v('noAddr2'), note: v('noNote'),
+      items: itemsText, pieces: t.pieces, weight: t.weight, total: t.total, shippingCost: t.ship, cod: t.cod };
+    const btn = $('noSaveBtn'), label = btn.textContent;
+    btn.textContent = 'Creating...';
+    try{
+      const res = await fetch(API_URL, { method:'POST', redirect:'follow', body: JSON.stringify(Object.assign({ action:'createOrder' }, fields)) });
+      const data = await res.json();
+      if(!data || data.error || !data.serial){ err.textContent = (data && data.error) || 'Could not create the order.'; return; }
+      const serial = String(data.serial);
+      hideNewOrderModal();
+      logOrderAction(serial, 'Order created from dashboard');
+      // Items -> order_items + stock deduction (same call the edit flow makes).
+      await sendUpdateOrderItems({ action:'updateOrderItems', orderSerial: serial, customerName: fields.customerName, phone: fields.phone,
+        items: noItems.map(it => ({ item: it.name, option: '', quantity: it.qty, sku: it.sku || '', date: '', salePrice: it.salePrice, weight: it.weight })) });
+      // Notification to Make: all the order data, items comma-joined.
+      const payload = { event: 'new order', 'Order Serial': serial, 'order ID': 'D' + serial, 'Customer Name': fields.customerName,
+        Phone: fields.phone, Phone2: fields.phone2, Gov: fields.gov, city: fields.city, Address_line1: fields.addressLine1,
+        Address_line2: fields.addressLine2, Address: fields.city + '-' + fields.gov, items: itemsText, pieces: t.pieces, weight: t.weight,
+        total: t.total, 'Shipping cost': t.ship, COD: t.cod, note: fields.note, shipping_status: 'request needed', payment_status: 'PENDING',
+        customer_id: data.customer_id || '', timestamp: new Date().toISOString() };
+      const qs = new URLSearchParams();
+      Object.keys(payload).forEach(k => { if(payload[k] !== null && payload[k] !== undefined) qs.append(k, payload[k]); });
+      const url = NEW_ORDER_WEBHOOK_URL + '?' + qs.toString();
+      try{ await fetch(url, { method:'POST', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify(payload), mode:'no-cors' }); }
+      catch(e2){ new Image().src = url; }
+      fetchOrders(); fetchProducts(true);
+    }catch(e){
+      console.error('create order failed:', e);
+      err.textContent = 'Network/API error — nothing was created. Please try again.';
+    }finally{ btn.textContent = label; }
+  });
+
   $('closeEditOrderModalBtn').addEventListener('click', hideEditOrderModal);
   $('editOrderModal').addEventListener('click', (e)=>{
     if(e.target === $('editOrderModal')) hideEditOrderModal();
