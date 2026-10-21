@@ -707,6 +707,10 @@
     padding:10px 14px;border-radius:10px;border:none;
     background:var(--gold);color:#1a1208;font-weight:800;font-size:13px;cursor:pointer;
   }
+  .items-editor-row .ie-price{width:74px;background:var(--panel);border:1px solid var(--line);color:var(--cream);padding:7px 6px;border-radius:8px;font-family:inherit;font-size:13px;font-weight:700;text-align:center;outline:none;}
+  .items-editor-row .ie-price:focus{border-color:var(--sage);}
+  .ie-price-wrap{display:flex;flex-direction:column;align-items:center;gap:1px;}
+  .ie-price-wrap small{font-size:9.5px;color:var(--cream-dim);font-weight:600;}
   .ie-tag-custom{
     display:inline-block;font-size:10px;font-weight:800;padding:1px 6px;border-radius:6px;
     background:var(--gold-soft);color:var(--gold);margin-inline-start:6px;
@@ -1207,7 +1211,18 @@
         </div>
         <input type="number" id="noQty" min="1" value="1">
       </div>
-      <div class="no-status">Tap a product to add it with the quantity on the right.</div>
+      <div class="no-status">Tap a product to add it with the quantity on the right. You can change each item's sale price after adding it.</div>
+      <button type="button" class="ie-custom-toggle" id="noCustomToggle">+ Custom item (no stock effect)</button>
+      <div class="ie-custom-box" id="noCustomBox">
+        <div class="ie-custom-grid">
+          <input type="text" class="ie-cname" id="noCustomName" placeholder="Item name" autocomplete="off">
+          <input type="number" id="noCustomPrice" min="0" step="any" placeholder="Price (EGP)" inputmode="decimal">
+          <input type="number" id="noCustomWeight" min="0" step="any" placeholder="Weight (kg)" inputmode="decimal">
+          <input type="number" id="noCustomQty" min="1" value="1" placeholder="Qty" inputmode="numeric">
+        </div>
+        <div class="ie-cnote">Counts toward total, weight, COD and pieces — but never deducted from stock.</div>
+        <button type="button" id="noCustomAddBtn">Add custom item</button>
+      </div>
     </div>
     <div class="edit-field-group"><label>Shipping cost (EGP)</label><input type="number" id="noShip" min="0" step="any" inputmode="decimal" placeholder="0"></div>
     <div class="edit-field-group"><label>Note</label><textarea id="noNote"></textarea></div>
@@ -3061,14 +3076,19 @@ try{
   function noRender(){
     const list = $('noItemsList');
     list.innerHTML = noItems.length ? noItems.map((it, i) => {
-      const low = it.balance !== undefined && it.balance !== null && it.qty > Number(it.balance);
+      const low = !it.manual && it.balance !== undefined && it.balance !== null && it.qty > Number(it.balance);
+      const sub = `${+Number(it.weight).toFixed(3)} kg each` + (!it.manual && it.balance !== undefined && it.balance !== null ? ' · stock ' + it.balance : '');
       return `<div class="items-editor-row">
-        <span class="ie-name">${escapeHtml(it.name)}<span class="ie-sub${low ? ' no-low' : ''}">${+Number(it.salePrice).toFixed(2)} EGP · ${+Number(it.weight).toFixed(3)} kg${it.balance !== undefined && it.balance !== null ? ' · stock ' + it.balance : ''}${low ? ' (not enough)' : ''}</span></span>
+        <span class="ie-name">${escapeHtml(it.name)}${it.manual ? '<span class="ie-tag-custom">custom</span>' : ''}<span class="ie-sub${low ? ' no-low' : ''}">${sub}</span></span>
+        <span class="ie-price-wrap"><input type="number" class="ie-price" min="0" step="any" inputmode="decimal" value="${+Number(it.salePrice).toFixed(2)}" data-idx="${i}"><small>EGP each</small></span>
         <input type="number" class="ie-qty" min="1" value="${it.qty}" data-idx="${i}">
         <button type="button" class="ie-remove" data-idx="${i}">×</button></div>`;
     }).join('') : '<div class="items-editor-empty">No items added yet.</div>';
     list.querySelectorAll('.ie-qty').forEach(inp => inp.addEventListener('input', () => {
       noItems[+inp.dataset.idx].qty = Math.max(1, parseInt(inp.value, 10) || 1); noSummary();
+    }));
+    list.querySelectorAll('.ie-price').forEach(inp => inp.addEventListener('input', () => {
+      noItems[+inp.dataset.idx].salePrice = Math.max(0, parseFloat(inp.value) || 0); noSummary();
     }));
     list.querySelectorAll('.ie-remove').forEach(b => b.addEventListener('click', () => { noItems.splice(+b.dataset.idx, 1); noRender(); }));
     noSummary();
@@ -3088,6 +3108,7 @@ try{
   function noReset(){
     ['noCustSearch','noName','noPhone','noPhone2','noGov','noCity','noAddr1','noAddr2','noProdSearch','noShip','noNote'].forEach(id => $(id).value = '');
     $('noQty').value = '1'; $('noError').textContent = '';
+    ['noCustomName','noCustomPrice','noCustomWeight'].forEach(id => $(id).value = ''); $('noCustomQty').value = '1'; $('noCustomBox').classList.remove('show');
     $('noCustResults').classList.remove('show'); $('noProdResults').classList.remove('show');
     noItems = []; noCustomer = null; noCustStatus(); noRender();
   }
@@ -3150,7 +3171,21 @@ try{
   document.addEventListener('click', (e) => {
     if(!e.target.closest('#newOrderModal .items-editor-search-wrap')) $('noCustResults').classList.remove('show');
   });
-  function hideNewOrderModal(){ $('newOrderModal').classList.remove('active'); }
+  $('noCustomToggle').addEventListener('click', () => {
+    $('noCustomBox').classList.toggle('show');
+    if($('noCustomBox').classList.contains('show')) $('noCustomName').focus();
+  });
+  $('noCustomAddBtn').addEventListener('click', () => {
+    const name = $('noCustomName').value.trim();
+    if(!name){ $('noCustomName').focus(); return; }
+    const salePrice = Math.max(0, parseFloat($('noCustomPrice').value) || 0);
+    const weight = Math.max(0, parseFloat($('noCustomWeight').value) || 0);
+    const qty = Math.max(1, parseInt($('noCustomQty').value, 10) || 1);
+    noItems.push({ name, qty, salePrice, weight, sku: '', manual: true });
+    $('noCustomName').value = ''; $('noCustomPrice').value = ''; $('noCustomWeight').value = ''; $('noCustomQty').value = '1';
+    noRender();
+  });
+  function hideNewOrderModal(){ $('newOrderModal').classList.remove('active'); $('noCustomBox').classList.remove('show'); }
   $('newOrderBtn').addEventListener('click', openNewOrderModal);
   $('noCancelBtn').addEventListener('click', hideNewOrderModal);
   $('newOrderModal').addEventListener('click', (e) => { if(e.target === $('newOrderModal')) hideNewOrderModal(); });
@@ -3162,7 +3197,7 @@ try{
     if(normPhone($('noPhone').value).length < 7){ err.textContent = 'Enter a valid phone number.'; return; }
     if(!v('noGov') || !v('noCity')){ err.textContent = 'Governorate and city are required for shipping.'; return; }
     if(!noItems.length){ err.textContent = 'Add at least one item.'; return; }
-    const low = noItems.filter(it => it.balance !== undefined && it.balance !== null && it.qty > Number(it.balance));
+    const low = noItems.filter(it => !it.manual && it.balance !== undefined && it.balance !== null && it.qty > Number(it.balance));
     if(low.length && !confirm('Not enough stock for:\n\n' + low.map(it => '• ' + it.name + ' (' + it.qty + ' > ' + it.balance + ')').join('\n') + '\n\nStock will go below zero. Continue?')) return;
 
     const t = noTotals();
@@ -3182,7 +3217,7 @@ try{
       logOrderAction(serial, 'Order created from dashboard');
       // Items -> order_items + stock deduction (same call the edit flow makes).
       await sendUpdateOrderItems({ action:'updateOrderItems', orderSerial: serial, customerName: fields.customerName, phone: fields.phone,
-        items: noItems.map(it => ({ item: it.name, option: '', quantity: it.qty, sku: it.sku || '', date: '', salePrice: it.salePrice, weight: it.weight })) });
+        items: noItems.map(it => ({ item: it.name, option: it.manual ? CUSTOM_ITEM_MARK : '', quantity: it.qty, sku: it.manual ? '' : (it.sku || ''), date: '', salePrice: it.salePrice, weight: it.weight })) });
       // Notification to Make: all the order data, items comma-joined.
       const payload = { event: 'new order', 'Order Serial': serial, 'order ID': 'D' + serial, 'Customer Name': fields.customerName,
         Phone: fields.phone, Phone2: fields.phone2, Gov: fields.gov, city: fields.city, Address_line1: fields.addressLine1,
