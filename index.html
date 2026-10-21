@@ -711,6 +711,36 @@
   .items-editor-row .ie-price:focus{border-color:var(--sage);}
   .ie-price-wrap{display:flex;flex-direction:column;align-items:center;gap:1px;}
   .ie-price-wrap small{font-size:9.5px;color:var(--cream-dim);font-weight:600;}
+  /* ---- Shipping zones ---- */
+  .modal-card.edit-card.sz-card{max-width:560px;}
+  .sz-card input,.sz-card select{background:var(--panel-2);border:1px solid var(--line);color:var(--cream);padding:9px 10px;border-radius:10px;font-family:'Cairo',sans-serif;font-weight:600;font-size:13px;box-sizing:border-box;min-width:0;outline:none;}
+  .sz-card input:focus,.sz-card select:focus{border-color:var(--gold);}
+  .sz-cover{font-size:12px;font-weight:600;padding:8px 10px;border-radius:10px;margin-bottom:12px;line-height:1.5;}
+  .sz-cover.warn{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;}
+  .sz-cover.ok{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+  .sz-zone{border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px;background:var(--panel);}
+  .sz-head{display:flex;gap:10px;align-items:center;margin-bottom:10px;}
+  .sz-head .sz-name{flex:1;font-weight:800;font-size:14px;}
+  .sz-head label{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--cream-dim);white-space:nowrap;}
+  .sz-head label input{width:auto;padding:0;}
+  .sz-label{font-size:11.5px;font-weight:800;color:var(--cream-dim);margin:10px 0 6px;text-transform:uppercase;letter-spacing:.03em;}
+  .sz-row{display:flex;gap:6px;align-items:center;margin-bottom:6px;font-size:12.5px;color:var(--cream-dim);font-weight:600;flex-wrap:wrap;}
+  .sz-row input{width:82px;text-align:center;}
+  .sz-x{background:transparent;border:none;color:var(--cream-dim);font-size:18px;line-height:1;cursor:pointer;padding:2px 6px;}
+  .sz-x:hover{color:var(--rust);}
+  .sz-link{background:transparent;border:none;color:var(--gold);font-weight:700;font-size:12.5px;cursor:pointer;padding:4px 2px;font-family:inherit;}
+  .sz-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
+  .sz-chip{display:inline-flex;align-items:center;gap:2px;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:3px 4px 3px 10px;font-size:12px;font-weight:700;color:var(--cream);}
+  .sz-muted{font-size:12px;color:var(--cream-dim);}
+  .sz-addarea{display:flex;gap:6px;flex-wrap:wrap;}
+  .sz-addarea select{flex:1;min-width:120px;}
+  .sz-btn{padding:9px 14px;border-radius:10px;border:1px solid var(--line);background:var(--panel-2);color:var(--cream);font-family:'Cairo',sans-serif;font-weight:700;font-size:13px;cursor:pointer;}
+  .sz-btn.primary{background:var(--sage);border-color:var(--sage);color:#fff;}
+  .sz-btn.danger{color:var(--rust);}
+  .sz-actions{display:flex;gap:8px;margin-top:12px;align-items:center;}
+  .sz-msg{font-size:12px;font-weight:700;margin-top:8px;}
+  .sz-msg.ok{color:var(--sage);} .sz-msg.err{color:var(--rust);}
+  .sz-test{border-top:1px dashed var(--line);margin-top:14px;padding-top:10px;}
   .ie-tag-custom{
     display:inline-block;font-size:10px;font-weight:800;padding:1px 6px;border-radius:6px;
     background:var(--gold-soft);color:var(--gold);margin-inline-start:6px;
@@ -926,6 +956,9 @@
         </div>
         <div class="icon-btn" id="expensesBtn" title="Expenses">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="16" cy="14.5" r="1.6"/></svg>
+        </div>
+        <div class="icon-btn" id="shipZonesBtn" title="Shipping zones">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
         </div>
         <div class="icon-btn" id="settingsBtn" title="Settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"/></svg>
@@ -1224,7 +1257,7 @@
         <button type="button" id="noCustomAddBtn">Add custom item</button>
       </div>
     </div>
-    <div class="edit-field-group"><label>Shipping cost (EGP)</label><input type="number" id="noShip" min="0" step="any" inputmode="decimal" placeholder="0"></div>
+    <div class="edit-field-group"><label>Shipping cost (EGP)</label><input type="number" id="noShip" min="0" step="any" inputmode="decimal" placeholder="0"><div class="no-status" id="noShipHint"></div></div>
     <div class="edit-field-group"><label>Note</label><textarea id="noNote"></textarea></div>
     <div class="no-sum" id="noSummary"></div>
     <div class="modal-field-error" id="noError"></div>
@@ -1232,6 +1265,30 @@
       <button class="modal-opt-btn" id="noSaveBtn">Create order</button>
     </div>
     <button class="modal-cancel" id="noCancelBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- ============ SHIPPING ZONES MODAL ============ -->
+<div class="modal-overlay" id="shipZonesModal">
+  <div class="modal-card edit-card sz-card">
+    <div class="modal-title">Shipping zones</div>
+    <div class="modal-sub">Price by zone and weight. The website and "New order" use these prices.</div>
+    <div class="sz-cover" id="szCover"></div>
+    <div id="szList"></div>
+    <div class="sz-actions" style="margin-top:0;">
+      <button type="button" class="sz-btn primary" id="szNewBtn">+ New zone</button>
+      <span class="sz-muted" id="szStatus"></span>
+    </div>
+    <div class="sz-test">
+      <div class="sz-label">Test a price</div>
+      <div class="sz-row">
+        <select id="szTGov"></select><select id="szTCity"></select>
+        <input type="number" id="szTWeight" min="0" step="any" placeholder="kg" inputmode="decimal">
+        <button type="button" class="sz-btn" id="szTBtn">Check</button>
+      </div>
+      <div class="sz-msg" id="szTOut"></div>
+    </div>
+    <button class="modal-cancel" id="szCloseBtn">Close</button>
   </div>
 </div>
 
@@ -3062,6 +3119,7 @@ try{
   let noItems = [];      // [{name, qty, salePrice, weight, sku, balance}]
   let noCustomer = null; // customer picked from search (null = new / typed by hand)
   let noSearchTimer = null;
+  let noShipTouched = false, noShipTimer = null, noShipDone = '';
   function noStdPhone(p){
     const d = String(p || '').replace(/\D/g, ''), k = normPhone(p);
     return (d.length >= 10 && d.length <= 13 && k.length === 10) ? '+20' + k : String(p || '').trim();
@@ -3094,6 +3152,7 @@ try{
     noSummary();
   }
   function noSummary(){
+    noAutoShipSoon();
     const t = noTotals(), f = n => n.toLocaleString('en-US', {maximumFractionDigits: 2});
     $('noSummary').innerHTML = `<span>Total <b>${f(t.total)}</b></span><span>Shipping <b>${f(t.ship)}</b></span>
       <span>Pieces <b>${t.pieces}</b></span><span>Weight <b>${f(t.weight)} kg</b></span>
@@ -3110,6 +3169,7 @@ try{
     $('noQty').value = '1'; $('noError').textContent = '';
     ['noCustomName','noCustomPrice','noCustomWeight'].forEach(id => $(id).value = ''); $('noCustomQty').value = '1'; $('noCustomBox').classList.remove('show');
     $('noCustResults').classList.remove('show'); $('noProdResults').classList.remove('show');
+    noShipTouched = false; noShipDone = ''; $('noShipHint').textContent = '';
     noItems = []; noCustomer = null; noCustStatus(); noRender();
   }
   async function openNewOrderModal(){
@@ -3124,6 +3184,7 @@ try{
     $('noAddr1').value = c.address_line1 || ''; $('noAddr2').value = c.address_line2 || '';
     $('noCustSearch').value = ''; $('noCustResults').classList.remove('show');
     noCustStatus();
+    noAutoShipSoon();
   }
   $('noCustSearch').addEventListener('input', () => {
     clearTimeout(noSearchTimer);
@@ -7558,6 +7619,199 @@ ${invoiceFootHtml('')}`;
     setup($('noGov'), $('noCity'));
     setup(document.querySelector('#editOrderModal [data-field="Gov"]'), document.querySelector('#editOrderModal [data-field="city"]'));
   })();
+
+  // ===== New order: shipping cost filled from the zones (still editable) =====
+  function noAutoShipSoon(){ clearTimeout(noShipTimer); noShipTimer = setTimeout(noAutoShip, 350); }
+  async function noAutoShip(){
+    const hint = $('noShipHint');
+    if(noShipTouched || !window.sb) return;
+    const gov = $('noGov').value, city = $('noCity').value, w = noTotals().weight;
+    if(!gov || !city || !noItems.length){ hint.textContent = ''; noShipDone = ''; return; }
+    const key = gov + '|' + city + '|' + w;
+    if(key === noShipDone) return;               // same inputs: nothing new to ask
+    try{
+      const r = await window.sb.rpc('store_shipping_quote', { p_gov: gov, p_city: city, p_weight: w });
+      if(noShipTouched || $('noGov').value !== gov || $('noCity').value !== city) return;   // changed meanwhile
+      if(r.error) throw r.error;
+      noShipDone = key;
+      if(r.data === null || r.data === undefined){ hint.textContent = 'No shipping zone covers this area — enter the cost by hand.'; return; }
+      $('noShip').value = r.data;
+      hint.textContent = 'Filled from shipping zones for ' + w + ' kg. You can still change it.';
+      noSummary();
+    }catch(e){ console.error('shipping quote failed:', e); hint.textContent = ''; }
+  }
+  $('noGov').addEventListener('change', noAutoShipSoon);
+  $('noCity').addEventListener('change', noAutoShipSoon);
+  $('noShip').addEventListener('input', () => {
+    noShipTouched = $('noShip').value.trim() !== '';   // clearing the box hands control back to the zones
+    $('noShipHint').textContent = '';
+  });
+
+  // ============ SHIPPING ZONES (dashboard screen) ============
+  let szZones = [];
+  const szNum = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+  const szOpt = (v, l) => '<option value="' + escapeHtml(v) + '">' + escapeHtml(l) + '</option>';
+  function szFillGov(sel, placeholder){ sel.innerHTML = szOpt('', placeholder) + Object.keys(GOV_CITIES).map(g => szOpt(g, g)).join(''); }
+  function szFillCity(sel, gov, allLabel){ sel.innerHTML = szOpt('', allLabel) + (GOV_CITIES[gov] || []).map(c => szOpt(c, c)).join(''); }
+  function szUncovered(){
+    const covered = new Set();
+    szZones.filter(z => z.active).forEach(z => z.areas.forEach(a => { if(!a.city) covered.add(a.gov); }));
+    return Object.keys(GOV_CITIES).filter(g => !covered.has(g));
+  }
+  function szUpdateCover(){
+    const un = szUncovered(), el = $('szCover');
+    el.className = 'sz-cover ' + (un.length ? 'warn' : 'ok');
+    el.innerHTML = un.length ? '⚠ No active zone covers: ' + un.map(escapeHtml).join(', ') + '. Website orders from there are refused.' : '✔ Every governorate is covered by a zone.';
+  }
+  function szZoneHtml(z, i){
+    const tiers = z.tiers.map((t, ti) => `<div class="sz-row" data-t="${ti}"><span>Up to</span>
+        <input type="number" class="sz-tmax" min="0" step="any" inputmode="decimal" value="${t.max == null ? '' : t.max}"><span>kg →</span>
+        <input type="number" class="sz-tprice" min="0" step="any" inputmode="decimal" value="${t.price == null ? '' : t.price}"><span>EGP</span>
+        <button type="button" class="sz-x sz-del-t" title="Remove tier">×</button></div>`).join('');
+    const chips = z.areas.map((a, ai) => `<span class="sz-chip">${escapeHtml(a.gov)}${a.city ? ' — ' + escapeHtml(a.city) : ''}<button type="button" class="sz-x sz-del-a" data-a="${ai}" title="Remove">×</button></span>`).join('') || '<span class="sz-muted">No areas yet</span>';
+    return `<div class="sz-zone" data-z="${i}">
+      <div class="sz-head">
+        <input type="text" class="sz-name" placeholder="Zone name (e.g. Greater Cairo)" value="${escapeHtml(z.name || '')}">
+        <label><input type="checkbox" class="sz-active-cb" ${z.active ? 'checked' : ''}> Active</label>
+      </div>
+      <div class="sz-label">Weight tiers</div>
+      ${tiers}
+      <button type="button" class="sz-link sz-add-t">+ Add tier</button>
+      <div class="sz-row" style="margin-top:4px;"><span>Above the last tier, add</span>
+        <input type="number" class="sz-extra-in" min="0" step="any" inputmode="decimal" value="${z.extra || 0}"><span>EGP per extra kg</span></div>
+      <div class="sz-label">Areas in this zone</div>
+      <div class="sz-chips">${chips}</div>
+      <div class="sz-addarea"><select class="sz-gov"></select><select class="sz-city"></select><button type="button" class="sz-btn sz-add-a">Add</button></div>
+      <div class="sz-actions"><button type="button" class="sz-btn primary sz-save">Save zone</button>
+        <button type="button" class="sz-btn danger sz-del">Delete</button></div>
+      <div class="sz-msg"></div>
+    </div>`;
+  }
+  function szRender(){
+    const box = $('szList');
+    box.innerHTML = szZones.length ? szZones.map(szZoneHtml).join('') : '<div class="items-editor-empty">No zones yet. Tap "+ New zone".</div>';
+    box.querySelectorAll('.sz-zone').forEach(el => {
+      szFillGov(el.querySelector('.sz-gov'), 'Governorate');
+      szFillCity(el.querySelector('.sz-city'), '', 'Whole governorate');
+    });
+    szUpdateCover();
+  }
+  async function szLoad(){
+    const st = $('szStatus');
+    if(!window.sb){ st.textContent = 'Not signed in.'; return; }
+    st.textContent = 'Loading…';
+    try{
+      const [z, t, a] = await Promise.all([
+        window.sb.from('store_shipping_zones').select('*').order('sort_order').order('name'),
+        window.sb.from('store_shipping_tiers').select('*'),
+        window.sb.from('store_shipping_areas').select('*').order('gov').order('city')
+      ]);
+      const err = z.error || t.error || a.error;
+      if(err) throw err;
+      szZones = z.data.map(r => ({
+        id: r.id, name: r.name, active: r.active, extra: Number(r.extra_kg_price) || 0, removed: [],
+        tiers: t.data.filter(x => x.zone_id === r.id).map(x => ({ max: Number(x.max_weight_kg), price: Number(x.price) })).sort((p, q) => p.max - q.max),
+        areas: a.data.filter(x => x.zone_id === r.id).map(x => ({ id: x.id, gov: x.gov, city: x.city }))
+      }));
+      st.textContent = '';
+      szRender();
+    }catch(e){ console.error(e); st.textContent = 'Could not load zones: ' + (e.message || e); }
+  }
+  async function szSave(i){
+    const z = szZones[i], el = $('szList').querySelector('.sz-zone[data-z="' + i + '"]'), msg = el.querySelector('.sz-msg');
+    const say = (t, ok) => { msg.textContent = t; msg.className = 'sz-msg ' + (ok ? 'ok' : 'err'); };
+    const name = (z.name || '').trim();
+    if(!name) return say('Give the zone a name.');
+    if(!z.tiers.length) return say('Add at least one weight tier.');
+    if(z.tiers.some(t => !(t.max > 0) || t.price == null || t.price < 0)) return say('Every tier needs a weight above 0 and a price.');
+    if(new Set(z.tiers.map(t => t.max)).size !== z.tiers.length) return say('Two tiers have the same weight limit.');
+    if(!z.areas.length) return say('Add at least one governorate or city.');
+    say('Saving…', true);
+    const sb = window.sb;
+    try{
+      const row = { name, active: !!z.active, extra_kg_price: Math.max(0, z.extra || 0) };
+      let id = z.id;
+      if(id){ const r = await sb.from('store_shipping_zones').update(row).eq('id', id); if(r.error) throw r.error; }
+      else { const r = await sb.from('store_shipping_zones').insert(row).select('id').single(); if(r.error) throw r.error; id = r.data.id; }
+      // tiers: upsert the current ones, then drop the rest (never leaves the zone empty midway)
+      const up = await sb.from('store_shipping_tiers').upsert(z.tiers.map(t => ({ zone_id: id, max_weight_kg: t.max, price: t.price })), { onConflict: 'zone_id,max_weight_kg' });
+      if(up.error) throw up.error;
+      const dt = await sb.from('store_shipping_tiers').delete().eq('zone_id', id).not('max_weight_kg', 'in', '(' + z.tiers.map(t => t.max).join(',') + ')');
+      if(dt.error) throw dt.error;
+      // areas
+      if((z.removed || []).length){ const r = await sb.from('store_shipping_areas').delete().in('id', z.removed); if(r.error) throw r.error; }
+      for(const ar of z.areas.filter(a => !a.id)){
+        let q = sb.from('store_shipping_areas').delete().eq('gov', ar.gov);          // an area belongs to ONE zone: take it from the old one
+        q = ar.city ? q.eq('city', ar.city) : q.is('city', null);
+        const d = await q; if(d.error) throw d.error;
+        const ins = await sb.from('store_shipping_areas').insert({ zone_id: id, gov: ar.gov, city: ar.city || null });
+        if(ins.error) throw ins.error;
+      }
+      await szLoad();
+      const j = szZones.findIndex(x => x.id === id), m = j >= 0 && $('szList').querySelector('.sz-zone[data-z="' + j + '"] .sz-msg');
+      if(m){ m.textContent = 'Saved ✓'; m.className = 'sz-msg ok'; }
+    }catch(e){ console.error(e); say('Could not save: ' + (e.message || e)); }
+  }
+  async function szDelete(i){
+    const z = szZones[i];
+    if(z.id){
+      if(!confirm('Delete the zone "' + (z.name || '') + '"? Its areas will have no shipping price until you add them to another zone.')) return;
+      const r = await window.sb.from('store_shipping_zones').delete().eq('id', z.id);
+      if(r.error){ alert('Could not delete: ' + r.error.message); return; }
+    }
+    szZones.splice(i, 1); szRender();
+  }
+  $('szList').addEventListener('input', (e) => {
+    const t = e.target, zi = t.closest('.sz-zone'); if(!zi) return;
+    const z = szZones[+zi.dataset.z], row = t.closest('[data-t]');
+    if(t.classList.contains('sz-name')) z.name = t.value;
+    else if(t.classList.contains('sz-extra-in')) z.extra = szNum(t.value) || 0;
+    else if(t.classList.contains('sz-tmax') && row) z.tiers[+row.dataset.t].max = szNum(t.value);
+    else if(t.classList.contains('sz-tprice') && row) z.tiers[+row.dataset.t].price = szNum(t.value);
+  });
+  $('szList').addEventListener('change', (e) => {
+    const t = e.target, zi = t.closest('.sz-zone'); if(!zi) return;
+    if(t.classList.contains('sz-active-cb')){ szZones[+zi.dataset.z].active = t.checked; szUpdateCover(); }
+    else if(t.classList.contains('sz-gov')) szFillCity(zi.querySelector('.sz-city'), t.value, 'Whole governorate');
+  });
+  $('szList').addEventListener('click', (e) => {
+    const t = e.target, zi = t.closest('.sz-zone'); if(!zi) return;
+    const i = +zi.dataset.z, z = szZones[i];
+    if(t.classList.contains('sz-add-t')){ z.tiers.push({ max: null, price: null }); szRender(); }
+    else if(t.classList.contains('sz-del-t')){ z.tiers.splice(+t.closest('[data-t]').dataset.t, 1); szRender(); }
+    else if(t.classList.contains('sz-add-a')){
+      const gov = zi.querySelector('.sz-gov').value, city = zi.querySelector('.sz-city').value || null;
+      if(!gov) return;
+      if(z.areas.some(a => a.gov === gov && (a.city || null) === city)) return;
+      z.areas.push({ gov, city }); szRender();
+    }
+    else if(t.classList.contains('sz-del-a')){
+      const a = z.areas.splice(+t.dataset.a, 1)[0];
+      if(a && a.id){ z.removed = z.removed || []; z.removed.push(a.id); }
+      szRender();
+    }
+    else if(t.classList.contains('sz-save')) szSave(i);
+    else if(t.classList.contains('sz-del')) szDelete(i);
+  });
+  $('szNewBtn').addEventListener('click', () => {
+    szZones.push({ id: null, name: '', active: true, extra: 0, tiers: [{ max: 1, price: null }], areas: [], removed: [] });
+    szRender();
+    const last = $('szList').lastElementChild; if(last){ last.scrollIntoView({ block: 'center' }); const n = last.querySelector('.sz-name'); if(n) n.focus(); }
+  });
+  szFillGov($('szTGov'), 'Governorate'); szFillCity($('szTCity'), '', 'City');
+  $('szTGov').addEventListener('change', () => szFillCity($('szTCity'), $('szTGov').value, 'City'));
+  $('szTBtn').addEventListener('click', async () => {
+    const out = $('szTOut'), gov = $('szTGov').value, city = $('szTCity').value, w = szNum($('szTWeight').value) || 0;
+    if(!gov || !city){ out.className = 'sz-msg err'; out.textContent = 'Pick a governorate and a city.'; return; }
+    const r = await window.sb.rpc('store_shipping_quote', { p_gov: gov, p_city: city, p_weight: w });
+    if(r.error){ out.className = 'sz-msg err'; out.textContent = r.error.message; return; }
+    if(r.data === null || r.data === undefined){ out.className = 'sz-msg err'; out.textContent = 'No active zone with tiers covers this area — website orders from here are refused.'; return; }
+    out.className = 'sz-msg ok'; out.textContent = w + ' kg to ' + city + ', ' + gov + ' = ' + r.data + ' EGP';
+  });
+  $('shipZonesBtn').addEventListener('click', () => { $('szTOut').textContent = ''; $('shipZonesModal').classList.add('active'); szLoad(); });
+  $('szCloseBtn').addEventListener('click', () => $('shipZonesModal').classList.remove('active'));
+  $('shipZonesModal').addEventListener('click', (e) => { if(e.target === $('shipZonesModal')) $('shipZonesModal').classList.remove('active'); });
+
 
   init();
 })();
