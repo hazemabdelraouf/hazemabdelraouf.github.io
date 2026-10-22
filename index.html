@@ -3843,8 +3843,17 @@ try{
       // naturally have no pickup location and must still show up.
       allOrders = allOrders.filter(o => normStatus(o.shipping_status) === 'request needed' || String(o.pickup_location || '').trim() !== '');
 
-      // Sort from newest to oldest by Order Serial (descending)
+      // Sort newest -> oldest by CREATION TIME ("Created at"), not by Order Serial,
+      // so the latest order is always first no matter what its serial is.
+      // Fallbacks (only when the time is missing/equal): date column, then serial.
+      const createdTs = o => {
+        const k = resolveCreatedAtKey(o);
+        const t = new Date((k && o[k]) || o.date || o.Updated || '').getTime();
+        return isNaN(t) ? 0 : t;
+      };
       allOrders.sort((a, b) => {
+        const tA = createdTs(a), tB = createdTs(b);
+        if (tB !== tA) return tB - tA;
         const sA = parseFloat(a['Order Serial']) || 0;
         const sB = parseFloat(b['Order Serial']) || 0;
         if (sB !== sA) return sB - sA;
