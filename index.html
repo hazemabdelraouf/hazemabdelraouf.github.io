@@ -3843,17 +3843,8 @@ try{
       // naturally have no pickup location and must still show up.
       allOrders = allOrders.filter(o => normStatus(o.shipping_status) === 'request needed' || String(o.pickup_location || '').trim() !== '');
 
-      // Sort newest -> oldest by CREATION TIME ("Created at"), not by Order Serial,
-      // so the latest order is always first no matter what its serial is.
-      // Fallbacks (only when the time is missing/equal): date column, then serial.
-      const createdTs = o => {
-        const k = resolveCreatedAtKey(o);
-        const t = new Date((k && o[k]) || o.date || o.Updated || '').getTime();
-        return isNaN(t) ? 0 : t;
-      };
+      // Sort from newest to oldest by Order Serial (descending)
       allOrders.sort((a, b) => {
-        const tA = createdTs(a), tB = createdTs(b);
-        if (tB !== tA) return tB - tA;
         const sA = parseFloat(a['Order Serial']) || 0;
         const sB = parseFloat(b['Order Serial']) || 0;
         if (sB !== sA) return sB - sA;
@@ -7592,7 +7583,7 @@ ${invoiceFootHtml('')}`;
   });
 
   // ===== Governorate / City dropdowns =====
-  const GOV_CITIES = {"Al Menofiah": ["Tala", "Shebeen El-Kom", "Quweisna", "Menouf City", "Birket El Sab", "Ashmoun", "Kafr Al Musaylhah", "Shuhada", "El-Bagour", "El Sadat City"], "AL Sharqia": ["Zakazik", "Kafr El-Hamam", "Inshas", "Old Salhiyaa", "Al Qurayn", "Al Qanayat", "Al Minasafur", "Mashtool El Souk", "Abu Kebir", "As Sufiyyah", "Al Idwah", "Hihya", "Diyarb Negm", "Abu Hammad", "Minya El Qamh", "Al Husseiniya", "Al Ibrahimiya", "Bilbeis", "Awlad Saqr", "Kafr Saqr"], "Alexandria": ["Alexandria", "Awaied-Ras Souda", "Dekhela", "Borg Al Arab City", "Al Amaria", "Sedi Kreir", "El King Maryout", "Markaz Edko"], "Assiut": ["Abu Minqar", "Assiut", "New Assiut", "Abu Tij", "Al Badari", "Sahel Selim", "Al Fath", "Abnub", "Cemex Area", "El-Ghanayem", "Sidfa", "Dayrout", "Al Qusiyyah", "Manfalut", "El Wadi El Gadid", "Dar El Salam Center Assuit", "Dar Al Salam"], "Aswan": ["ABOU SOMBO", "Aswan", "High Dam", "Nasr El Nouba", "Kom Ombo", "Daraw", "Edfo"], "Bani Swif": ["Beni Suef", "Ehnasia", "El Wasta", "Nasser", "Beba", "Al Fashn", "Samasta"], "Beheira": ["Markaz Kafr El-Dawar", "Damnhour", "Markaz Itay Al Baroud", "Al Mahmmoudeya", "Markaz Abu Al Matamir", "Markaz Housh Eissa", "Markaz AR Rahmaneyah", "Markaz Shubrakhat", "Markaz Ad Delingat", "Markaz Kom Hamada", "Markaz Abu Humus", "Gharb El Noubareya", "Al Natron Valley"], "Cairo": ["Qasr El Nil", "Zamalek", "Al Azbakeya", "Bulaq Abo Elela", "Helwan", "El Zawya El Hamra", "Al-Sharabiya", "El Gamaliya", "Manil Shihah", "Bolak El Dakrour", "Wark Al 7ader", "Tura", "15th of May City", "Qism El-Khalifa", "El-Sayeda Zainab", "Abdeen", "Shubra Masr", "Bab El Sharia", "Rod El Farag", "Elsahel", "El-Abaseya", "Madinaty", "El Nozha", "Isbico", "Al Salam First", "El Salam", "Al Shorouk", "Hadaiq El Qobbah", "El Matareya", "Al Amireya", "Al Waili", "Ain Shams -West ( AIN )", "Al Obour City", "10th of Ramadan City", "Future City", "Badr City", "Al Herafieen", "Hikestab", "Al Maasarah", "Nasr City", "New Cairo", "Zeitoun", "Ain Shams - East", "Qaliubia", "El Marg", "Maadi", "El Basatin", "Dar El-Salam", "Al Abageyah", "Mansheyat Nasir", "Mokattam", "Wadi Hof", "Al Tebin", "Heliopolis", "Daher"], "Dakahlia": ["Mansoura", "Belkas", "Mit Ghamr", "Nabaroh", "Sherbeen", "Bani Ebeid", "Dekernes", "Al Manzalah", "Madinet Al Matareyah", "Talkha", "El-Senbellawein", "Aga", "El-Gamaleya City", "Menyet El-Nasr", "Madinet Tami Al Amdid"], "Dommiat": ["New Damietta City", "Dumiatta", "Damietta Port", "Ras Elbar", "Kafr Saad", "Faraskour", "Zarka city", "Ezbet El Borg"], "Fayoum": ["Faiyum", "Tamiya", "Ibshaway", "Youssef Al Seddik", "Sinnuris", "Itsa", "Al Faiyum Al Gadida City"], "Gharbia": ["Tanta", "Al Mahala Al Kobra", "Qotour", "Basioun", "Samannoud", "Zefta", "Kafr El-Zayat", "As Santah", "Al Monshaah Al Kubra", "Faqous"], "Giza": ["October City", "Sheikh Zayed City", "Al Wahat Al Baharia", "Dokki", "AL Mohandesen", "AL Haram", "El Omraniya", "Fisal", "Agouza", "Al Munib", "Imbaba", "Al Warraq", "Ard El Lewa", "Pyramids Gardens", "Bashtil", "Dhashor", "Shubra Ment", "Abou Rawash", "El Hawamdiah", "Awsim", "El Ayat", "El-Saf", "Atfeah", "El Badrashein", "Al Atf", "Tebin"], "Ismailia": ["Ismailia", "Fayed", "Al Qantarah Gharb", "Abou Sultan", "At Tall Al Kabir", "Abo Swir", "Al Qantarah Sharq"], "Kafr El Sheikh": ["Sidi Salem", "Al Burlos", "Fowah", "Qillin", "El-Hamoul", "Bila", "Desouk", "El-Reyad", "Metobas", "Delta Marina", "Kafr El Sheikh"], "Luxor": ["Luxor", "Al Qarna", "Naqadah", "Qus", "Armant", "Tiba", "Esna"], "Marsa Matrouh": ["Siwa Oasis", "Marsa Matruh", "El Dabaa", "El-Hamam", "El-Alamein", "Zawyet Sidi Abd el-Ati"], "Menia City": ["Al Minya", "New Minya City", "El Idwa", "Maghaghah", "Bani Mazar", "Abu Qurqas", "Taha Al Sbah", "Samalut", "Izbat Shaheen", "Deir Mawas", "Mallawi", "Matay"], "New Valley": ["Al Wahat Al Dakhla", "Balat", "Kharga", "Baris"], "North Cost": ["North Coast", "Marabella", "Marinah", "Maraqia"], "Port Said": ["Al Manasrah", "Port Said", "Port Fouad"], "Qaliubia": ["Benha", "Toukh", "Kaha", "Kafr Shokr", "Shibin Al Qanater", "Al Qanater Al Khayreyah", "Basous", "Qalioub", "Beigam", "Shubra El Kheima", "Abu Zaabal", "Khanka", "Moustorod"], "Qena": ["Al Qarna", "Qena", "Nagaa Hammadi", "Deshna", "Al Waqf", "Abu Tesht", "Qift", "Farshout Desert"], "Red Sea": ["Marsa Alam Desert", "Hurghada", "Qism El Qoseir Desert", "Safaga", "Salh Hashes", "El Ahyai", "Ras Gharib"], "Sohag City": ["Sohag", "Juhaynah Al-Gharbyah Desert", "Markaz Juhaynah Al-Gharbyah", "Markaz Tahta", "Markaz Akhmim", "Markaz Al Maraghah", "Markaz Tama", "New Sohag City", "Markaz Al Belina", "Markaz Girga", "Markaz Saqaltah", "Markaz Al Monshaah"], "South Sinai": ["Taba", "Nuweiba", "Sharm Al Shiekh", "Hay Elnour", "Naama Bay", "Hadaba", "El Tor", "Dahab", "El Granahharkana", "Abu Radis", "Ras Sidr", "Abuzenima"], "Suez": ["Al Ganayen", "Aamr Village", "Suez", "Ein Al Sukhna", "El Salam"]};
+  const GOV_CITIES = {"Al Menofiah": ["Tala", "Shebeen El-Kom", "Quweisna", "Menouf City", "Birket El Sab", "Ashmoun", "Kafr Al Musaylhah", "Shuhada", "El-Bagour", "El Sadat City"], "AL Sharqia": ["Zakazik", "Kafr El-Hamam", "Inshas", "Old Salhiyaa", "Al Qurayn", "Al Qanayat", "Al Minasafur", "Mashtool El Souk", "Abu Kebir", "As Sufiyyah", "Al Idwah", "Hihya", "Diyarb Negm", "Abu Hammad", "Minya El Qamh", "Al Husseiniya", "Al Ibrahimiya", "Bilbeis", "Awlad Saqr", "Kafr Saqr"], "Alexandria": ["Alexandria", "Awaied-Ras Souda", "Dekhela", "Borg Al Arab City", "Al Amaria", "Sedi Kreir", "El King Maryout", "Markaz Edko"], "Assiut": ["Abu Minqar", "Assiut", "New Assiut", "Abu Tij", "Al Badari", "Sahel Selim", "Al Fath", "Abnub", "Cemex Area", "El-Ghanayem", "Sidfa", "Dayrout", "Al Qusiyyah", "Manfalut", "El Wadi El Gadid", "Dar El Salam Center Assuit", "Dar Al Salam"], "Aswan": ["ABOU SOMBO", "Aswan", "High Dam", "Nasr El Nouba", "Kom Ombo", "Daraw", "Edfo"], "Bani Swif": ["Beni Suef", "Ehnasia", "El Wasta", "Nasser", "Beba", "Al Fashn", "Samasta"], "Beheira": ["Markaz Kafr El-Dawar", "Damnhour", "Markaz Itay Al Baroud", "Al Mahmmoudeya", "Markaz Abu Al Matamir", "Markaz Housh Eissa", "Markaz AR Rahmaneyah", "Markaz Shubrakhat", "Markaz Ad Delingat", "Markaz Kom Hamada", "Markaz Abu Humus", "Gharb El Noubareya", "Al Natron Valley"], "Cairo": ["Qasr El Nil", "Zamalek", "Al Azbakeya", "Bulaq Abo Elela", "Helwan", "El Zawya El Hamra", "Al-Sharabiya", "El Gamaliya", "Manil Shihah", "Bolak El Dakrour", "Wark Al 7ader", "Tura", "15th of May City", "Qism El-Khalifa", "El-Sayeda Zainab", "Abdeen", "Shubra Masr", "Bab El Sharia", "Rod El Farag", "Elsahel", "El-Abaseya", "Madinaty", "El Nozha", "Isbico", "Al Salam First", "El Salam", "Al Shorouk", "Hadaiq El Qobbah", "El Matareya", "Al Amireya", "Al Waili", "Ain Shams -West ( AIN )", "Al Obour City", "10th of Ramadan City", "Future City", "Badr City", "Al Herafieen", "Hikestab", "Al Maasarah", "Nasr City", "New Cairo City", "Zeitoun", "Ain Shams - East", "Qaliubia", "El Marg", "Maadi", "El Basatin", "Dar El-Salam", "Al Abageyah", "Mansheyat Nasir", "Mokattam", "Wadi Hof", "Al Tebin", "Heliopolis", "Daher"], "Dakahlia": ["Mansoura", "Belkas", "Mit Ghamr", "Nabaroh", "Sherbeen", "Bani Ebeid", "Dekernes", "Al Manzalah", "Madinet Al Matareyah", "Talkha", "El-Senbellawein", "Aga", "El-Gamaleya City", "Menyet El-Nasr", "Madinet Tami Al Amdid"], "Dommiat": ["New Damietta City", "Dumiatta", "Damietta Port", "Ras Elbar", "Kafr Saad", "Faraskour", "Zarka city", "Ezbet El Borg"], "Fayoum": ["Faiyum", "Tamiya", "Ibshaway", "Youssef Al Seddik", "Sinnuris", "Itsa", "Al Faiyum Al Gadida City"], "Gharbia": ["Tanta", "Al Mahala Al Kobra", "Qotour", "Basioun", "Samannoud", "Zefta", "Kafr El-Zayat", "As Santah", "Al Monshaah Al Kubra", "Faqous"], "Giza": ["October City", "Sheikh Zayed City", "Al Wahat Al Baharia", "Dokki", "AL Mohandesen", "AL Haram", "El Omraniya", "Fisal", "Agouza", "Al Munib", "Imbaba", "Al Warraq", "Ard El Lewa", "Pyramids Gardens", "Bashtil", "Dhashor", "Shubra Ment", "Abou Rawash", "El Hawamdiah", "Awsim", "El Ayat", "El-Saf", "Atfeah", "El Badrashein", "Al Atf", "Tebin"], "Ismailia": ["Ismailia", "Fayed", "Al Qantarah Gharb", "Abou Sultan", "At Tall Al Kabir", "Abo Swir", "Al Qantarah Sharq"], "Kafr El Sheikh": ["Sidi Salem", "Al Burlos", "Fowah", "Qillin", "El-Hamoul", "Bila", "Desouk", "El-Reyad", "Metobas", "Delta Marina", "Kafr El Sheikh"], "Luxor": ["Luxor", "Al Qarna", "Naqadah", "Qus", "Armant", "Tiba", "Esna"], "Marsa Matrouh": ["Siwa Oasis", "Marsa Matruh", "El Dabaa", "El-Hamam", "El-Alamein", "Zawyet Sidi Abd el-Ati"], "Menia City": ["Al Minya", "New Minya City", "El Idwa", "Maghaghah", "Bani Mazar", "Abu Qurqas", "Taha Al Sbah", "Samalut", "Izbat Shaheen", "Deir Mawas", "Mallawi", "Matay"], "New Valley": ["Al Wahat Al Dakhla", "Balat", "Kharga", "Baris"], "North Cost": ["North Coast", "Marabella", "Marinah", "Maraqia"], "Port Said": ["Al Manasrah", "Port Said", "Port Fouad"], "Qaliubia": ["Benha", "Toukh", "Kaha", "Kafr Shokr", "Shibin Al Qanater", "Al Qanater Al Khayreyah", "Basous", "Qalioub", "Beigam", "Shubra El Kheima", "Abu Zaabal", "Khanka", "Moustorod"], "Qena": ["Al Qarna", "Qena", "Nagaa Hammadi", "Deshna", "Al Waqf", "Abu Tesht", "Qift", "Farshout Desert"], "Red Sea": ["Marsa Alam Desert", "Hurghada", "Qism El Qoseir Desert", "Safaga", "Salh Hashes", "El Ahyai", "Ras Gharib"], "Sohag City": ["Sohag", "Juhaynah Al-Gharbyah Desert", "Markaz Juhaynah Al-Gharbyah", "Markaz Tahta", "Markaz Akhmim", "Markaz Al Maraghah", "Markaz Tama", "New Sohag City", "Markaz Al Belina", "Markaz Girga", "Markaz Saqaltah", "Markaz Al Monshaah"], "South Sinai": ["Taba", "Nuweiba", "Sharm Al Shiekh", "Hay Elnour", "Naama Bay", "Hadaba", "El Tor", "Dahab", "El Granahharkana", "Abu Radis", "Ras Sidr", "Abuzenima"], "Suez": ["Al Ganayen", "Aamr Village", "Suez", "Ein Al Sukhna", "El Salam"]};
   (function(){
     function opt(v, label){ const o = document.createElement('option'); o.value = v; o.textContent = label; return o; }
     function fillCities(citySel, gov, keep){
@@ -7820,6 +7811,331 @@ ${invoiceFootHtml('')}`;
   $('shipZonesBtn').addEventListener('click', () => { $('szTOut').textContent = ''; $('shipZonesModal').classList.add('active'); szLoad(); });
   $('szCloseBtn').addEventListener('click', () => $('shipZonesModal').classList.remove('active'));
   $('shipZonesModal').addEventListener('click', (e) => { if(e.target === $('shipZonesModal')) $('shipZonesModal').classList.remove('active'); });
+
+
+  // ============ STORE ADMIN (controls the customer website) ============
+  (function () {
+    const SB = () => window.sb;
+    const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
+    const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } };
+    let L = lsGet('sa_lang', 'ar');
+    const S = (ar, en) => (L === 'ar' ? ar : en);
+    const E = s => escapeHtml(s == null ? '' : String(s));
+    const num = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+    const st = { tab: 'products', products: [], discounts: [], q: '', filter: 'all', ed: null, dd: null, fee: 7, busy: false };
+
+    const css = document.createElement('style');
+    css.textContent = `
+    .sa{position:fixed;inset:0;background:var(--bg);z-index:900;display:flex;flex-direction:column;font-family:inherit;color:var(--cream)}
+    .sa[hidden]{display:none}
+    .sa *{box-sizing:border-box}
+    .sa-hd{display:flex;align-items:center;gap:12px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+    .sa-tabs{display:flex;gap:4px;flex:1}.sa-tabs button{border:0;background:transparent;padding:8px 14px;border-radius:10px;font:inherit;font-weight:700;color:var(--cream-dim);cursor:pointer}
+    .sa-tabs button.on{background:var(--panel-2);color:var(--cream)}
+    .sa-act{display:flex;gap:8px}
+    .sa-btn{border:1px solid var(--line);background:var(--panel);color:var(--cream);padding:8px 14px;border-radius:10px;font:inherit;font-weight:700;font-size:13px;cursor:pointer}
+    .sa-btn.pri{background:var(--sage);border-color:var(--sage);color:#fff}.sa-btn.dan{color:var(--rust)}.sa-btn:disabled{opacity:.5;cursor:default}
+    .sa-body{flex:1;overflow:auto;padding:16px;max-width:1100px;width:100%;margin:0 auto}
+    .sa-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+    .sa input,.sa select,.sa textarea{background:var(--panel);border:1px solid var(--line);color:var(--cream);padding:9px 10px;border-radius:10px;font:inherit;font-size:13.5px;min-width:0}
+    .sa input:focus,.sa select:focus,.sa textarea:focus{outline:2px solid var(--gold);border-color:transparent}
+    .sa-bar input[type=search]{flex:1;min-width:160px;width:auto}.sa-bar select{width:auto}.sa-bar .sa-btn{white-space:nowrap}
+    .sa-row{display:grid;grid-template-columns:52px 1fr auto;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin-bottom:8px;cursor:pointer}
+    .sa-row:hover{border-color:var(--gold)}
+    .sa-th{width:52px;height:52px;border-radius:8px;background:var(--panel-2);object-fit:cover}
+    .sa-t{font-weight:700;font-size:14px}.sa-s{font-size:12px;color:var(--cream-dim)}
+    .sa-pill{display:inline-block;font-size:11px;font-weight:800;padding:2px 9px;border-radius:99px;background:var(--panel-2);margin-inline-end:4px}
+    .sa-pill.ok{background:#dcfce7;color:#166534}.sa-pill.warn{background:#fff7ed;color:#9a3412}.sa-pill.off{background:#f3f4f6;color:#6b7280}
+    .sa-mod{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:950;display:flex;align-items:flex-start;justify-content:center;padding:20px 10px;overflow:auto}
+    .sa-card{background:var(--panel);border-radius:16px;width:100%;max-width:820px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+    .sa-card h3{margin:0 0 12px;font-size:18px}
+    .sa-sec{font-size:12px;font-weight:800;color:var(--cream-dim);text-transform:uppercase;margin:16px 0 6px}
+    .sa-g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.sa-g3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .sa-card label{display:block;font-size:12px;font-weight:700;color:var(--cream-dim);margin:8px 0 3px}
+    .sa-card input,.sa-card select,.sa-card textarea{width:100%}
+    .sa-card textarea{min-height:90px;resize:vertical}
+    .sa-imgs{display:flex;flex-wrap:wrap;gap:8px}.sa-im{position:relative;width:84px;height:84px;border-radius:10px;overflow:hidden;border:2px solid var(--line)}
+    .sa-im.first{border-color:var(--sage)}.sa-im img{width:100%;height:100%;object-fit:cover}
+    .sa-im b{position:absolute;top:2px;inset-inline-end:2px;background:rgba(0,0,0,.65);color:#fff;border-radius:6px;width:22px;height:22px;text-align:center;line-height:22px;cursor:pointer;font-size:13px}
+    .sa-im i{position:absolute;bottom:2px;inset-inline-start:2px;background:rgba(0,0,0,.65);color:#fff;border-radius:6px;padding:0 6px;font-size:11px;font-style:normal;cursor:pointer}
+    .sa-var{display:grid;grid-template-columns:1.3fr 1fr 1fr .9fr .9fr 1.1fr auto;gap:6px;align-items:end;margin-bottom:6px}
+    .sa-var .h{font-size:11px;color:var(--cream-dim);font-weight:700}
+    .sa-msg{font-size:13px;font-weight:700;margin-top:10px}.sa-msg.err{color:var(--rust)}.sa-msg.ok{color:var(--sage)}
+    .sa-foot{display:flex;gap:8px;margin-top:16px;justify-content:flex-end;flex-wrap:wrap}
+    .sa-note{font-size:12px;color:var(--cream-dim);margin-top:4px}
+    @media(max-width:700px){.sa-g2,.sa-g3{grid-template-columns:1fr}.sa-var{grid-template-columns:1fr 1fr}}`;
+    document.head.appendChild(css);
+
+    const root = document.createElement('div'); root.id = 'storeAdmin'; root.className = 'sa'; root.hidden = true;
+    root.innerHTML = '<div id="saTop"></div><div class="sa-body" id="saMain"></div><div id="saModal"></div>';
+    document.body.appendChild(root);
+    const top = $('saTop'), main = $('saMain'), modal = $('saModal');
+
+    // ----- topbar button -----
+    const anchor = $('shipZonesBtn');
+    if (anchor) {
+      const b = document.createElement('div'); b.className = 'icon-btn'; b.id = 'storeAdminBtn'; b.title = 'Store admin';
+      b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l1.5-5h15L21 9"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/></svg>';
+      anchor.parentNode.insertBefore(b, anchor);
+      b.addEventListener('click', openAdmin);
+    }
+
+    function toast(msg) { const t = document.createElement('div'); t.textContent = msg; t.style.cssText = 'position:fixed;bottom:24px;inset-inline:0;margin:auto;width:max-content;max-width:90%;background:#111827;color:#fff;padding:10px 18px;border-radius:99px;z-index:999;font-size:14px'; document.body.appendChild(t); setTimeout(() => t.remove(), 2500); }
+    const tabName = t => ({ products: S('المنتجات', 'Products'), discounts: S('الخصومات', 'Discounts'), settings: S('الإعدادات', 'Settings') }[t]);
+
+    // ============ data ============
+    async function loadProducts() {
+      const r = await SB().rpc('store_admin_products');
+      if (r.error) { main.innerHTML = '<p class="sa-msg err">' + E(r.error.message) + '</p>'; return; }
+      st.products = r.data || [];
+    }
+    async function loadDiscounts() {
+      const r = await SB().from('store_discounts').select('*').order('created_at', { ascending: false });
+      st.discounts = r.error ? [] : (r.data || []);
+    }
+    async function loadSettings() {
+      const r = await SB().from('store_settings').select('*');
+      const f = (r.data || []).find(x => x.key === 'open_package_fee'); st.fee = f ? Number(f.value) : 7;
+    }
+    async function openAdmin() {
+      root.hidden = false; render();
+      main.innerHTML = '<p class="sa-note">…</p>';
+      await Promise.all([loadProducts(), loadDiscounts(), loadSettings()]);
+      render();
+    }
+    const groups = () => {
+      const m = new Map();
+      st.products.forEach(r => { const k = r.handle || ('id' + r.id); if (!m.has(k)) m.set(k, []); m.get(k).push(r); });
+      return Array.from(m.values());
+    };
+    const imgs = txt => String(txt || '').split(/\s+/).filter(u => /^https?:\/\//i.test(u));
+
+    // ============ render ============
+    function render() {
+      root.dir = L === 'ar' ? 'rtl' : 'ltr';
+      top.innerHTML = '<div class="sa-hd"><b>' + S('إدارة المتجر', 'Store admin') + '</b><div class="sa-tabs">' +
+        ['products', 'discounts', 'settings'].map(t => '<button data-tab="' + t + '" class="' + (st.tab === t ? 'on' : '') + '">' + tabName(t) + '</button>').join('') +
+        '</div><div class="sa-act"><button class="sa-btn" data-act="lang">' + (L === 'ar' ? 'EN' : 'عربي') + '</button><button class="sa-btn pri" data-act="publish">' + S('نشر الموقع', 'Publish site') + '</button><button class="sa-btn" data-act="close">✕</button></div></div>';
+      main.innerHTML = st.tab === 'products' ? productsHtml() : st.tab === 'discounts' ? discountsHtml() : settingsHtml();
+      renderModal();
+    }
+    function listHtml() {
+      const q = st.q.trim().toLowerCase();
+      const rows = groups().filter(g => {
+        const r = g[0], on = String(r.status || '').toUpperCase() === 'ACTIVE';
+        if (st.filter === 'visible' && !on) return false;
+        if (st.filter === 'hidden' && on) return false;
+        if (st.filter === 'override' && !g.some(x => (x.store_stock_mode || 'auto') !== 'auto')) return false;
+        if (!q) return true;
+        return g.some(x => [x.title, x.title_arabic, x.sku, x.handle].join(' ').toLowerCase().includes(q));
+      });
+      if (!rows.length) return '<p class="sa-note">' + S('لا توجد منتجات', 'No products') + '</p>';
+      return rows.slice(0, 200).map(g => {
+        const r = g[0], on = String(r.status || '').toUpperCase() === 'ACTIVE', im = imgs(r.images)[0];
+        const modes = g.filter(x => (x.store_stock_mode || 'auto') !== 'auto').length, bal = g.reduce((s, x) => s + (Number(x.balance) || 0), 0);
+        const prices = g.map(x => Number(x.sale_price) || Number(x.regular_price) || 0).filter(Boolean);
+        return '<div class="sa-row" data-open="' + E(r.handle || '') + '">' + (im ? '<img class="sa-th" src="' + E(im) + '" alt="">' : '<span class="sa-th"></span>') +
+          '<div><div class="sa-t">' + E(r.title_arabic || r.title || r.sku) + '</div><div class="sa-s">' + E(r.title && r.title_arabic ? r.title : '') + ' · ' + g.map(x => E(x.sku)).join(', ') + '</div></div>' +
+          '<div style="text-align:end"><span class="sa-pill ' + (on ? 'ok' : 'off') + '">' + (on ? S('ظاهر', 'Visible') : S('مخفي', 'Hidden')) + '</span>' +
+          (modes ? '<span class="sa-pill warn">' + S('عرض المخزون يدوي', 'Manual stock display') + '</span>' : '') +
+          '<div class="sa-s">' + (prices.length ? Math.min.apply(null, prices) : '—') + ' EGP · ' + S('المخزون', 'Stock') + ' ' + bal + '</div></div></div>';
+      }).join('');
+    }
+    function productsHtml() {
+      return '<div class="sa-bar"><input type="search" id="saQ" placeholder="' + S('ابحث بالاسم أو SKU', 'Search name or SKU') + '" value="' + E(st.q) + '">' +
+        '<select id="saF">' + [['all', S('الكل', 'All')], ['visible', S('ظاهر', 'Visible')], ['hidden', S('مخفي', 'Hidden')], ['override', S('عرض مخزون يدوي', 'Manual stock display')]].map(o => '<option value="' + o[0] + '"' + (st.filter === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>' +
+        '<button class="sa-btn" data-act="sync">' + S('طابق المخزون الفعلي', 'Match real stock') + '</button><button class="sa-btn pri" data-act="new">+ ' + S('منتج جديد', 'New product') + '</button></div>' +
+        '<div id="saList">' + listHtml() + '</div>';
+    }
+
+    // ============ product editor ============
+    function openEditor(handle) {
+      const g = groups().find(x => (x[0].handle || '') === handle), r = g ? g[0] : null;
+      st.ed = {
+        isNew: !g, handle: g ? handle : '', msg: '', busy: false,
+        shared: r ? { status: String(r.status || '').toUpperCase() === 'ACTIVE' ? 'ACTIVE' : 'UNLISTED', title: r.title || '', title_arabic: r.title_arabic || '', description: r.description || '', description_ar: r.description_ar || '',
+          seo_title: r.seo_title || '', seo_description: r.seo_description || '', seo_title_ar: r.seo_title_ar || '', seo_description_ar: r.seo_description_ar || '',
+          collections: r.collections || '', option1_name: r.option1_name || '', option2_name: r.option2_name || '' }
+          : { status: 'ACTIVE', title: '', title_arabic: '', description: '', description_ar: '', seo_title: '', seo_description: '', seo_title_ar: '', seo_description_ar: '', collections: '', option1_name: '', option2_name: '' },
+        images: r ? imgs(r.images) : [],
+        variants: g ? g.map(x => ({ id: x.id, sku: x.sku || '', option1_value: x.option1_value || '', option2_value: x.option2_value || '', sale_price: x.sale_price == null ? '' : x.sale_price, regular_price: x.regular_price == null ? '' : x.regular_price, store_stock_mode: x.store_stock_mode || 'auto', variant_image: x.variant_image || '', balance: x.balance }))
+          : [{ id: '', sku: '', option1_value: '', option2_value: '', sale_price: '', regular_price: '', store_stock_mode: 'auto', variant_image: '', balance: 0 }]
+      };
+      renderModal();
+    }
+    function editorHtml() {
+      const ed = st.ed, sh = ed.shared, dirOf = k => (/_ar$|^title_arabic$/.test(k) ? 'rtl' : /^(title|description|seo_title|seo_description)$/.test(k) ? 'ltr' : 'auto'), f = (k, ph) => '<input data-f="' + k + '" value="' + E(sh[k]) + '"' + (ph ? ' placeholder="' + ph + '"' : '') + ' dir="' + dirOf(k) + '">';
+      const ta = k => '<textarea data-f="' + k + '" dir="' + dirOf(k) + '">' + E(sh[k]) + '</textarea>';
+      const modeSel = (i, v) => '<select data-v="' + i + '.store_stock_mode"><option value="auto"' + (v === 'auto' ? ' selected' : '') + '>' + S('تلقائي (من المخزون)', 'Auto (real stock)') + '</option><option value="in_stock"' + (v === 'in_stock' ? ' selected' : '') + '>' + S('دايماً متاح', 'Always in stock') + '</option><option value="out_of_stock"' + (v === 'out_of_stock' ? ' selected' : '') + '>' + S('دايماً نافد', 'Always out of stock') + '</option></select>';
+      const names = Array.from(new Set(st.products.map(x => x.collections).filter(Boolean)));
+      return '<div class="sa-mod"><div class="sa-card"><h3>' + (ed.isNew ? S('منتج جديد', 'New product') : S('تعديل المنتج', 'Edit product')) + '</h3>' +
+        '<label>' + S('الحالة على الموقع', 'Website status') + '</label><select data-f="status"><option value="ACTIVE"' + (sh.status === 'ACTIVE' ? ' selected' : '') + '>' + S('ظاهر', 'Visible') + '</option><option value="UNLISTED"' + (sh.status !== 'ACTIVE' ? ' selected' : '') + '>' + S('مخفي', 'Hidden') + '</option></select>' +
+        '<div class="sa-sec">' + S('العنوان والوصف', 'Title and description') + '</div>' +
+        '<div class="sa-g2"><div><label>' + S('العنوان (عربي)', 'Title (Arabic)') + '</label>' + f('title_arabic', '', true) + '</div><div><label>' + S('العنوان (English)', 'Title (English)') + '</label>' + f('title') + '</div>' +
+        '<div><label>' + S('الوصف (عربي)', 'Description (Arabic)') + '</label>' + ta('description_ar', true) + '</div><div><label>' + S('الوصف (English)', 'Description (English)') + '</label>' + ta('description') + '</div></div>' +
+        '<div class="sa-sec">SEO</div><div class="sa-g2"><div><label>' + S('عنوان SEO (عربي)', 'SEO title (Arabic)') + '</label>' + f('seo_title_ar', '', true) + '</div><div><label>' + S('عنوان SEO (English)', 'SEO title (English)') + '</label>' + f('seo_title') + '</div>' +
+        '<div><label>' + S('وصف SEO (عربي)', 'SEO description (Arabic)') + '</label>' + ta('seo_description_ar', true) + '</div><div><label>' + S('وصف SEO (English)', 'SEO description (English)') + '</label>' + ta('seo_description') + '</div></div>' +
+        '<div class="sa-note">' + S('الرابط على الموقع:', 'Website address:') + ' ' + (ed.isNew ? S('يتولّد من العنوان عند الحفظ', 'created from the title on save') : E(ed.handle)) + '</div>' +
+        '<div class="sa-sec">' + S('الأقسام', 'Collections') + '</div><input data-f="collections" list="saCols" value="' + E(sh.collections) + '" placeholder="' + S('مثال: ماكينات, أدوات', 'e.g. Machines, Tools') + '"><datalist id="saCols">' + names.map(n => '<option value="' + E(n) + '">').join('') + '</datalist>' +
+        '<div class="sa-sec">' + S('الصور (الأولى هي الرئيسية)', 'Images (first one is the main image)') + '</div><div class="sa-imgs">' +
+        ed.images.map((u, i) => '<div class="sa-im' + (i === 0 ? ' first' : '') + '"><img src="' + E(u) + '" alt=""><b data-rmimg="' + i + '">×</b>' + (i > 0 ? '<i data-firstimg="' + i + '">★</i>' : '') + '</div>').join('') +
+        '</div><div class="sa-bar" style="margin-top:8px"><button class="sa-btn" data-act="pick">+ ' + S('رفع صور', 'Upload images') + '</button><input type="file" id="saFile" accept="image/*" multiple hidden><input id="saUrl" placeholder="' + S('أو الصق رابط صورة', 'or paste an image URL') + '" style="flex:1"><button class="sa-btn" data-act="addurl">' + S('إضافة', 'Add') + '</button></div>' +
+        '<div class="sa-sec">' + S('الخيارات (كل خيار له SKU)', 'Options (each option has its own SKU)') + '</div>' +
+        '<div class="sa-g2"><div><label>' + S('اسم الخيار الأول (مثل: الحجم)', 'First option name (e.g. Size)') + '</label>' + f('option1_name') + '</div><div><label>' + S('اسم الخيار الثاني (اختياري)', 'Second option name (optional)') + '</label>' + f('option2_name') + '</div></div>' +
+        '<div class="sa-var" style="margin-top:8px"><span class="h">SKU</span><span class="h">' + S('قيمة 1', 'Value 1') + '</span><span class="h">' + S('قيمة 2', 'Value 2') + '</span><span class="h">' + S('سعر البيع', 'Sale price') + '</span><span class="h">' + S('السعر قبل الخصم', 'Price before') + '</span><span class="h">' + S('عرض المخزون', 'Stock display') + '</span><span class="h">' + S('الفعلي', 'Real') + '</span></div>' +
+        ed.variants.map((v, i) => '<div class="sa-var"><input data-v="' + i + '.sku" value="' + E(v.sku) + '"' + (v.id ? ' readonly' : '') + '><input data-v="' + i + '.option1_value" value="' + E(v.option1_value) + '"><input data-v="' + i + '.option2_value" value="' + E(v.option2_value) + '">' +
+          '<input data-v="' + i + '.sale_price" type="number" step="any" value="' + E(v.sale_price) + '"><input data-v="' + i + '.regular_price" type="number" step="any" value="' + E(v.regular_price) + '">' + modeSel(i, v.store_stock_mode) +
+          '<span class="sa-s">' + (v.id ? E(v.balance) : '—') + '</span>' + (v.id ? '<span></span>' : '<button class="sa-btn dan" data-rmvar="' + i + '">×</button>') + '</div>').join('') +
+        '<button class="sa-btn" data-act="addvar">+ ' + S('إضافة خيار', 'Add option') + '</button>' +
+        '<div class="sa-note">' + S('التكلفة والكمية الفعلية بتتعدّل من المخزون، مش من هنا. العميل مش بيشوفهم أبداً.', 'Cost and real quantity are edited in Inventory, not here. Customers never see them.') + '</div>' +
+        '<div class="sa-msg ' + (ed.msgErr ? 'err' : 'ok') + '" id="saMsg">' + E(ed.msg) + '</div>' +
+        '<div class="sa-foot"><button class="sa-btn" data-act="cancel">' + S('إلغاء', 'Cancel') + '</button><button class="sa-btn pri" data-act="saveprod"' + (ed.busy ? ' disabled' : '') + '>' + S('حفظ', 'Save') + '</button></div></div></div>';
+    }
+
+    // ---- image upload (resized to WebP in the browser) ----
+    async function toWebp(file, max) {
+      const bmp = await createImageBitmap(file), k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      return await new Promise(res => c.toBlob(res, 'image/webp', 0.85));
+    }
+    async function uploadImages(files) {
+      const ed = st.ed, say = (m, bad) => { ed.msg = m; ed.msgErr = !!bad; const el = $('saMsg'); if (el) { el.textContent = m; el.className = 'sa-msg ' + (bad ? 'err' : 'ok'); } };
+      const folder = 'products/' + (String((ed.variants[0] || {}).sku || 'new').toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'new');
+      for (const f of Array.from(files)) {
+        try {
+          say(S('جاري رفع ', 'Uploading ') + f.name + '…');
+          const blob = await toWebp(f, 1600), path = folder + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 7) + '.webp';
+          const up = await SB().storage.from('store-media').upload(path, blob, { contentType: 'image/webp', cacheControl: '31536000' });
+          if (up.error) throw up.error;
+          ed.images.push(SB().storage.from('store-media').getPublicUrl(path).data.publicUrl);
+        } catch (e) { say(S('فشل رفع الصورة: ', 'Image upload failed: ') + (e.message || e), true); renderModal(); return; }
+      }
+      say(''); renderModal();
+    }
+    async function saveProduct() {
+      const ed = st.ed, say = (m, bad) => { ed.msg = m; ed.msgErr = !!bad; const el = $('saMsg'); if (el) { el.textContent = m; el.className = 'sa-msg ' + (bad ? 'err' : 'ok'); } };
+      const sh = ed.shared, skus = ed.variants.map(v => String(v.sku || '').trim());
+      if (!sh.title.trim() && !sh.title_arabic.trim()) return say(S('اكتب العنوان بالعربي أو الإنجليزي', 'Enter a title in Arabic or English'), true);
+      if (skus.some(s => !s)) return say(S('كل خيار لازم يكون له SKU', 'Every option needs a SKU'), true);
+      if (new Set(skus.map(s => s.toLowerCase())).size !== skus.length) return say(S('فيه SKU مكرر', 'Duplicate SKU'), true);
+      if (sh.status === 'ACTIVE' && ed.variants.some(v => !(num(v.sale_price) > 0) && !(num(v.regular_price) > 0))) return say(S('اكتب سعر لكل خيار قبل إظهار المنتج', 'Enter a price for every option before showing the product'), true);
+      ed.busy = true; say(S('جاري الحفظ…', 'Saving…')); const btn = modal.querySelector('[data-act="saveprod"]'); if (btn) btn.disabled = true;
+      const payload = { handle: ed.handle, shared: Object.assign({}, sh, { images: ed.images.join(' ') }),
+        variants: ed.variants.map(v => ({ id: v.id || '', sku: String(v.sku).trim(), option1_value: v.option1_value, option2_value: v.option2_value, sale_price: v.sale_price === '' ? '' : String(v.sale_price), regular_price: v.regular_price === '' ? '' : String(v.regular_price), store_stock_mode: v.store_stock_mode, variant_image: v.variant_image })) };
+      const r = await SB().rpc('store_admin_save_product', { p: payload });
+      ed.busy = false;
+      const err = r.error ? r.error.message : (r.data && r.data.error);
+      if (err) { const m = { sku_taken: S('الـ SKU ده مستخدم في منتج تاني: ', 'This SKU is already used: ') + ((r.data || {}).sku || ''), not_allowed: S('مش مسموح', 'Not allowed') }[err]; say(m || (S('تعذر الحفظ: ', 'Could not save: ') + err + ((r.data || {}).detail ? ' — ' + r.data.detail : '')), true); if (btn) btn.disabled = false; return; }
+      st.ed = null; await loadProducts(); render(); toast(S('تم الحفظ. اضغط "نشر الموقع" عشان التغييرات تظهر للزوّار.', 'Saved. Press "Publish site" so visitors see the changes.'));
+    }
+
+    // ============ discounts ============
+    const dsum = d => (d.kind === 'percent' ? d.value + '%' : d.kind === 'fixed' ? d.value + ' EGP' : S('شحن مجاني', 'Free shipping')) + ' · ' + (d.code ? S('كود ', 'Code ') + d.code : S('تلقائي', 'Automatic')) +
+      (d.min_subtotal ? ' · ' + S('حد أدنى ', 'min ') + d.min_subtotal : '') + (d.min_qty ? ' · ' + S('كمية ', 'qty ') + d.min_qty : '') + (d.skus ? ' · SKU ' + d.skus.length : '') + (d.collections ? ' · ' + S('أقسام ', 'collections ') + d.collections.length : '');
+    function discountsHtml() {
+      return '<div class="sa-bar"><button class="sa-btn pri" data-act="newdisc">+ ' + S('خصم جديد', 'New discount') + '</button><span class="sa-note">' + S('يُطبَّق أكبر خصم واحد على الطلب، والشحن المجاني ممكن يتجمّع معاه.', 'One discount applies per order (the biggest); free shipping can combine with it.') + '</span></div>' +
+        (st.discounts.length ? st.discounts.map(d => '<div class="sa-row" style="grid-template-columns:1fr auto" data-editdisc="' + E(d.id) + '"><div><div class="sa-t">' + E(d.name) + '</div><div class="sa-s">' + E(dsum(d)) + '</div></div><div style="text-align:end"><span class="sa-pill ' + (d.active ? 'ok' : 'off') + '">' + (d.active ? S('مفعّل', 'Active') : S('موقوف', 'Paused')) + '</span><div class="sa-s">' + S('استُخدم ', 'Used ') + (d.used_count || 0) + (d.usage_limit ? ' / ' + d.usage_limit : '') + '</div></div></div>').join('') : '<p class="sa-note">' + S('لا توجد خصومات', 'No discounts yet') + '</p>');
+    }
+    const dtl = v => { if (!v) return ''; const d = new Date(v); const p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()); };
+    function openDiscount(id) {
+      const d = st.discounts.find(x => String(x.id) === String(id));
+      st.dd = { id: d ? d.id : '', msg: '', f: d ? { name: d.name, active: d.active, kind: d.kind, value: d.value, applies_to: d.applies_to, code: d.code || '', min_subtotal: d.min_subtotal == null ? '' : d.min_subtotal, min_qty: d.min_qty == null ? '' : d.min_qty, skus: (d.skus || []).join(', '), collections: (d.collections || []).join(', '), starts_at: dtl(d.starts_at), ends_at: dtl(d.ends_at), usage_limit: d.usage_limit == null ? '' : d.usage_limit, per_phone_limit: d.per_phone_limit == null ? '' : d.per_phone_limit }
+        : { name: '', active: true, kind: 'percent', value: 10, applies_to: 'order', code: '', min_subtotal: '', min_qty: '', skus: '', collections: '', starts_at: '', ends_at: '', usage_limit: '', per_phone_limit: '' } };
+      renderModal();
+    }
+    function discountFormHtml() {
+      const f = st.dd.f, i = (k, type, ph) => '<input data-d="' + k + '" type="' + (type || 'text') + '"' + (type === 'number' ? ' step="any"' : '') + ' value="' + E(f[k]) + '"' + (ph ? ' placeholder="' + ph + '"' : '') + '>';
+      const sel = (k, opts) => '<select data-d="' + k + '">' + opts.map(o => '<option value="' + o[0] + '"' + (f[k] === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
+      return '<div class="sa-mod"><div class="sa-card" style="max-width:640px"><h3>' + (st.dd.id ? S('تعديل الخصم', 'Edit discount') : S('خصم جديد', 'New discount')) + '</h3>' +
+        '<label>' + S('الاسم', 'Name') + '</label>' + i('name') + '<div class="sa-g3"><div><label>' + S('النوع', 'Type') + '</label>' + sel('kind', [['percent', S('نسبة %', 'Percent %')], ['fixed', S('مبلغ ثابت', 'Fixed amount')], ['free_shipping', S('شحن مجاني', 'Free shipping')]]) + '</div><div><label>' + S('القيمة', 'Value') + '</label>' + i('value', 'number') + '</div><div><label>' + S('ينطبق على', 'Applies to') + '</label>' + sel('applies_to', [['order', S('الطلب كله', 'Whole order')], ['items', S('كل قطعة (مبلغ ثابت لكل قطعة)', 'Each item (fixed = per item)')]]) + '</div></div>' +
+        '<label>' + S('كود الخصم (سيبه فاضي لو الخصم تلقائي)', 'Voucher code (leave empty for an automatic discount)') + '</label><div class="sa-bar" style="margin:0"><div style="flex:1">' + i('code') + '</div><button class="sa-btn" data-act="gencode">' + S('توليد', 'Generate') + '</button></div>' +
+        '<div class="sa-sec">' + S('الشروط (اختياري)', 'Conditions (optional)') + '</div><div class="sa-g2"><div><label>' + S('حد أدنى للإجمالي', 'Minimum subtotal') + '</label>' + i('min_subtotal', 'number') + '</div><div><label>' + S('حد أدنى للكمية', 'Minimum quantity') + '</label>' + i('min_qty', 'number') + '</div>' +
+        '<div><label>' + S('منتجات محددة (SKU مفصولة بفاصلة)', 'Only these SKUs (comma separated)') + '</label>' + i('skus') + '</div><div><label>' + S('أقسام محددة (مفصولة بفاصلة)', 'Only these collections (comma separated)') + '</label>' + i('collections') + '</div>' +
+        '<div><label>' + S('يبدأ', 'Starts') + '</label>' + i('starts_at', 'datetime-local') + '</div><div><label>' + S('ينتهي', 'Ends') + '</label>' + i('ends_at', 'datetime-local') + '</div>' +
+        '<div><label>' + S('أقصى عدد استخدامات', 'Max total uses') + '</label>' + i('usage_limit', 'number') + '</div><div><label>' + S('أقصى استخدام لكل رقم موبايل', 'Max uses per phone number') + '</label>' + i('per_phone_limit', 'number') + '</div></div>' +
+        '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-d="active"' + (f.active ? ' checked' : '') + ' style="width:auto"> ' + S('مفعّل', 'Active') + '</label>' +
+        '<div class="sa-msg err" id="saDMsg">' + E(st.dd.msg) + '</div><div class="sa-foot">' + (st.dd.id ? '<button class="sa-btn dan" data-act="deldisc">' + S('حذف', 'Delete') + '</button>' : '') + '<button class="sa-btn" data-act="cancel">' + S('إلغاء', 'Cancel') + '</button><button class="sa-btn pri" data-act="savedisc">' + S('حفظ', 'Save') + '</button></div></div></div>';
+    }
+    async function saveDiscount() {
+      const f = st.dd.f, say = m => { st.dd.msg = m; const el = $('saDMsg'); if (el) el.textContent = m; };
+      const arr = t => { const a = String(t || '').split(',').map(x => x.trim()).filter(Boolean); return a.length ? a : null; };
+      const iso = v => (v ? new Date(v).toISOString() : null);
+      if (!String(f.name).trim()) return say(S('اكتب اسم الخصم', 'Enter a name'));
+      const value = f.kind === 'free_shipping' ? 0 : num(f.value);
+      if (value === null || value < 0 || (f.kind === 'percent' && value > 100)) return say(S('القيمة غير صحيحة', 'Invalid value'));
+      const row = { name: String(f.name).trim(), active: !!f.active, kind: f.kind, value, applies_to: f.applies_to, code: String(f.code || '').trim().toUpperCase() || null,
+        min_subtotal: num(f.min_subtotal), min_qty: num(f.min_qty), skus: arr(f.skus), collections: arr(f.collections), starts_at: iso(f.starts_at), ends_at: iso(f.ends_at), usage_limit: num(f.usage_limit), per_phone_limit: num(f.per_phone_limit) };
+      const q = st.dd.id ? SB().from('store_discounts').update(row).eq('id', st.dd.id) : SB().from('store_discounts').insert(row);
+      const r = await q;
+      if (r.error) return say((/duplicate|unique/i.test(r.error.message) ? S('الكود مستخدم قبل كده', 'This code already exists') : r.error.message));
+      st.dd = null; await loadDiscounts(); render(); toast(S('تم حفظ الخصم (بيشتغل فوراً)', 'Discount saved (live immediately)'));
+    }
+
+    // ============ settings ============
+    function settingsHtml() {
+      return '<div class="sa-card" style="max-width:560px;margin:0"><h3>' + S('الإعدادات', 'Settings') + '</h3><label>' + S('رسوم فتح الشحنة (جنيه)', 'Open-package fee (EGP)') + '</label><input id="saFee" type="number" step="any" value="' + E(st.fee) + '">' +
+        '<label>' + S('رابط Deploy Hook من Cloudflare (لزرار نشر الموقع)', 'Cloudflare Deploy Hook URL (for the Publish button)') + '</label><input id="saHook" value="' + E(lsGet('sa_hook', '')) + '" placeholder="https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/…">' +
+        '<div class="sa-note">' + S('الرابط بيتحفظ على المتصفح ده بس.', 'The link is saved in this browser only.') + '</div><div class="sa-foot"><button class="sa-btn pri" data-act="savesettings">' + S('حفظ', 'Save') + '</button></div></div>';
+    }
+
+    function renderModal() { modal.innerHTML = st.ed ? editorHtml() : (st.dd ? discountFormHtml() : ''); }
+
+    // ============ events ============
+    root.addEventListener('click', async e => {
+      const t = e.target, tab = t.closest('[data-tab]'), act = t.closest('[data-act]'), open = t.closest('[data-open]');
+      if (tab) { st.tab = tab.dataset.tab; render(); return; }
+      if (t.dataset.rmimg !== undefined) { st.ed.images.splice(+t.dataset.rmimg, 1); renderModal(); return; }
+      if (t.dataset.firstimg !== undefined) { const u = st.ed.images.splice(+t.dataset.firstimg, 1)[0]; st.ed.images.unshift(u); renderModal(); return; }
+      if (t.dataset.rmvar !== undefined) { st.ed.variants.splice(+t.dataset.rmvar, 1); renderModal(); return; }
+      const di = t.closest('[data-editdisc]'); if (di) { openDiscount(di.dataset.editdisc); return; }
+      if (open && !act) { openEditor(open.dataset.open); return; }
+      if (!act) return;
+      const a = act.dataset.act;
+      if (a === 'close') root.hidden = true;
+      else if (a === 'lang') { L = L === 'ar' ? 'en' : 'ar'; lsSet('sa_lang', L); render(); }
+      else if (a === 'new') openEditor('__new__');
+      else if (a === 'cancel') { st.ed = null; st.dd = null; renderModal(); }
+      else if (a === 'addvar') { st.ed.variants.push({ id: '', sku: '', option1_value: '', option2_value: '', sale_price: '', regular_price: '', store_stock_mode: 'auto', variant_image: '', balance: 0 }); renderModal(); }
+      else if (a === 'pick') $('saFile').click();
+      else if (a === 'addurl') { const u = $('saUrl').value.trim(); if (/^https?:\/\//i.test(u)) { st.ed.images.push(u); renderModal(); } }
+      else if (a === 'saveprod') await saveProduct();
+      else if (a === 'newdisc') openDiscount('');
+      else if (a === 'gencode') { st.dd.f.code = Math.random().toString(36).slice(2, 8).toUpperCase(); renderModal(); }
+      else if (a === 'savedisc') await saveDiscount();
+      else if (a === 'deldisc') { if (confirm(S('حذف الخصم ده نهائياً؟', 'Delete this discount permanently?'))) { const r = await SB().from('store_discounts').delete().eq('id', st.dd.id); if (!r.error) { st.dd = null; await loadDiscounts(); render(); } } }
+      else if (a === 'sync') {
+        if (!confirm(S('هيرجّع عرض المخزون لكل المنتجات "تلقائي" (حسب المخزون الفعلي). متأكد؟', 'This sets every product back to "Auto" (real stock). Continue?'))) return;
+        const r = await SB().rpc('store_admin_sync_stock'); if (r.error || (r.data && r.data.error)) { toast(S('تعذر التنفيذ', 'Failed')); return; }
+        await loadProducts(); render(); toast(S('تمت المطابقة: ', 'Matched: ') + ((r.data || {}).changed || 0));
+      }
+      else if (a === 'savesettings') {
+        const fee = num($('saFee').value); if (fee === null || fee < 0) return toast(S('رسوم غير صحيحة', 'Invalid fee'));
+        const r = await SB().from('store_settings').upsert({ key: 'open_package_fee', value: fee }, { onConflict: 'key' });
+        lsSet('sa_hook', $('saHook').value.trim()); st.fee = fee; toast(r.error ? r.error.message : S('تم الحفظ', 'Saved'));
+      }
+      else if (a === 'publish') {
+        const hook = lsGet('sa_hook', ''); if (!hook) { st.tab = 'settings'; render(); toast(S('ضيف رابط Deploy Hook الأول', 'Add the Deploy Hook URL first')); return; }
+        try { await fetch(hook, { method: 'POST', mode: 'no-cors' }); toast(S('بدأ نشر الموقع (حوالي دقيقة)', 'Publishing started (about a minute)')); } catch (x) { toast(S('تعذر الاتصال بـ Cloudflare', 'Could not reach Cloudflare')); }
+      }
+    });
+    root.addEventListener('input', e => {
+      const t = e.target;
+      if (t.id === 'saQ') { st.q = t.value; $('saList').innerHTML = listHtml(); return; }
+      if (t.dataset.f !== undefined && st.ed) { st.ed.shared[t.dataset.f] = t.value; return; }
+      if (t.dataset.v !== undefined && st.ed) { const p = t.dataset.v.split('.'); st.ed.variants[+p[0]][p[1]] = t.value; return; }
+      if (t.dataset.d !== undefined && st.dd) { st.dd.f[t.dataset.d] = t.type === 'checkbox' ? t.checked : t.value; }
+    });
+    root.addEventListener('change', e => {
+      const t = e.target;
+      if (t.id === 'saF') { st.filter = t.value; $('saList').innerHTML = listHtml(); return; }
+      if (t.id === 'saFile') { uploadImages(t.files); t.value = ''; return; }
+      if (t.dataset.f !== undefined && st.ed) st.ed.shared[t.dataset.f] = t.value;
+      else if (t.dataset.v !== undefined && st.ed) { const p = t.dataset.v.split('.'); st.ed.variants[+p[0]][p[1]] = t.value; }
+      else if (t.dataset.d !== undefined && st.dd) { st.dd.f[t.dataset.d] = t.type === 'checkbox' ? t.checked : t.value; if (t.dataset.d === 'kind') renderModal(); }
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !root.hidden) { if (st.ed || st.dd) { st.ed = null; st.dd = null; renderModal(); } else root.hidden = true; } });
+  })();
 
 
   init();
