@@ -957,9 +957,6 @@
         <div class="icon-btn" id="expensesBtn" title="Expenses">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="16" cy="14.5" r="1.6"/></svg>
         </div>
-        <div class="icon-btn" id="shipZonesBtn" title="Shipping zones">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
-        </div>
         <div class="icon-btn" id="settingsBtn" title="Settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.6 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"/></svg>
         </div>
@@ -1354,7 +1351,7 @@
       </div>
       <label style="display:flex;align-items:center;gap:8px;font-weight:600;margin-top:12px;cursor:pointer;">
         <input type="checkbox" id="colPayLater" style="width:auto;">
-        Pay later (آجل)
+        Pay later
       </label>
       <div class="modal-field-note" style="margin-top:4px;">Stock is deducted now, but the money stays pending as a debt on the customer until you settle it from the External debts tab. Leave unchecked if he pays on the spot.</div>
       <div id="colPayLaterFields" style="display:none;margin-top:8px;">
@@ -1600,7 +1597,7 @@
 <!-- ============ PAY HAQ ALLAH MODAL ============ -->
 <div class="modal-overlay" id="zakatPayModal">
   <div class="modal-card">
-    <div class="modal-title">دفع حق الله</div>
+    <div class="modal-title">Pay Haq Allah</div>
     <div class="modal-sub" id="zakatPayModalSub"></div>
     <div class="modal-options">
       <button class="modal-opt-btn" data-zakat-payer="Bedir">Bedir</button>
@@ -7296,7 +7293,7 @@ ${invoiceFootHtml('')}`;
       row('Gross profit', fmtEGP(periodProfit)),
       row('— Expenses', fmtEGP(-periodExpenses)),
       row('Net profit', fmtEGP(netProfit)),
-      row('حق الله (1%)', fmtEGP(summaryZakatAmount)),
+      row('Haq Allah (1%)', fmtEGP(summaryZakatAmount)),
     ].join('') +
       `<details style="margin:10px 0;"><summary style="cursor:pointer;font-weight:600;">Profit details</summary>` +
       row('Orders counted', ordersCounted + (ordersWithoutItems ? ' (' + ordersWithoutItems + ' no Items rows)' : '')) +
@@ -7310,7 +7307,7 @@ ${invoiceFootHtml('')}`;
       ).join('') +
       row('Ignored items', missingCostNames.length ? missingCostNames.map(n => escapeHtml(n) + ' ×' + missingCost[n]).join('، ') : 'none') +
       `</details>` +
-      `<button class="btn" id="payZakatBtn" style="max-width:none;${summaryZakatAmount > 0 ? '' : 'opacity:.5;'}" ${summaryZakatAmount > 0 ? '' : 'disabled'}>💸 دفع حق الله (${fmtEGP(summaryZakatAmount)})</button>`;
+      `<button class="btn" id="payZakatBtn" style="max-width:none;${summaryZakatAmount > 0 ? '' : 'opacity:.5;'}" ${summaryZakatAmount > 0 ? '' : 'disabled'}>💸 Pay Haq Allah (${fmtEGP(summaryZakatAmount)})</button>`;
 
     const payBtn = $('payZakatBtn');
     if(payBtn) payBtn.addEventListener('click', openZakatPayModal);
@@ -7321,7 +7318,7 @@ ${invoiceFootHtml('')}`;
 
   function openZakatPayModal(){
     if(summaryZakatAmount <= 0) return;
-    $('zakatPayModalSub').textContent = 'المبلغ: ' + fmtEGP(summaryZakatAmount) + ' — مين اللي دفعهم من جيبه؟';
+    $('zakatPayModalSub').textContent = 'Amount: ' + fmtEGP(summaryZakatAmount) + ' — who paid it from their own pocket?';
     $('zakatPayError').textContent = '';
     $('zakatPayModal').classList.add('active');
   }
@@ -7345,7 +7342,7 @@ ${invoiceFootHtml('')}`;
           amount: String(amount),
           commission: '0',
           category: ZAKAT_CATEGORY,
-          description: 'دفع حق الله (1% من صافي الربح)',
+          description: 'Haq Allah payment (1% of net profit)',
           date: new Date().toISOString()
         };
         const sep = API_URL.includes('?') ? '&' : '?';
@@ -7366,7 +7363,7 @@ ${invoiceFootHtml('')}`;
         }catch(err){ console.error('pruneOrderItems error:', err); pruneFailed = 'network error'; }
         await Promise.all([fetchExpenses(), fetchOrderItems()]);
         renderSummary(); // الحسبة بتبدأ من دلوقتي
-        if(pruneFailed) alert('تم دفع حق الله، لكن تنضيف شيت Items ماتمش: ' + pruneFailed);
+        if(pruneFailed) alert('Haq Allah was paid, but cleaning up the Items sheet failed: ' + pruneFailed);
       }catch(err){
         console.error('pay zakat error:', err);
         $('zakatPayError').textContent = 'Something went wrong, please try again.';
@@ -7808,7 +7805,7 @@ ${invoiceFootHtml('')}`;
     if(r.data === null || r.data === undefined){ out.className = 'sz-msg err'; out.textContent = 'No active zone with tiers covers this area — website orders from here are refused.'; return; }
     out.className = 'sz-msg ok'; out.textContent = w + ' kg to ' + city + ', ' + gov + ' = ' + r.data + ' EGP';
   });
-  $('shipZonesBtn').addEventListener('click', () => { $('szTOut').textContent = ''; $('shipZonesModal').classList.add('active'); szLoad(); });
+  window.openShipZones = () => { $('szTOut').textContent = ''; $('shipZonesModal').classList.add('active'); szLoad(); };
   $('szCloseBtn').addEventListener('click', () => $('shipZonesModal').classList.remove('active'));
   $('shipZonesModal').addEventListener('click', (e) => { if(e.target === $('shipZonesModal')) $('shipZonesModal').classList.remove('active'); });
 
@@ -7834,6 +7831,7 @@ ${invoiceFootHtml('')}`;
     .sa-tabs button.on{background:var(--panel-2);color:var(--cream)}
     .sa-act{display:flex;gap:8px}
     .sa-btn{border:1px solid var(--line);background:var(--panel);color:var(--cream);padding:8px 14px;border-radius:10px;font:inherit;font-weight:700;font-size:13px;cursor:pointer}
+    .sa-btn.ico{display:inline-flex;align-items:center;justify-content:center;padding:8px 10px}
     .sa-btn.pri{background:var(--sage);border-color:var(--sage);color:#fff}.sa-btn.dan{color:var(--rust)}.sa-btn:disabled{opacity:.5;cursor:default}
     .sa-body{flex:1;overflow:auto;padding:16px;max-width:1100px;width:100%;margin:0 auto}
     .sa-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
@@ -7872,7 +7870,7 @@ ${invoiceFootHtml('')}`;
     const top = $('saTop'), main = $('saMain'), modal = $('saModal');
 
     // ----- topbar button -----
-    const anchor = $('shipZonesBtn');
+    const anchor = $('settingsBtn');
     if (anchor) {
       const b = document.createElement('div'); b.className = 'icon-btn'; b.id = 'storeAdminBtn'; b.title = 'Store admin';
       b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l1.5-5h15L21 9"/><path d="M4 9v11h16V9"/><path d="M9 20v-6h6v6"/><path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"/></svg>';
@@ -7915,7 +7913,7 @@ ${invoiceFootHtml('')}`;
       root.dir = L === 'ar' ? 'rtl' : 'ltr';
       top.innerHTML = '<div class="sa-hd"><b>' + S('إدارة المتجر', 'Store admin') + '</b><div class="sa-tabs">' +
         ['products', 'discounts', 'settings'].map(t => '<button data-tab="' + t + '" class="' + (st.tab === t ? 'on' : '') + '">' + tabName(t) + '</button>').join('') +
-        '</div><div class="sa-act"><button class="sa-btn" data-act="lang">' + (L === 'ar' ? 'EN' : 'عربي') + '</button><button class="sa-btn pri" data-act="publish">' + S('نشر الموقع', 'Publish site') + '</button><button class="sa-btn" data-act="close">✕</button></div></div>';
+        '</div><div class="sa-act"><button class="sa-btn ico" data-act="ship" title="' + S('مناطق الشحن', 'Shipping zones') + '"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></button><button class="sa-btn" data-act="lang">' + (L === 'ar' ? 'EN' : 'عربي') + '</button><button class="sa-btn pri" data-act="publish">' + S('نشر الموقع', 'Publish site') + '</button><button class="sa-btn" data-act="close">✕</button></div></div>';
       main.innerHTML = st.tab === 'products' ? productsHtml() : st.tab === 'discounts' ? discountsHtml() : settingsHtml();
       renderModal();
     }
@@ -8093,6 +8091,7 @@ ${invoiceFootHtml('')}`;
       if (!act) return;
       const a = act.dataset.act;
       if (a === 'close') root.hidden = true;
+      else if (a === 'ship') window.openShipZones();
       else if (a === 'lang') { L = L === 'ar' ? 'en' : 'ar'; lsSet('sa_lang', L); render(); }
       else if (a === 'new') openEditor('__new__');
       else if (a === 'cancel') { st.ed = null; st.dd = null; renderModal(); }
