@@ -4709,7 +4709,7 @@ try{
     const date = fmtDate(o[resolveCreatedAtKey(o)] || o.date || o.Updated);
     const rowsHtml = lines.map((l,i)=>`<tr><td>${i+1}</td><td class="n" dir="auto">${escapeHtml(l.name)}</td><td>${l.qty}</td><td>${money(l.price)}</td><td>${money(l.qty*l.price)}</td></tr>`).join('');
     const inner = `
-<div class="top"><div>${INVOICE_STORE_NAME?`<div class="store">${escapeHtml(INVOICE_STORE_NAME)}</div>`:''}<h1>INVOICE</h1></div>
+<div class="top"><div>${INVOICE_STORE_NAME?`<div class="store">${escapeHtml(INVOICE_STORE_NAME)}</div>`:''}</div>
 <div class="meta"><div><b>Order:</b> ${escapeHtml(pkLabel(o))}</div><div><b>Date:</b> ${escapeHtml(date)}</div><div><b>Payment:</b> ${pay}</div></div></div>
 <div class="bill"><b>Bill to</b><span dir="auto">${escapeHtml(o['Customer Name']||'')}</span><br>${escapeHtml(o.Phone||'')}${addr?'<br><span dir="auto">'+escapeHtml(addr)+'</span>':''}</div>
 <table><thead><tr><th>#</th><th>Product</th><th>Qty</th><th>Unit price (EGP)</th><th>Amount (EGP)</th></tr></thead><tbody>${rowsHtml}</tbody></table>
@@ -4721,7 +4721,7 @@ try{
   <div class="g"><span>Total with shipping</span><span>${money(grand)} EGP</span></div>
 </div>
 ${invoiceFootHtml('Thank you for choosing UVA')}`;
-    return { inner, filename: 'Invoice-' + String(pkLabel(o)).replace(/[^\w\-]+/g,'_') + '.pdf', title: 'Invoice ' + pkLabel(o) };
+    return { inner, filename: 'Order-' + String(pkLabel(o)).replace(/[^\w\-]+/g,'_') + '.pdf', title: 'Order ' + pkLabel(o) };
   }
 
   // Make sure debts are current (and not mid-fetch) so the supplier balance is right.
