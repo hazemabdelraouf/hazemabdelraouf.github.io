@@ -3846,8 +3846,19 @@ try{
       // naturally have no pickup location and must still show up.
       allOrders = allOrders.filter(o => normStatus(o.shipping_status) === 'request needed' || String(o.pickup_location || '').trim() !== '');
 
-      // Sort from newest to oldest by Order Serial (descending)
+      // Sort from newest to oldest by the order's creation time ("created at" column,
+      // falling back to Updated). Order Serial is only a tie-breaker / fallback when
+      // an order has no usable date.
+      const orderTime = (o) => {
+        const k = resolveCreatedAtKey(o);
+        const t = new Date((k && o[k]) || o.Updated || '').getTime();
+        return isNaN(t) ? null : t;
+      };
       allOrders.sort((a, b) => {
+        const tA = orderTime(a), tB = orderTime(b);
+        if (tA !== null && tB !== null && tA !== tB) return tB - tA;
+        if (tA !== null && tB === null) return -1;  // dated orders before undated ones
+        if (tA === null && tB !== null) return 1;
         const sA = parseFloat(a['Order Serial']) || 0;
         const sB = parseFloat(b['Order Serial']) || 0;
         if (sB !== sA) return sB - sA;
@@ -4788,14 +4799,45 @@ ${invoiceFootHtml('')}`;
     try{
       const imgs = Array.from(host.querySelectorAll('img'));
       await Promise.all(imgs.map(im => im.complete ? 0 : new Promise(r=>{ im.onload = im.onerror = r; })));
-      return await window.html2pdf().set({
-        margin: 0,
-        image: { type:'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: 794 },
-        jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
-        pagebreak: { mode:['css','legacy'] }
-      }).from(host.firstElementChild).outputPdf('blob');
+      // html2canvas offsets its capture by the page's scroll position, so when the list behind
+      // the invoice was scrolled down the capture landed outside the invoice and the PDF came out
+      // as a blank white page. scrollX/scrollY: 0 pins the capture to the invoice itself.
+      const render = async () => {
+        let blank = false;
+        const blob = await window.html2pdf().set({
+          margin: 0,
+          image: { type:'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', windowWidth: 794, scrollX: 0, scrollY: 0 },
+          jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
+          pagebreak: { mode:['css','legacy'] }
+        }).from(host.firstElementChild).toCanvas().get('canvas').then(c => { blank = canvasLooksBlank(c); }).outputPdf('blob');
+        return { blob, blank };
+      };
+      let res = await render();
+      if(res.blank){
+        // Second chance: scroll to the top, render again, then put the scroll position back.
+        const sx = window.scrollX, sy = window.scrollY;
+        window.scrollTo(0, 0);
+        try{ res = await render(); } finally { window.scrollTo(sx, sy); }
+      }
+      if(res.blank) throw new Error('The PDF came out blank. Please try again.');
+      return res.blob;
     } finally { host.remove(); }
+  }
+  // True when a rendered canvas contains nothing but white (i.e. the capture missed the invoice).
+  function canvasLooksBlank(canvas){
+    try{
+      const w = 160, h = Math.max(1, Math.round(canvas.height * w / canvas.width));
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(canvas, 0, 0, w, h);
+      const d = ctx.getImageData(0, 0, w, h).data;
+      for(let i = 0; i < d.length; i += 4){
+        if(d[i] < 245 || d[i+1] < 245 || d[i+2] < 245) return false;
+      }
+      return true;
+    }catch(e){ return false; } // can't tell -> don't block the share
   }
   // Share the real PDF file (native share sheet); download it where sharing files isn't supported.
   async function shareOrSavePdf(blob, filename, title){
