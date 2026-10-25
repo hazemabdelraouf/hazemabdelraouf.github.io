@@ -7922,7 +7922,18 @@ ${invoiceFootHtml('')}`;
     .sa-sl{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--panel)}
     .sa-code{font-family:monospace;font-size:12px;background:var(--panel-2);padding:6px 8px;border-radius:8px;word-break:break-all;display:block;margin:4px 0}
     .sa-tbl{width:100%;border-collapse:collapse;font-size:13px}.sa-tbl td,.sa-tbl th{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
-    @media(max-width:700px){.sa-g2,.sa-g3{grid-template-columns:1fr}.sa-var{grid-template-columns:1fr 1fr}}`;
+    @media(max-width:700px){.sa-g2,.sa-g3{grid-template-columns:1fr}.sa-var{grid-template-columns:1fr 1fr}}
+    @media(max-width:700px){
+      .sa-hd{padding:8px 12px;gap:8px 10px}
+      .sa-hd>b{order:1;font-size:16px}
+      .sa-act{order:2;margin-inline-start:auto;gap:6px;min-width:0}
+      .sa-chip{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;padding:3px 8px}
+      .sa-tabs{order:3;flex:0 0 100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:6px;margin:0 -12px;padding:2px 12px 4px}
+      .sa-tabs::-webkit-scrollbar{display:none}
+      .sa-tabs button{flex:0 0 auto;white-space:nowrap;padding:8px 16px;border:1px solid var(--line);background:var(--panel)}
+      .sa-tabs button.on{background:var(--sage);border-color:var(--sage);color:#fff}
+      .sa-bar input[type=search]{flex:1 1 100%}
+    }`;
     document.head.appendChild(css);
 
     const root = document.createElement('div'); root.id = 'storeAdmin'; root.className = 'sa'; root.hidden = true; root.dir = 'ltr';
@@ -7999,8 +8010,17 @@ ${invoiceFootHtml('')}`;
     // ============ render ============
     const TABS = [['products', 'Products'], ['collections', 'Collections'], ['discounts', 'Discounts'], ['appearance', 'Appearance'], ['integrations', 'Integrations']];
     function render() {
+      const prevTabs = top.querySelector('.sa-tabs'), prevLeft = prevTabs ? prevTabs.scrollLeft : 0;
       top.innerHTML = '<div class="sa-hd"><b>Store admin</b><div class="sa-tabs">' + TABS.map(t => '<button data-tab="' + t[0] + '" class="' + (st.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') +
         '</div><div class="sa-act"><span class="sa-chip ' + st.pubState + '" id="saPub">' + E(st.pubText) + '</span><button class="sa-btn ico" data-act="ship" title="Shipping zones"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></button><button class="sa-btn" data-act="close">✕</button></div></div>';
+      { // phone: the tab strip scrolls sideways - keep its position and make sure the active tab is visible
+        const tb = top.querySelector('.sa-tabs'), on = tb && tb.querySelector('.on');
+        if (tb) {
+          tb.scrollLeft = prevLeft;
+          if (on) { const x = on.getBoundingClientRect(), y = tb.getBoundingClientRect();
+            if (x.left < y.left) tb.scrollBy({ left: x.left - y.left - 12 }); else if (x.right > y.right) tb.scrollBy({ left: x.right - y.right + 12 }); }
+        }
+      }
       main.innerHTML = ({ products: productsHtml, collections: collectionsHtml, discounts: discountsHtml, appearance: appearanceHtml, integrations: integrationsHtml })[st.tab]();
       renderModal();
       if (st.tab === 'integrations') loadEvents();
