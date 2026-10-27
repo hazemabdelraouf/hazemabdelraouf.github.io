@@ -528,6 +528,8 @@
   }
   .items-row:last-child{border-bottom:none;}
   .items-list .item-neg{color:var(--rust);font-weight:700;}
+  .items-list .item-line{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:2px 0;}
+  .items-list .item-line .p-th{width:30px;height:30px;}
   .items-list{color:var(--cream);font-weight:500;text-align:right;display:flex;flex-direction:column;gap:2px;}
   .note-line{font-size:12px;color:#334155;margin-top:8px;background:var(--panel-2);border:1px solid var(--line);padding:9px 12px;border-radius:9px;line-height:1.5;}
   .mail-warning{
@@ -2075,6 +2077,7 @@ try{
       try{ if($('inventoryList') && $('inventoryList').children.length) renderInventory(); }catch(e){}
       try{ if(typeof noItems !== 'undefined' && noItems.length) noRender(); }catch(e){}
       try{ if(typeof editItemsList !== 'undefined' && editItemsList.length) renderItemsEditor(); }catch(e){}
+      try{ repatchItemsHolders(); }catch(e){}
     }catch(e){ /* thumbnails are optional */ }
     finally{ productImgsLoading = false; }
   }
@@ -4988,8 +4991,26 @@ ${invoiceFootHtml('')}`;
     if(lines.length === 0) return '';
     return `<div class="items-row"><span class="detail-label">${escapeHtml(label)}</span><span class="items-list">${lines.map(l=>{
       const neg = itemHasNegativeBalance(l, serial);
-      return neg ? `<span class="item-neg" title="Stock balance is below zero">⚠️ ${escapeHtml(l)}</span>` : escapeHtml(l);
-    }).join('<br>')}</span></div>`;
+      const txt = neg ? `<span class="item-neg" title="Stock balance is below zero">⚠️ ${escapeHtml(l)}</span>` : `<span>${escapeHtml(l)}</span>`;
+      return `<span class="item-line">${txt}${lineThumb(l, serial)}</span>`;
+    }).join('')}</span></div>`;
+  }
+  // Finds the product behind one line of an order's Items text (SKU from the
+  // Items sheet first, then by name) and returns its small thumbnail.
+  function lineThumb(line, serial){
+    try{
+      const name = stripItemQty(line), nl = normItemName(name), full = normItemName(line);
+      if(!nl) return '';
+      let sku = '', pname = name;
+      const rows = serial !== undefined ? allOrderItems.filter(it => String(it.orderSerial) === String(serial)) : [];
+      const r = rows.find(x => normItemName(x.item) === nl) || rows.find(x => { const n = normItemName(x.item); return n && n.length >= 4 && full.includes(n); });
+      if(r){ sku = String(r.sku || ''); pname = r.item || name; }
+      if(!sku){
+        const prod = allProducts.find(p => normItemName(p.name) === nl) || allProducts.find(p => { const pn = normItemName(p.name); return pn.length >= 4 && full.includes(pn); });
+        if(prod){ sku = String(prod.sku || ''); pname = prod.name; }
+      }
+      return pThumb(sku, pname);
+    }catch(e){ return ''; }
   }
   // ---- Negative-stock detection for the Items row of an order ----
   // Normalizes names so small spelling differences (Arabic alef/ya/ta-marbuta
