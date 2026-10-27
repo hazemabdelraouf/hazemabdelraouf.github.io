@@ -7876,7 +7876,7 @@ ${invoiceFootHtml('')}`;
     const splitList = t => String(t || '').split(/[,،;|\n]+/).map(x => x.trim()).filter(Boolean);
     const slugify = t => String(t || '').replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, '').trim().toLowerCase().replace(/[\s/?#%&]+/g, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
     const imgs = txt => String(txt || '').split(/\s+/).filter(u => /^https?:\/\//i.test(u));
-    const st = { tab: 'products', products: [], cols: [], discounts: [], events: [], q: '', filter: 'all', cq: '', ed: null, dd: null, cd: null, app: null, feed: null, site: 0, pubState: 'ok', pubText: 'Website is up to date' };
+    const st = { imp: null, tab: 'products', products: [], cols: [], discounts: [], events: [], q: '', filter: 'all', cq: '', ed: null, dd: null, cd: null, app: null, feed: null, site: 0, pubState: 'ok', pubText: 'Website is up to date' };
 
     const css = document.createElement('style');
     css.textContent = `
@@ -7937,7 +7937,7 @@ ${invoiceFootHtml('')}`;
     document.head.appendChild(css);
 
     const root = document.createElement('div'); root.id = 'storeAdmin'; root.className = 'sa'; root.hidden = true; root.dir = 'ltr';
-    root.innerHTML = '<div id="saTop"></div><div class="sa-body" id="saMain"></div><div id="saModal"></div>';
+    root.innerHTML = '<div id="saTop"></div><div class="sa-body" id="saMain"></div><div id="saModal"></div><input type="file" id="saImport" accept=".xlsx,.xls,.csv" hidden>';
     document.body.appendChild(root);
     const top = $('saTop'), main = $('saMain'), modal = $('saModal');
 
@@ -7974,7 +7974,7 @@ ${invoiceFootHtml('')}`;
       const r = await SB().from('store_settings').select('*'); const row = (r.data || []).find(x => x.key === 'appearance');
       const a = (row && row.value) || {};
       st.app = { hero: Object.assign({ height_vh: 82, autoplay: 6, slides: [] }, a.hero || {}), products: Object.assign({ cols_desktop: 4, cols_mobile: 2, ratio: '1/1', fit: 'cover', quick_add: true }, a.products || {}),
-        announcement: Object.assign({ ar: '', en: '' }, a.announcement || {}), home: Object.assign({ title_ar: '', title_en: '', desc_ar: '', desc_en: '', latest_count: 12, show_categories: true }, a.home || {}) };
+        announcement: Object.assign({ ar: '', en: '' }, a.announcement || {}), anim: Object.assign({ on: 'true', hero: 'fade', reveal: 'fade-up', hover: 'lift', speed: 'normal', pulse: 'false' }, Object.fromEntries(Object.entries(a.anim || {}).map(([k, v]) => [k, String(v)]))), home: Object.assign({ title_ar: '', title_en: '', desc_ar: '', desc_en: '', latest_count: 12, show_categories: true }, a.home || {}) };
     }
     async function openAdmin() {
       root.hidden = false; render(); main.innerHTML = '<p class="sa-note">Loading…</p>';
@@ -7990,6 +7990,7 @@ ${invoiceFootHtml('')}`;
     const PK = {};
     function pkItems(kind) {
       if (kind === 'collections') return st.cols.map(c => ({ v: c.match_name, label: colName(c, true), sub: c.title_en && c.title ? c.title_en : '', k: norm([c.title, c.title_en, c.match_name].join(' ')) }));
+      if (kind === 'colids') return st.cols.map(c => ({ v: c.id, label: colName(c, true), sub: c.title_en && c.title ? c.title_en : '', k: norm([c.title, c.title_en, c.match_name].join(' ')) }));
       if (kind === 'handles') return groups().map(g => ({ v: g[0].handle, label: gTitle(g), sub: (g[0].title_arabic && g[0].title ? g[0].title + ' · ' : '') + g.map(x => x.sku).join(', '), k: gSearch(g) }));
       return st.products.map(x => ({ v: x.sku, label: (x.title_arabic || x.title || x.sku) + (x.option1_value ? ' — ' + x.option1_value : ''), sub: (x.title_arabic && x.title ? x.title + ' · ' : '') + x.sku, k: norm([x.title, x.title_arabic, x.sku, x.handle].join(' ')) }));
     }
@@ -8025,7 +8026,7 @@ ${invoiceFootHtml('')}`;
       renderModal();
       if (st.tab === 'integrations') loadEvents();
     }
-    function renderModal() { modal.innerHTML = st.ed ? editorHtml() : st.cd ? collectionEditorHtml() : st.dd ? discountFormHtml() : ''; updateCounters(); }
+    function renderModal() { modal.innerHTML = st.ed ? editorHtml() : st.cd ? collectionEditorHtml() : st.dd ? discountFormHtml() : st.imp ? importHtml() : ''; updateCounters(); }
     function updateCounters() { root.querySelectorAll('[data-max]').forEach(el => { const c = el.parentElement.querySelector('.sa-cnt'); if (c) { const n = el.value.length; c.textContent = n + '/' + el.dataset.max; c.classList.toggle('bad', n > +el.dataset.max); } }); }
     const cnt = (label, html, max) => '<label>' + label + (max ? '<span class="sa-cnt"></span>' : '') + '</label>' + html;
 
@@ -8052,7 +8053,7 @@ ${invoiceFootHtml('')}`;
     function productsHtml() {
       return '<div class="sa-bar"><input type="search" id="saQ" placeholder="Search products (Arabic or English) or SKU" value="' + E(st.q) + '"><select id="saF">' +
         [['all', 'All'], ['visible', 'Visible'], ['hidden', 'Hidden'], ['override', 'Manual stock display']].map(o => '<option value="' + o[0] + '"' + (st.filter === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>' +
-        '<button class="sa-btn" data-act="export">Export to Excel</button><button class="sa-btn" data-act="sync">Match real stock</button><button class="sa-btn pri" data-act="new">+ New product</button></div><div id="saList">' + listHtml() + '</div>';
+        '<button class="sa-btn" data-act="export">Export to Excel</button><button class="sa-btn" data-act="import">Import from Excel</button><button class="sa-btn" data-act="sync">Match real stock</button><button class="sa-btn pri" data-act="new">+ New product</button></div><div id="saList">' + listHtml() + '</div>';
     }
     function openEditor(handle) {
       const g = groups().find(x => (x[0].handle || '') === handle && handle !== '__new__'), r = g ? g[0] : null;
@@ -8132,21 +8133,26 @@ ${invoiceFootHtml('')}`;
     }
 
     // ============ collections ============
-    const kids = id => st.cols.filter(c => c.parent_id === id);
-    const ordered = () => { const top = st.cols.filter(c => !c.parent_id), out = []; top.forEach(c => { out.push([c, 0]); kids(c.id).forEach(k => out.push([k, 1])); }); st.cols.filter(c => c.parent_id && !st.cols.some(p => p.id === c.parent_id)).forEach(c => out.push([c, 0])); return out; };
+    const pidsOf = c => (c.parent_ids && c.parent_ids.length ? c.parent_ids : (c.parent_id ? [c.parent_id] : []));
+    const kids = id => st.cols.filter(c => pidsOf(c).includes(id));
+    const descIds = id => { const seen = new Set(), q = [id]; while (q.length) { kids(q.shift()).forEach(k => { if (!seen.has(k.id)) { seen.add(k.id); q.push(k.id); } }); } return seen; };
+    // A collection can sit under several parents: it is listed under each of them.
+    const ordered = () => { const out = [], top = st.cols.filter(c => !pidsOf(c).some(id => st.cols.some(p => p.id === id)));
+      const walk = (c, lvl, path) => { out.push([c, lvl]); if (lvl < 3) kids(c.id).forEach(k => { if (!path.includes(k.id)) walk(k, lvl + 1, path.concat(k.id)); }); };
+      top.forEach(c => walk(c, 0, [c.id])); return out; };
     function collectionsHtml() {
       const q = norm(st.cq).trim();
       const rows = ordered().filter(([c]) => !q || norm([c.title, c.title_en, c.match_name].join(' ')).includes(q));
-      return '<div class="sa-bar"><input type="search" id="saCQ" placeholder="Search collections (Arabic or English)" value="' + E(st.cq) + '"><button class="sa-btn" data-act="export">Export to Excel</button><button class="sa-btn pri" data-act="newcol">+ New collection</button></div>' +
-        '<div class="sa-note" style="margin-bottom:10px">Top-level collections appear in the website menu; their sub-collections appear under them. A parent page also shows the products of its sub-collections.</div><div id="saColList">' +
+      return '<div class="sa-bar"><input type="search" id="saCQ" placeholder="Search collections (Arabic or English)" value="' + E(st.cq) + '"><button class="sa-btn" data-act="export">Export to Excel</button><button class="sa-btn" data-act="import">Import from Excel</button><button class="sa-btn pri" data-act="newcol">+ New collection</button></div>' +
+        '<div class="sa-note" style="margin-bottom:10px">Top-level collections appear in the website menu; sub-collections appear under each parent they belong to. A parent page also shows the products of its sub-collections.</div><div id="saColList">' +
         (rows.length ? rows.map(([c, lvl]) => '<div class="sa-row' + (lvl ? ' sub' : '') + '" data-opencol="' + E(c.id) + '">' + (c.image ? '<img class="sa-th" src="' + E(c.image) + '" alt="">' : '<span class="sa-th"></span>') +
           '<div><div class="sa-t">' + E(colName(c, true)) + '</div><div class="sa-s">' + E(c.title_en || '') + ' · ' + membersOf(c.match_name).length + ' products</div></div><div style="text-align:right"><span class="sa-pill ' + (c.published ? 'ok' : 'off') + '">' + (c.published ? 'Visible' : 'Hidden') + '</span>' + (c.show_in_menu ? '<span class="sa-pill">Menu</span>' : '') + (c.show_on_home ? '<span class="sa-pill">Home</span>' : '') + '</div></div>').join('') : '<p class="sa-note">No collections</p>') + '</div>';
     }
     function openCollection(id) {
       const c = st.cols.find(x => x.id === id);
-      const blank = { id: '', match_name: '', slug: '', title: '', title_en: '', description: '', description_en: '', seo_title: '', seo_title_en: '', seo_description: '', seo_description_en: '', image: '', published: true, show_in_menu: true, show_on_home: true, parent_id: '', sort_order: st.cols.length };
-      st.cd = { isNew: !c, msg: '', f: Object.assign({}, blank, c || {}), members: c ? membersOf(c.match_name).map(g => g[0].handle) : [], add: [], remove: [] };
-      st.cd.f.parent_id = st.cd.f.parent_id || '';
+      const blank = { id: '', match_name: '', slug: '', title: '', title_en: '', description: '', description_en: '', seo_title: '', seo_title_en: '', seo_description: '', seo_description_en: '', image: '', published: true, show_in_menu: true, show_on_home: true, parent_ids: [], sort_order: st.cols.length };
+      st.cd = { isNew: !c, msg: '', f: Object.assign({}, blank, c || {}, { parent_ids: c ? pidsOf(c).slice() : [] }), members: c ? membersOf(c.match_name).map(g => g[0].handle) : [], add: [], remove: [] };
+      PK['cd.parents'] = { kind: 'colids', ph: 'Put it under — search Arabic or English (leave empty for top level)', get: () => st.cd.f.parent_ids, set: v => { st.cd.f.parent_ids = v; }, exclude: () => { const me = st.cd.f.id; return me ? [me].concat(Array.from(descIds(me))) : []; } };
       PK['cd.add'] = { kind: 'handles', ph: 'Add products — search Arabic or English name or SKU', get: () => st.cd.add, set: v => { st.cd.add = v; }, exclude: () => st.cd.members.filter(h => !st.cd.remove.includes(h)) };
       renderModal();
     }
@@ -8154,11 +8160,10 @@ ${invoiceFootHtml('')}`;
       const cd = st.cd, f = cd.f, i = (k, max, type) => '<input data-c="' + k + '" type="' + (type || 'text') + '" value="' + E(f[k]) + '"' + (max ? ' data-max="' + max + '"' : '') + ' dir="' + (/_en$|^title_en/.test(k) ? 'ltr' : /^(title|description|seo_title|seo_description)$/.test(k) ? 'rtl' : 'auto') + '">';
       const ta = (k, max) => '<textarea data-c="' + k + '"' + (max ? ' data-max="' + max + '"' : '') + ' dir="' + (/_en$/.test(k) ? 'ltr' : 'rtl') + '">' + E(f[k]) + '</textarea>';
       const chk = (k, t) => '<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-c="' + k + '"' + (f[k] ? ' checked' : '') + '> ' + t + '</label>';
-      const parents = st.cols.filter(c => !c.parent_id && c.id !== f.id);
       const byHandle = new Map(groups().map(g => [g[0].handle, g]));
       return '<div class="sa-mod"><div class="sa-card"><h3>' + (cd.isNew ? 'New collection' : 'Edit collection') + '</h3>' +
         '<div class="sa-g3">' + chk('published', 'Visible on website') + chk('show_in_menu', 'Show in menu') + chk('show_on_home', 'Show on home page') + '</div>' +
-        '<div class="sa-g2"><div><label>Parent collection (leave empty for a top-level collection)</label><select data-c="parent_id"><option value="">— None (top level) —</option>' + parents.map(p => '<option value="' + E(p.id) + '"' + (f.parent_id === p.id ? ' selected' : '') + '>' + E(colName(p, true)) + '</option>').join('') + '</select></div><div><label>Order in menu (smaller first)</label>' + i('sort_order', 0, 'number') + '</div></div>' +
+        '<div class="sa-sec">Under which collections? (it can be under more than one)</div>' + pkHtml('cd.parents') + '<div class="sa-g2"><div><label>Order in menu (smaller first)</label>' + i('sort_order', 0, 'number') + '</div></div>' +
         '<div class="sa-sec">Names and description</div><div class="sa-g2"><div>' + cnt('Name (Arabic)', i('title')) + '</div><div>' + cnt('Name (English)', i('title_en')) + '</div><div>' + cnt('Description (Arabic)', ta('description')) + '</div><div>' + cnt('Description (English)', ta('description_en')) + '</div></div>' +
         '<div class="sa-sec">Search engine (SEO)</div><div class="sa-g2"><div>' + cnt('SEO title (Arabic)', i('seo_title', 60), 1) + '</div><div>' + cnt('SEO title (English)', i('seo_title_en', 60), 1) + '</div><div>' + cnt('Meta description (Arabic)', ta('seo_description', 160), 1) + '</div><div>' + cnt('Meta description (English)', ta('seo_description_en', 160), 1) + '</div></div>' +
         '<div class="sa-note">' + (cd.isNew ? 'The web address is created from the name when you save.' : 'Web address: <b>' + E(f.slug) + '</b>') + '</div>' +
@@ -8171,7 +8176,7 @@ ${invoiceFootHtml('')}`;
       const name = String(f.title || f.title_en || '').trim(); if (!name) return say('Enter a name (Arabic or English)');
       const t = k => (String(f[k] || '').trim() || null);
       const row = { title: name, title_en: t('title_en'), description: t('description'), description_en: t('description_en'), seo_title: t('seo_title'), seo_title_en: t('seo_title_en'), seo_description: t('seo_description'), seo_description_en: t('seo_description_en'),
-        image: t('image'), published: !!f.published, show_in_menu: !!f.show_in_menu, show_on_home: !!f.show_on_home, parent_id: f.parent_id || null, sort_order: num(f.sort_order) || 0 };
+        image: t('image'), published: !!f.published, show_in_menu: !!f.show_in_menu, show_on_home: !!f.show_on_home, parent_ids: (f.parent_ids || []).slice(), parent_id: (f.parent_ids || [])[0] || null, sort_order: num(f.sort_order) || 0 };
       let match = f.match_name;
       if (cd.isNew) {
         match = name; const slug = slugify(match); if (!slug) return say('Invalid name');
@@ -8238,13 +8243,14 @@ ${invoiceFootHtml('')}`;
         '<button class="sa-btn" data-act="addslide">+ Add slide</button><input type="file" id="saSlFile" accept="image/*" hidden>' +
         '<div class="sa-sec">How products are shown</div><div class="sa-g3"><div><label>Columns on desktop</label>' + sel('products.cols_desktop', [[2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6']]) + '</div><div><label>Columns on mobile</label>' + sel('products.cols_mobile', [[1, '1'], [2, '2'], [3, '3']]) + '</div><div><label>Image shape</label>' + sel('products.ratio', [['1/1', 'Square'], ['4/5', 'Portrait 4:5'], ['3/4', 'Portrait 3:4'], ['4/3', 'Landscape 4:3']]) + '</div>' +
         '<div><label>Image fit</label>' + sel('products.fit', [['cover', 'Fill (crop edges)'], ['contain', 'Show whole image']]) + '</div><div><label>"Add to cart" button on cards</label>' + sel('products.quick_add', [['true', 'Show'], ['false', 'Hide']]) + '</div><div><label>Latest products on home</label><input data-a="home.latest_count" type="number" min="4" max="48" value="' + E(a.home.latest_count) + '"></div></div>' +
+        '<div class="sa-sec">Motion and animation</div><div class="sa-g3"><div><label>Animations</label>' + sel('anim.on', [['true', 'On'], ['false', 'Off — fully still website']]) + '</div><div><label>Banner effect</label>' + sel('anim.hero', [['fade', 'Fade'], ['zoom', 'Slow zoom'], ['slide', 'Slide']]) + '</div><div><label>When scrolling</label>' + sel('anim.reveal', [['fade-up', 'Rise and fade in'], ['fade', 'Fade in'], ['zoom-in', 'Zoom in'], ['none', 'Nothing']]) + '</div><div><label>Product card hover</label>' + sel('anim.hover', [['lift', 'Lift up'], ['zoom', 'Zoom the picture'], ['none', 'Nothing']]) + '</div><div><label>Speed</label>' + sel('anim.speed', [['fast', 'Fast'], ['normal', 'Normal'], ['slow', 'Slow']]) + '</div><div><label>Pulsing banner button</label>' + sel('anim.pulse', [['false', 'Off'], ['true', 'On']]) + '</div></div><div class="sa-note">Visitors who turn on "reduce motion" on their phone or computer always see a still website.</div>' +
         '<div class="sa-sec">Announcement bar (top of every page)</div><div class="sa-g2">' + tf('announcement.ar', 'Arabic', '', 0) + tf('announcement.en', 'English', '', 0) + '</div>' +
         '<div class="sa-sec">Home page in Google</div><div class="sa-g2">' + tf('home.title_ar', 'Page title (Arabic)', '', 60) + tf('home.title_en', 'Page title (English)', '', 60) + tf('home.desc_ar', 'Meta description (Arabic)', '', 160, 1) + tf('home.desc_en', 'Meta description (English)', '', 160, 1) + '</div>' +
         '<div class="sa-msg ok" id="saAMsg"></div><div class="sa-foot"><button class="sa-btn pri" data-act="saveapp">Save appearance</button></div></div>';
     }
     async function saveAppearance() {
       const a = st.app, c = Object.assign({}, a, { hero: Object.assign({}, a.hero, { height_vh: Math.min(100, Math.max(40, num(a.hero.height_vh) || 82)), autoplay: Math.min(20, Math.max(3, num(a.hero.autoplay) || 6)) }),
-        products: Object.assign({}, a.products, { cols_desktop: +a.products.cols_desktop || 4, cols_mobile: +a.products.cols_mobile || 2, quick_add: String(a.products.quick_add) !== 'false' }), home: Object.assign({}, a.home, { latest_count: Math.min(48, Math.max(4, num(a.home.latest_count) || 12)) }) });
+        products: Object.assign({}, a.products, { cols_desktop: +a.products.cols_desktop || 4, cols_mobile: +a.products.cols_mobile || 2, quick_add: String(a.products.quick_add) !== 'false' }), anim: { on: String(a.anim.on) !== 'false', hero: a.anim.hero, reveal: a.anim.reveal, hover: a.anim.hover, speed: a.anim.speed, pulse: String(a.anim.pulse) === 'true' }, home: Object.assign({}, a.home, { latest_count: Math.min(48, Math.max(4, num(a.home.latest_count) || 12)) }) });
       const r = await SB().from('store_settings').upsert({ key: 'appearance', value: c }, { onConflict: 'key' }); const el = $('saAMsg');
       if (r.error) { el.className = 'sa-msg err'; el.textContent = r.error.message; return; }
       el.className = 'sa-msg ok'; el.textContent = 'Saved'; queuePublish(); toast('Appearance saved');
@@ -8259,7 +8265,7 @@ ${invoiceFootHtml('')}`;
       return '<div class="sa-card" style="max-width:none;box-shadow:none;border:1px solid var(--line)"><h3>Website API</h3><div class="sa-bar"><label class="l" style="margin:0">Address of the website</label><select id="saSite">' + SITES.map((s, i) => '<option value="' + i + '"' + (st.site === i ? ' selected' : '') + '>' + s[0] + ' — ' + s[1] + '</option>').join('') + '</select><button class="sa-btn" data-act="checkapi">Check it is reachable</button><span id="saApiRes" class="sa-note"></span></div>' +
         '<table class="sa-tbl">' + ep.map(e => '<tr><td>' + e[0] + '</td><td><span class="sa-code">' + E(base + e[1]) + '</span></td><td><button class="sa-btn" data-copy="' + E(base + e[1]) + '">Copy</button></td></tr>').join('') + '</table>' +
         '<div class="sa-note">The secret keys and webhook addresses (orders to Make, abandoned carts to Make) are stored in Cloudflare, not here. Orders from the website go to the same webhook as dashboard orders.</div>' +
-        '<div class="sa-sec">Facebook and Instagram catalogue</div><ol class="sa-note" style="font-size:13px;line-height:1.7;padding-left:18px"><li>Open Meta Commerce Manager → your catalog → <b>Data sources</b> → <b>Add items</b> → <b>Data feed</b> → <b>Scheduled feed</b>.</li><li>Paste the feed address: <span class="sa-code">' + E(feedUrl()) + '</span></li><li>Choose <b>Hourly</b>. Prices and stock are read live, so the catalogue always matches the website.</li><li>Set the currency to EGP.</li></ol>' +
+        '<div class="sa-sec">Facebook and Instagram catalogue</div><ol class="sa-note" style="font-size:13px;line-height:1.7;padding-left:18px"><li>Open Meta Commerce Manager → your catalog → <b>Data sources</b> → <b>Add items</b> → <b>Data feed</b> → <b>Scheduled feed</b>.</li><li>Paste the feed address: <span class="sa-code">' + E(feedUrl()) + '</span></li><li>Choose <b>Hourly</b>. The feed contains only products that are <b>visible</b> on the website and <b>in stock</b> (as you set them), with live prices.</li><li>Set the currency to EGP.</li></ol>' +
         '<div class="sa-bar"><button class="sa-btn" data-copy="' + E(feedUrl()) + '">Copy feed address</button><button class="sa-btn pri" data-act="checkfeed">Check the feed</button></div>' +
         (fd ? '<div class="sa-msg ' + (fd.bad ? 'err' : 'ok') + '">' + E(fd.summary) + '</div>' + (fd.issues.length ? '<table class="sa-tbl">' + fd.issues.slice(0, 15).map(x => '<tr><td>' + E(x[0]) + '</td><td>' + E(x[1]) + '</td></tr>').join('') + '</table>' : '') : '') +
         '<div class="sa-sec">WhatsApp catalogue</div><div class="sa-note" style="font-size:13px;line-height:1.7">WhatsApp Business uses the same Meta catalogue. In Commerce Manager open <b>Catalog → Settings → WhatsApp</b> and connect your WhatsApp Business account; your products then appear in the WhatsApp catalogue. To send one product to a customer, open it in the Products tab and press <b>Share on WhatsApp</b>.</div>' +
@@ -8276,8 +8282,7 @@ ${invoiceFootHtml('')}`;
         const r = await fetch(feedUrl()); if (!r.ok) throw new Error('HTTP ' + r.status);
         const rows = csvParse(await r.text()), head = rows[0] || [], data = rows.slice(1).filter(x => x.length > 1), ix = n => head.indexOf(n), issues = [];
         data.forEach(x => { const id = x[ix('id')]; if (!x[ix('image_link')]) issues.push([id, 'No image — Meta rejects products without a picture']); if (!(parseFloat(x[ix('price')]) > 0)) issues.push([id, 'Price is zero or missing']); if (!x[ix('description')]) issues.push([id, 'No description']); if (!x[ix('title')]) issues.push([id, 'No title']); });
-        const out = data.filter(x => x[ix('availability')] === 'out of stock').length;
-        st.feed = { bad: issues.length > 0, issues, summary: data.length + ' products in the feed · ' + out + ' out of stock · ' + issues.length + ' problem' + (issues.length === 1 ? '' : 's') };
+        st.feed = { bad: issues.length > 0, issues, summary: data.length + ' products in the feed (only visible products that are in stock) · ' + issues.length + ' problem' + (issues.length === 1 ? '' : 's') };
       } catch (e) { st.feed = { bad: true, issues: [], summary: 'Could not read the feed (' + (e.message || e) + '). Is the website published and the Supabase variables set?' }; }
       render();
     }
@@ -8291,7 +8296,7 @@ ${invoiceFootHtml('')}`;
     function sheets() {
       const pr = st.products.map(x => ({ Handle: x.handle, SKU: x.sku, 'Title (Arabic)': x.title_arabic, 'Title (English)': x.title, 'Description (Arabic)': x.description_ar, 'Description (English)': x.description, 'SEO title (Arabic)': x.seo_title_ar, 'SEO title (English)': x.seo_title, 'Meta description (Arabic)': x.seo_description_ar, 'Meta description (English)': x.seo_description,
         'Option 1 name': x.option1_name, 'Option 1 value': x.option1_value, 'Option 2 name': x.option2_name, 'Option 2 value': x.option2_value, 'Sale price': x.sale_price, 'Price before discount': x.regular_price, 'Real stock': x.balance, 'Website status': String(x.status || '').toUpperCase() === 'ACTIVE' ? 'Visible' : 'Hidden', 'Stock display': x.store_stock_mode || 'auto', Collections: x.collections, Images: x.images, 'Option image': x.variant_image, Weight: x.weight }));
-      const cl = st.cols.map(c => { const p = st.cols.find(y => y.id === c.parent_id); return { 'Name (Arabic)': c.title, 'Name (English)': c.title_en, Parent: p ? p.title : '', 'Web address': c.slug, Key: c.match_name, Visible: c.published ? 'Yes' : 'No', 'In menu': c.show_in_menu ? 'Yes' : 'No', 'On home': c.show_on_home ? 'Yes' : 'No', Order: c.sort_order, Products: membersOf(c.match_name).length, 'SEO title (Arabic)': c.seo_title, 'SEO title (English)': c.seo_title_en, 'Meta description (Arabic)': c.seo_description, 'Meta description (English)': c.seo_description_en, 'Description (Arabic)': c.description, 'Description (English)': c.description_en, Image: c.image }; });
+      const cl = st.cols.map(c => { const ps = pidsOf(c).map(id => st.cols.find(y => y.id === id)).filter(Boolean); return { 'Name (Arabic)': c.title, 'Name (English)': c.title_en, 'Parent keys': ps.map(x => x.match_name).join(' | '), 'Parents (names)': ps.map(x => x.title).join(' | '), 'Web address': c.slug, Key: c.match_name, Visible: c.published ? 'Yes' : 'No', 'In menu': c.show_in_menu ? 'Yes' : 'No', 'On home': c.show_on_home ? 'Yes' : 'No', Order: c.sort_order, Products: membersOf(c.match_name).length, 'SEO title (Arabic)': c.seo_title, 'SEO title (English)': c.seo_title_en, 'Meta description (Arabic)': c.seo_description, 'Meta description (English)': c.seo_description_en, 'Description (Arabic)': c.description, 'Description (English)': c.description_en, Image: c.image }; });
       const ds = st.discounts.map(d => ({ Name: d.name, Code: d.code || '(automatic)', Type: d.kind, Value: d.value, 'Applies to': d.applies_to, 'Min subtotal': d.min_subtotal, 'Min qty': d.min_qty, SKUs: (d.skus || []).join(', '), Collections: (d.collections || []).join(', '), Starts: d.starts_at, Ends: d.ends_at, Active: d.active ? 'Yes' : 'No', Used: d.used_count }));
       return [['Products', pr], ['Collections', cl], ['Discounts', ds]];
     }
@@ -8308,11 +8313,145 @@ ${invoiceFootHtml('')}`;
       }
     }
 
+
+    // ============ import from Excel / CSV (edit the exported sheet outside, then bring it back) ============
+    // Columns that are missing from the file are left alone. A cell that is empty clears that field.
+    // Products are matched by SKU, collections by Key. Nothing is ever deleted by an import.
+    const PCOL = { handle: 'Handle', sku: 'SKU', title_arabic: 'Title (Arabic)', title: 'Title (English)', description_ar: 'Description (Arabic)', description: 'Description (English)', seo_title_ar: 'SEO title (Arabic)', seo_title: 'SEO title (English)',
+      seo_description_ar: 'Meta description (Arabic)', seo_description: 'Meta description (English)', option1_name: 'Option 1 name', option1_value: 'Option 1 value', option2_name: 'Option 2 name', option2_value: 'Option 2 value',
+      sale_price: 'Sale price', regular_price: 'Price before discount', status: 'Website status', mode: 'Stock display', collections: 'Collections', images: 'Images', variant_image: 'Option image' };
+    const SHARED = ['title', 'title_arabic', 'description', 'description_ar', 'seo_title', 'seo_title_ar', 'seo_description', 'seo_description_ar', 'collections', 'images', 'option1_name', 'option2_name'];
+    const cell = (r, h) => (r[h] == null ? '' : String(r[h]).trim());
+    const yes = v => /^(yes|true|1|visible|active|on)$/i.test(String(v).trim());
+    function planProducts(rows) {
+      const head = new Set(Object.keys(rows[0] || {})), has = k => head.has(PCOL[k]), errors = [], warn = [], seen = new Set(), byHandle = new Map();
+      if (!has('sku')) return { errors: ['The sheet has no "SKU" column.'], payloads: [], create: 0, update: 0, same: 0, warn };
+      rows.forEach((r, i) => {
+        const line = i + 2, sku = cell(r, PCOL.sku); if (!sku && !Object.values(r).some(v => String(v).trim())) return;
+        if (!sku) { errors.push('Row ' + line + ': SKU is empty'); return; }
+        if (seen.has(sku.toLowerCase())) { errors.push('Row ' + line + ': SKU ' + sku + ' appears twice'); return; } seen.add(sku.toLowerCase());
+        const ex = st.products.find(x => String(x.sku || '').trim().toLowerCase() === sku.toLowerCase());
+        const num0 = (k, cur) => { if (!has(k)) return cur == null ? '' : cur; const t = cell(r, PCOL[k]); if (t === '') return ''; const n = parseFloat(t); return isNaN(n) ? NaN : n; };
+        const v = { id: ex ? ex.id : '', sku: ex ? ex.sku : sku, option1_value: has('option1_value') ? cell(r, PCOL.option1_value) : (ex ? ex.option1_value || '' : ''), option2_value: has('option2_value') ? cell(r, PCOL.option2_value) : (ex ? ex.option2_value || '' : ''),
+          sale_price: num0('sale_price', ex && ex.sale_price), regular_price: num0('regular_price', ex && ex.regular_price), store_stock_mode: ex ? (ex.store_stock_mode || 'auto') : 'auto', variant_image: has('variant_image') ? cell(r, PCOL.variant_image) : (ex ? ex.variant_image || '' : '') };
+        if (Number.isNaN(v.sale_price) || Number.isNaN(v.regular_price)) { errors.push('Row ' + line + ' (' + sku + '): a price is not a number'); return; }
+        if (has('mode')) { const t = cell(r, PCOL.mode).toLowerCase().replace(/[\s-]+/g, '_'); if (t) { if (!['auto', 'in_stock', 'out_of_stock'].includes(t)) { errors.push('Row ' + line + ' (' + sku + '): Stock display must be auto, in_stock or out_of_stock'); return; } v.store_stock_mode = t; } }
+        let status = null; if (has('status')) { const t = cell(r, PCOL.status); if (t) status = /^(visible|active|yes|true|1|on)$/i.test(t) ? 'ACTIVE' : (/^(hidden|unlisted|no|false|0|off)$/i.test(t) ? 'UNLISTED' : null); if (t && !status) { errors.push('Row ' + line + ' (' + sku + '): Website status must be Visible or Hidden'); return; } }
+        const handle = ex ? ex.handle : (cell(r, PCOL.handle) || ('new:' + sku));
+        if (!byHandle.has(handle)) byHandle.set(handle, { handle: ex ? ex.handle : (cell(r, PCOL.handle) || ''), isNew: !ex, rows: [], any: ex });
+        const g = byHandle.get(handle); g.rows.push({ r, v, ex, status, line }); if (!g.any && ex) g.any = ex;
+      });
+      const payloads = []; let create = 0, update = 0, same = 0;
+      byHandle.forEach(g => {
+        const cur = st.products.filter(x => g.handle && x.handle === g.handle), c0 = cur[0] || {}, shared = {};
+        SHARED.forEach(k => { if (!has(k)) return; const vals = g.rows.map(x => cell(x.r, PCOL[k])), now = String(c0[k] == null ? '' : c0[k]).trim(); shared[k] = vals.find(x => x !== now) !== undefined ? vals.find(x => x !== now) : vals[0]; });
+        const stt = g.rows.map(x => x.status).find(x => x); const curStatus = String(c0.status || '').toUpperCase() === 'ACTIVE' ? 'ACTIVE' : 'UNLISTED';
+        shared.status = stt || (g.isNew ? 'UNLISTED' : curStatus);
+        if (g.isNew && !shared.title && !shared.title_arabic) { errors.push('SKU ' + g.rows[0].v.sku + ': a new product needs a title'); return; }
+        if (g.isNew && shared.status === 'ACTIVE' && g.rows.some(x => !(x.v.sale_price > 0) && !(x.v.regular_price > 0))) { errors.push('SKU ' + g.rows[0].v.sku + ': a visible product needs a price'); return; }
+        let changed = g.isNew;
+        if (!g.isNew) {
+          SHARED.forEach(k => { if (k in shared && String(shared[k]) !== String(c0[k] == null ? '' : c0[k]).trim()) changed = true; });
+          if (shared.status !== curStatus) changed = true;
+          g.rows.forEach(x => { const e = x.ex; if (!e) { changed = true; return; } ['option1_value', 'option2_value', 'variant_image'].forEach(k => { if (String(x.v[k]) !== String(e[k] || '')) changed = true; }); ['sale_price', 'regular_price'].forEach(k => { if (String(x.v[k]) !== String(e[k] == null ? '' : e[k])) changed = true; }); if (x.v.store_stock_mode !== (e.store_stock_mode || 'auto')) changed = true; });
+        }
+        if (!changed) { same++; return; }
+        if (g.isNew) create++; else update++;
+        const sharedOut = Object.assign({}, shared); if (!has('collections') && c0.collections != null) delete sharedOut.collections;
+        payloads.push({ handle: g.handle, shared: sharedOut, variants: g.rows.map(x => ({ id: x.v.id || '', sku: x.v.sku, option1_value: x.v.option1_value, option2_value: x.v.option2_value, sale_price: x.v.sale_price === '' ? '' : String(x.v.sale_price), regular_price: x.v.regular_price === '' ? '' : String(x.v.regular_price), store_stock_mode: x.v.store_stock_mode, variant_image: x.v.variant_image })) });
+      });
+      if (head.has('Real stock')) warn.push('The "Real stock" column is ignored — stock is edited in Inventory.');
+      return { errors, warn, payloads, create, update, same };
+    }
+    const CCOL = { title: 'Name (Arabic)', title_en: 'Name (English)', match_name: 'Key', slug: 'Web address', published: 'Visible', show_in_menu: 'In menu', show_on_home: 'On home', sort_order: 'Order', parents: 'Parent keys',
+      seo_title: 'SEO title (Arabic)', seo_title_en: 'SEO title (English)', seo_description: 'Meta description (Arabic)', seo_description_en: 'Meta description (English)', description: 'Description (Arabic)', description_en: 'Description (English)', image: 'Image' };
+    function planCollections(rows) {
+      const head = new Set(Object.keys(rows[0] || {})), has = k => head.has(CCOL[k]), errors = [], warn = [], items = [], keys = new Set(); let create = 0, update = 0, same = 0;
+      if (!has('match_name') && !has('title')) return { errors: ['The sheet needs a "Key" or "Name (Arabic)" column.'], items, create, update, same, warn };
+      rows.forEach((r, i) => {
+        const line = i + 2; if (!Object.values(r).some(v => String(v).trim())) return;
+        const key = (has('match_name') ? cell(r, CCOL.match_name) : '') || cell(r, CCOL.title) || cell(r, CCOL.title_en);
+        if (!key) { errors.push('Row ' + line + ': no Key and no name'); return; }
+        if (keys.has(key)) { errors.push('Row ' + line + ': Key "' + key + '" appears twice'); return; } keys.add(key);
+        const ex = st.cols.find(c => c.match_name === key), row = {};
+        const txt = k => { if (has(k)) row[k] = cell(r, CCOL[k]) || null; };
+        ['title', 'title_en', 'seo_title', 'seo_title_en', 'seo_description', 'seo_description_en', 'description', 'description_en', 'image'].forEach(txt);
+        ['published', 'show_in_menu', 'show_on_home'].forEach(k => { if (has(k)) row[k] = yes(cell(r, CCOL[k])); });
+        if (has('sort_order')) { const n = parseFloat(cell(r, CCOL.sort_order)); row.sort_order = isNaN(n) ? 0 : n; }
+        if (!ex) { row.match_name = key; row.slug = (has('slug') && cell(r, CCOL.slug)) || slugify(key); if (!row.title) row.title = key; if (!row.slug) { errors.push('Row ' + line + ': cannot make a web address from "' + key + '"'); return; } if (st.cols.some(c => c.slug === row.slug)) { errors.push('Row ' + line + ': web address "' + row.slug + '" is already used'); return; } }
+        const parents = has('parents') ? cell(r, CCOL.parents).split(/\s*[|,]\s*/).filter(Boolean) : null;
+        let changed = !ex; if (ex) Object.keys(row).forEach(k => { const a = row[k], b = ex[k]; if (String(a == null ? '' : a) !== String(b == null ? '' : b)) changed = true; });
+        if (ex && parents) { const cur = pidsOf(ex).map(id => (st.cols.find(c => c.id === id) || {}).match_name).filter(Boolean).sort().join('|'); if (cur !== parents.slice().sort().join('|')) changed = true; }
+        if (!changed) { same++; return; } if (ex) update++; else create++;
+        items.push({ key, ex, row, parents });
+      });
+      const known = new Set(st.cols.map(c => c.match_name).concat(items.map(x => x.key)));
+      items.forEach(x => { if (x.parents) { const bad = x.parents.filter(k => !known.has(k)); if (bad.length) { warn.push('"' + x.key + '": parent "' + bad.join('", "') + '" does not exist and was ignored'); x.parents = x.parents.filter(k => known.has(k) && k !== x.key); } } });
+      return { errors, warn, items, create, update, same };
+    }
+    async function importFile(file) {
+      try {
+        const X = await loadXlsx(), wb = X.read(await file.arrayBuffer(), { type: 'array' }), out = { file: file.name, products: null, collections: null, msg: '', busy: false };
+        const rowsOf = n => X.utils.sheet_to_json(wb.Sheets[n], { defval: '' });
+        const find = n => wb.SheetNames.find(x => x.toLowerCase() === n);
+        const pn = find('products'), cn = find('collections');
+        if (pn) out.products = planProducts(rowsOf(pn)); if (cn) out.collections = planCollections(rowsOf(cn));
+        if (!pn && !cn) { const rows = rowsOf(wb.SheetNames[0]), h = Object.keys(rows[0] || {}); if (h.includes('SKU')) out.products = planProducts(rows); else if (h.includes('Key') || h.includes('Name (Arabic)')) out.collections = planCollections(rows); }
+        if (!out.products && !out.collections) out.msg = 'This file has no "Products" or "Collections" sheet that I can read. Use a file exported from here.';
+        st.imp = out; renderModal();
+      } catch (e) { toast('Could not read the file: ' + (e.message || e)); }
+    }
+    function planHtml(title, pl) {
+      if (!pl) return '';
+      return '<div class="sa-sec">' + title + '</div><div class="sa-msg ' + (pl.errors.length ? 'err' : 'ok') + '">' + pl.create + ' new · ' + pl.update + ' to update · ' + pl.same + ' unchanged' + (pl.errors.length ? ' · ' + pl.errors.length + ' with problems (skipped)' : '') + '</div>' +
+        pl.errors.slice(0, 12).map(x => '<div class="sa-note">⚠ ' + E(x) + '</div>').join('') + pl.warn.slice(0, 8).map(x => '<div class="sa-note">ℹ ' + E(x) + '</div>').join('');
+    }
+    function importHtml() {
+      const im = st.imp, n = (im.products ? im.products.create + im.products.update : 0) + (im.collections ? im.collections.create + im.collections.update : 0);
+      return '<div class="sa-mod"><div class="sa-card" style="max-width:680px"><h3>Import from Excel</h3><div class="sa-note">File: ' + E(im.file) + '. Columns that are not in the file are left alone; an empty cell clears that field; nothing is deleted.</div>' +
+        (im.msg ? '<div class="sa-msg err">' + E(im.msg) + '</div>' : '') + planHtml('Products', im.products) + planHtml('Collections', im.collections) +
+        '<div class="sa-msg ' + (im.err ? 'err' : 'ok') + '" id="saIMsg">' + E(im.result || '') + '</div><div class="sa-foot"><button class="sa-btn" data-act="cancel">Close</button><button class="sa-btn pri" data-act="applyimport"' + (n && !im.busy && !im.done ? '' : ' disabled') + '>' + (n ? 'Apply ' + n + ' change' + (n === 1 ? '' : 's') : 'Nothing to apply') + '</button></div></div></div>';
+    }
+    async function applyImport() {
+      const im = st.imp, say = (t, bad) => { im.result = t; im.err = !!bad; const el = $('saIMsg'); if (el) { el.textContent = t; el.className = 'sa-msg ' + (bad ? 'err' : 'ok'); } };
+      im.busy = true; const btn = modal.querySelector('[data-act="applyimport"]'); if (btn) btn.disabled = true;
+      let saved = 0, failed = [];
+      if (im.products && im.products.payloads.length) {
+        const list = im.products.payloads;
+        for (let i = 0; i < list.length; i += 15) {
+          say('Saving products ' + Math.min(i + 15, list.length) + ' / ' + list.length + '…');
+          const r = await SB().rpc('store_admin_import_products', { p: { products: list.slice(i, i + 15) } });
+          if (r.error || (r.data && r.data.error)) { say('Stopped: ' + (r.error ? r.error.message : r.data.error), true); im.busy = false; return; }
+          saved += (r.data || {}).saved || 0; failed = failed.concat((r.data || {}).errors || []);
+        }
+      }
+      let cs = 0;
+      if (im.collections && im.collections.items.length) {
+        const items = im.collections.items;
+        for (const x of items) {                                                    // pass 1: the collections themselves
+          say('Saving collections…');
+          const r = await (x.ex ? SB().from('store_collections').update(x.row).eq('id', x.ex.id) : SB().from('store_collections').insert(Object.assign({ published: true, show_in_menu: true, show_on_home: true }, x.row)));
+          if (r.error) { failed.push({ handle: x.key, error: r.error.message }); continue; } cs++;
+        }
+        await loadCols();
+        for (const x of items.filter(y => y.parents)) {                              // pass 2: parents (now every collection has an id)
+          const me = st.cols.find(c => c.match_name === x.key); if (!me) continue;
+          const ids = x.parents.map(k => (st.cols.find(c => c.match_name === k) || {}).id).filter(Boolean);
+          if (ids.includes(me.id) || ids.some(id => descIds(me.id).has(id))) { failed.push({ handle: x.key, error: 'would put the collection under itself' }); continue; }
+          const r = await SB().from('store_collections').update({ parent_ids: ids, parent_id: ids[0] || null }).eq('id', me.id); if (r.error) failed.push({ handle: x.key, error: r.error.message });
+        }
+      }
+      im.busy = false; im.done = true;
+      await Promise.all([loadProducts(), loadCols()]);
+      say('Done — ' + saved + ' product' + (saved === 1 ? '' : 's') + ' and ' + cs + ' collection' + (cs === 1 ? '' : 's') + ' saved' + (failed.length ? '; ' + failed.length + ' failed: ' + failed.slice(0, 4).map(f => (f.handle || f.sku || '') + ' — ' + (f.detail || f.error)).join('; ') : '') + '.', failed.length > 0);
+      if (saved || cs) queuePublish(); main.innerHTML = ({ products: productsHtml, collections: collectionsHtml, discounts: discountsHtml, appearance: appearanceHtml, integrations: integrationsHtml })[st.tab]();
+    }
+
     // ============ events ============
     root.addEventListener('click', async e => {
       const t = e.target, tab = t.closest('[data-tab]'), act = t.closest('[data-act]'), open = t.closest('[data-open]');
       root.querySelectorAll('.sa-pr').forEach(r => { if (!r.parentElement.contains(t)) r.hidden = true; });
-      if (tab) { st.tab = tab.dataset.tab; st.ed = st.dd = st.cd = null; render(); return; }
+      if (tab) { st.tab = tab.dataset.tab; st.ed = st.dd = st.cd = st.imp = null; render(); return; }
       const pick = t.closest('[data-pick]'); if (pick) { const id = pick.closest('[data-pk]').dataset.pk, p = PK[id]; p.set(p.get().concat([pick.dataset.pick])); pkRefresh(id); return; }
       if (t.dataset.unpick !== undefined) { const id = t.closest('[data-pk]').dataset.pk, p = PK[id]; p.set(p.get().filter(v => v !== t.dataset.unpick)); pkRefresh(id); return; }
       if (t.dataset.rmimg !== undefined) { st.ed.images.splice(+t.dataset.rmimg, 1); renderModal(); return; }
@@ -8332,7 +8471,7 @@ ${invoiceFootHtml('')}`;
       else if (a === 'ship') window.openShipZones();
       else if (a === 'new') openEditor('__new__');
       else if (a === 'newcol') openCollection('');
-      else if (a === 'cancel') { st.ed = null; st.dd = null; st.cd = null; renderModal(); }
+      else if (a === 'cancel') { st.ed = null; st.dd = null; st.cd = null; st.imp = null; renderModal(); }
       else if (a === 'addvar') { st.ed.variants.push({ id: '', sku: '', option1_value: '', option2_value: '', sale_price: '', regular_price: '', store_stock_mode: 'auto', variant_image: '', balance: 0 }); renderModal(); }
       else if (a === 'pick') $('saFile').click();
       else if (a === 'addurl') { const u = $('saUrl').value.trim(); if (/^https?:\/\//i.test(u)) { st.ed.images.push(u); renderModal(); } }
@@ -8352,6 +8491,8 @@ ${invoiceFootHtml('')}`;
         await loadProducts(); render(); toast('Matched: ' + ((r.data || {}).changed || 0));
       }
       else if (a === 'export') await exportExcel();
+      else if (a === 'import') $('saImport').click();
+      else if (a === 'applyimport') await applyImport();
       else if (a === 'addslide') { st.app.hero.slides.push({ image: '', mobile: '', title_ar: '', title_en: '', subtitle_ar: '', subtitle_en: '', cta_ar: 'تسوق الآن', cta_en: 'Shop now', href: '/{lang}/products/' }); main.innerHTML = appearanceHtml(); updateCounters(); }
       else if (a === 'saveapp') await saveAppearance();
       else if (a === 'checkfeed') { st.feed = { bad: false, issues: [], summary: 'Checking…' }; render(); await checkFeed(); }
@@ -8372,6 +8513,7 @@ ${invoiceFootHtml('')}`;
     });
     root.addEventListener('change', async e => {
       const t = e.target;
+      if (t.id === 'saImport') { const f = t.files[0]; t.value = ''; if (f) importFile(f); return; }
       if (t.id === 'saF') { st.filter = t.value; $('saList').innerHTML = listHtml(); return; }
       if (t.id === 'saSite') { st.site = +t.value; st.feed = null; render(); return; }
       if (t.id === 'saFile') { uploadImages(t.files); t.value = ''; return; }
@@ -8383,7 +8525,7 @@ ${invoiceFootHtml('')}`;
       else if (t.dataset.d !== undefined && st.dd) { st.dd.f[t.dataset.d] = t.type === 'checkbox' ? t.checked : t.value; if (t.dataset.d === 'kind') renderModal(); }
       else if (t.dataset.a !== undefined && st.app) { const p = t.dataset.a.split('.'); st.app[p[0]][p[1]] = t.value; }
     });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !root.hidden) { if (st.ed || st.dd || st.cd) { st.ed = st.dd = st.cd = null; renderModal(); } else root.hidden = true; } });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !root.hidden) { if (st.ed || st.dd || st.cd || st.imp) { st.ed = st.dd = st.cd = st.imp = null; renderModal(); } else root.hidden = true; } });
   })();
 
   init();
