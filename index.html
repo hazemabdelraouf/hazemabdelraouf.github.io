@@ -7068,31 +7068,49 @@ ${invoiceFootHtml('')}`;
   }
   // Profit draw rules, per person:
   //  1) Take the Profit rows out of the sheet's balance (base balance).
-  //  2) If the person owes the company, the draw first clears that debt
-  //     (their balance moves toward zero) — no effect on the Main budget.
-  //  3) Whatever is left over (or the whole amount when they owe nothing) is
-  //     money leaving the company: deducted from the Main budget and kept as a
-  //     record only — never a debt on the person.
+  //  2) Draws are replayed in date order. If the person owes the company AT THE
+  //     TIME of the draw, the draw first clears that debt (no effect on the Main
+  //     budget). That cleared amount is permanent: later payments never undo it.
+  //  3) Whatever is left over (or the whole amount when they owed nothing at that
+  //     moment) is money leaving the company: deducted from the Main budget and
+  //     kept as a record only — never a debt on the person.
   function applyProfitEffects(){
+    const P = ['Bedir','Hazem','UVA'];
     const base = Object.assign({ Bedir:0, Hazem:0, UVA:0 }, rawExpenseBalances || {});
     const taken = { Bedir:0, Hazem:0, UVA:0 };
-    (allExpenses || []).forEach(r=>{
-      if(!isProfitRow(r)) return;
-      ['Bedir','Hazem','UVA'].forEach(p=>{
+    const nonProfitSum = { Bedir:0, Hazem:0, UVA:0 };
+    const rows = allExpenses || [];
+    rows.forEach(r=>{
+      P.forEach(p=>{
         const n = profitAmountOf(r, p);
-        if(n !== 0){ base[p] = (Number(base[p]) || 0) - n; taken[p] += Math.abs(n); }
+        if(n === 0) return;
+        if(isProfitRow(r)){ base[p] = (Number(base[p]) || 0) - n; taken[p] += Math.abs(n); }
+        else nonProfitSum[p] += n;
       });
     });
-    const offset = { Bedir:0, Hazem:0, UVA:0 };
-    const adjusted = {};
+    // Replay in chronological order (date, then sheet row as tie-break).
+    const ordered = rows.map((r,i)=>({ r, t: (new Date(r['Date'])).getTime() || 0, k: Number(r._row) || i }))
+      .sort((x,y)=> (x.t - y.t) || (x.k - y.k));
+    const run = {}, offset = { Bedir:0, Hazem:0, UVA:0 };
+    P.forEach(p=>{ run[p] = (Number(base[p]) || 0) - nonProfitSum[p]; }); // opening balance not covered by rows
     let excess = 0;
-    ['Bedir','Hazem','UVA'].forEach(p=>{
-      const b = Number(base[p]) || 0;
-      const debt = Math.max(0, -b);
-      offset[p] = Math.min(taken[p], debt);
-      adjusted[p] = b + offset[p];
-      excess += taken[p] - offset[p];
+    ordered.forEach(({r})=>{
+      P.forEach(p=>{
+        const n = profitAmountOf(r, p);
+        if(n === 0) return;
+        if(isProfitRow(r)){
+          const t = Math.abs(n);
+          const debt = Math.max(0, -(run[p] + offset[p]));
+          const off = Math.min(t, debt);
+          offset[p] += off;
+          excess += t - off;
+        } else {
+          run[p] += n;
+        }
+      });
     });
+    const adjusted = {};
+    P.forEach(p=>{ adjusted[p] = (Number(base[p]) || 0) + offset[p]; });
     profitInfo = { base, taken, offset, excess };
     expenseBalances = adjusted;
   }
