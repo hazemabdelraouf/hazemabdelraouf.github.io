@@ -670,6 +670,13 @@
     box-shadow:var(--shadow-md);
   }
   .items-editor-search-results.show{display:block;}
+  /* tiny product thumbnails next to product names */
+  .p-th{width:34px;height:34px;border-radius:7px;object-fit:cover;flex:none;background:var(--panel);border:1px solid var(--line);display:inline-block;}
+  .p-th.ph{opacity:.35;}
+  .items-editor-search-result.p-has-th{display:flex;align-items:center;gap:9px;}
+  .items-editor-search-result .p-txt{flex:1;min-width:0;}
+  .items-editor-row .p-th{width:36px;height:36px;}
+  .p-name-wrap{display:flex;align-items:center;gap:9px;min-width:0;}
   .items-editor-search-result{
     padding:9px 11px;font-size:13px;font-weight:600;color:var(--cream);
     cursor:pointer;border-bottom:1px solid var(--line);
@@ -2025,6 +2032,52 @@ try{
   function swrLoad(key){
     try{ const raw = localStorage.getItem('swr_v1_' + key); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
   }
+  // ---- Tiny product thumbnails (SKU -> image URL, from the store's product table) ----
+  let productImgBySku = {}, productImgByName = {}, productImgsLoadedAt = 0, productImgsLoading = false;
+  function normImgKey(t){ return String(t||'').trim().toLowerCase().replace(/\s+/g,' '); }
+  function applyProductImgCache(c){
+    if(!c || typeof c !== 'object') return;
+    productImgBySku = c.sku || {}; productImgByName = c.name || {};
+  }
+  function thumbSrc(u){
+    // Supabase public storage can resize on the fly; if that is not available the onerror falls back to the original.
+    return u.indexOf('/storage/v1/object/public/') > -1
+      ? u.replace('/storage/v1/object/public/','/storage/v1/render/image/public/') + (u.indexOf('?')>-1?'&':'?') + 'width=72&height=72&resize=cover&quality=40'
+      : u;
+  }
+  function pThumb(sku, name){
+    const u = (sku && productImgBySku[normImgKey(sku)]) || (name && productImgByName[normImgKey(name)]) || '';
+    if(!u) return '<span class="p-th ph"></span>';
+    return `<img class="p-th" loading="lazy" decoding="async" alt="" src="${escapeHtml(thumbSrc(u))}" data-full="${escapeHtml(u)}" onerror="if(this.dataset.full&&this.src!==this.dataset.full){this.src=this.dataset.full}else{this.onerror=null;this.className='p-th ph';this.removeAttribute('src')}">`;
+  }
+  async function loadProductImages(force){
+    if(productImgsLoading) return;
+    if(!productImgsLoadedAt){ applyProductImgCache(swrLoad('prodimgs')); }
+    if(!force && productImgsLoadedAt && Date.now() - productImgsLoadedAt < 15*60*1000) return;
+    if(!window.sb) return;
+    productImgsLoading = true;
+    try{
+      const sess = (await window.sb.auth.getSession()).data.session;
+      if(!sess) return;
+      const r = await window.sb.rpc('store_admin_products');
+      if(r.error || !Array.isArray(r.data)) return;
+      const bySku = {}, byName = {};
+      const firstUrl = t => (String(t||'').split(/\s+/).filter(x => /^https?:\/\//i.test(x))[0] || '');
+      r.data.forEach(x=>{
+        const u = (/^https?:\/\//i.test(String(x.variant_image||'').trim()) ? String(x.variant_image).trim() : '') || firstUrl(x.images);
+        if(!u) return;
+        if(x.sku) bySku[normImgKey(x.sku)] = u;
+        [x.title_arabic, x.title].forEach(n=>{ if(n && !byName[normImgKey(n)]) byName[normImgKey(n)] = u; });
+      });
+      productImgBySku = bySku; productImgByName = byName; productImgsLoadedAt = Date.now();
+      swrSave('prodimgs', { sku: bySku, name: byName });
+      // refresh lists that are already on screen
+      try{ if($('inventoryList') && $('inventoryList').children.length) renderInventory(); }catch(e){}
+      try{ if(typeof noItems !== 'undefined' && noItems.length) noRender(); }catch(e){}
+      try{ if(typeof editItemsList !== 'undefined' && editItemsList.length) renderItemsEditor(); }catch(e){}
+    }catch(e){ /* thumbnails are optional */ }
+    finally{ productImgsLoading = false; }
+  }
   const ORDERS_CACHE_KEY = 'cached_orders_v1';
   function loadCachedOrders(){
     try{
@@ -2729,7 +2782,7 @@ try{
     } else {
       list.innerHTML = editItemsList.map((it, i) => `
         <div class="items-editor-row">
-          <span class="ie-name">${escapeHtml(it.name)}${it.manual ? '<span class="ie-tag-custom">custom</span>' : ''}${it.custom ? '' : `<span class="ie-sub">${+Number(it.salePrice).toFixed(2)} EGP · ${+Number(it.weight).toFixed(3)} kg each${it.estimated ? ' (est.)' : ''}</span>`}</span>
+          ${it.manual ? '' : pThumb(it.sku, it.name)}<span class="ie-name">${escapeHtml(it.name)}${it.manual ? '<span class="ie-tag-custom">custom</span>' : ''}${it.custom ? '' : `<span class="ie-sub">${+Number(it.salePrice).toFixed(2)} EGP · ${+Number(it.weight).toFixed(3)} kg each${it.estimated ? ' (est.)' : ''}</span>`}</span>
           <input type="number" class="ie-qty" min="1" value="${it.qty}" data-idx="${i}">
           <button type="button" class="ie-remove" data-idx="${i}" title="Remove">×</button>
         </div>
@@ -3024,9 +3077,9 @@ try{
       box.innerHTML = '<div class="items-editor-search-empty">No matching products</div>';
     } else {
       box.innerHTML = matches.map(({p, i}) => `
-        <div class="items-editor-search-result" data-idx="${i}">
-          ${escapeHtml(p.name)}
-          <div class="ie-sr-price">${p.salePrice} EGP · ${p.weight} kg</div>
+        <div class="items-editor-search-result p-has-th" data-idx="${i}">
+          ${pThumb(p.sku, p.name)}<div class="p-txt">${escapeHtml(p.name)}
+          <div class="ie-sr-price">${p.salePrice} EGP · ${p.weight} kg</div></div>
         </div>
       `).join('');
       box.querySelectorAll('.items-editor-search-result[data-idx]').forEach(el => {
@@ -3140,7 +3193,7 @@ try{
       const low = !it.manual && it.balance !== undefined && it.balance !== null && it.qty > Number(it.balance);
       const sub = `${+Number(it.weight).toFixed(3)} kg each` + (!it.manual && it.balance !== undefined && it.balance !== null ? ' · stock ' + it.balance : '');
       return `<div class="items-editor-row">
-        <span class="ie-name">${escapeHtml(it.name)}${it.manual ? '<span class="ie-tag-custom">custom</span>' : ''}<span class="ie-sub${low ? ' no-low' : ''}">${sub}</span></span>
+        ${it.manual ? '' : pThumb(it.sku, it.name)}<span class="ie-name">${escapeHtml(it.name)}${it.manual ? '<span class="ie-tag-custom">custom</span>' : ''}<span class="ie-sub${low ? ' no-low' : ''}">${sub}</span></span>
         <span class="ie-price-wrap"><input type="number" class="ie-price" min="0" step="any" inputmode="decimal" value="${+Number(it.salePrice).toFixed(2)}" data-idx="${i}"><small>EGP each</small></span>
         <input type="number" class="ie-qty" min="1" value="${it.qty}" data-idx="${i}">
         <button type="button" class="ie-remove" data-idx="${i}">×</button></div>`;
@@ -3216,7 +3269,7 @@ try{
     if(!q){ box.classList.remove('show'); return; }
     const matches = allProducts.filter(p => productMatchesQuery(p, q))
       .sort((a, b) => productSearchRank(a, q) - productSearchRank(b, q) || a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-    box.innerHTML = matches.length ? matches.map(p => `<div class="items-editor-search-result" data-sku="${escapeHtml(String(p.sku || ''))}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)}<div class="ie-sr-price">${p.salePrice} EGP · ${p.weight} kg${p.balance !== undefined && p.balance !== null ? ' · stock ' + p.balance : ''}</div></div>`).join('')
+    box.innerHTML = matches.length ? matches.map(p => `<div class="items-editor-search-result p-has-th" data-sku="${escapeHtml(String(p.sku || ''))}" data-name="${escapeHtml(p.name)}">${pThumb(p.sku, p.name)}<div class="p-txt">${escapeHtml(p.name)}<div class="ie-sr-price">${p.salePrice} EGP · ${p.weight} kg${p.balance !== undefined && p.balance !== null ? ' · stock ' + p.balance : ''}</div></div></div>`).join('')
       : '<div class="items-editor-search-empty">No matching products</div>';
     box.querySelectorAll('[data-name]').forEach(el => el.addEventListener('click', () => {
       const p = (el.dataset.sku && findProductBySku(el.dataset.sku)) || findProductByName(el.dataset.name);
@@ -3568,6 +3621,7 @@ try{
       // this is what makes the app feel fast to open even while the
       // real Google Apps Script request is still cold-starting.
       const cp = swrLoad('products'); if(Array.isArray(cp) && cp.length) allProducts = cp;
+      loadProductImages();
       const ci = swrLoad('items'); if(Array.isArray(ci) && ci.length) allOrderItems = ci;
       const ce = swrLoad('expenses'); if(ce && Array.isArray(ce.expenses)){ allExpenses = ce.expenses; rawExpenseBalances = ce.balances || rawExpenseBalances; applyProfitEffects(); }
       const cd = swrLoad('debts'); if(cd && Array.isArray(cd.debts)){ allDebts = cd.debts; debtTotals = cd.totals || debtTotals; }
@@ -3699,6 +3753,7 @@ try{
       if(data.products && Array.isArray(data.products.products)){
         allProducts = data.products.products;
         if(allProducts.length) swrSave('products', allProducts);
+        loadProductImages();
       }
       if(data.items && Array.isArray(data.items.items)){
         allOrderItems = data.items.items;
@@ -3922,6 +3977,7 @@ try{
         const data = await res.json();
         allProducts = Array.isArray(data.products) ? data.products : [];
         if(allProducts.length) swrSave('products', allProducts);
+        loadProductImages();
       }catch(err){
         console.error('fetchProducts error:', err);
       } finally {
@@ -5384,7 +5440,7 @@ ${invoiceFootHtml('')}`;
       list.innerHTML = rows.map(r => `
         <div class="exp-row${r.qty < 0 ? ' neg-stock' : ''}${r.qty === 0 ? ' zero-stock' : ''}">
           <div class="exp-row-top">
-            <span class="exp-desc">${r.qty < 0 ? '⚠️ ' : ''}${escapeHtml(r.name)}</span>
+            <span class="exp-desc p-name-wrap">${pThumb(r.sku, r.name)}<span>${r.qty < 0 ? '⚠️ ' : ''}${escapeHtml(r.name)}</span></span>
             <span class="exp-amount ${r.qty < 0 ? 'neg' : 'pos'}">${r.qty} units</span>
           </div>
           <div class="exp-meta">
@@ -6150,9 +6206,9 @@ ${invoiceFootHtml('')}`;
     } else {
       box.innerHTML = matches.map(({p, i}) => {
         const bal = Number(p.balance) || 0;
-        return `<div class="items-editor-search-result" data-idx="${i}">
-          ${escapeHtml(p.name)}
-          <div class="ie-sr-price" ${bal <= 0 ? 'style="color:var(--rust);"' : ''}>stock: ${bal} · ${p.salePrice || 0} EGP</div>
+        return `<div class="items-editor-search-result p-has-th" data-idx="${i}">
+          ${pThumb(p.sku, p.name)}<div class="p-txt">${escapeHtml(p.name)}
+          <div class="ie-sr-price" ${bal <= 0 ? 'style="color:var(--rust);"' : ''}>stock: ${bal} · ${p.salePrice || 0} EGP</div></div>
         </div>`;
       }).join('');
       box.querySelectorAll('.items-editor-search-result[data-idx]').forEach(el => {
@@ -6663,9 +6719,9 @@ ${invoiceFootHtml('')}`;
       box.innerHTML = '<div class="items-editor-search-empty">No matching products</div>';
     } else {
       box.innerHTML = matches.map(({p, i}) => `
-        <div class="items-editor-search-result" data-idx="${i}">
-          ${escapeHtml(p.name)}
-          <div class="ie-sr-price">cost so far: ${p.cost || 0} EGP</div>
+        <div class="items-editor-search-result p-has-th" data-idx="${i}">
+          ${pThumb(p.sku, p.name)}<div class="p-txt">${escapeHtml(p.name)}
+          <div class="ie-sr-price">cost so far: ${p.cost || 0} EGP</div></div>
         </div>
       `).join('');
       box.querySelectorAll('.items-editor-search-result[data-idx]').forEach(el => {
