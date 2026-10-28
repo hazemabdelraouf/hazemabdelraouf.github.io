@@ -528,8 +528,6 @@
   }
   .items-row:last-child{border-bottom:none;}
   .items-list .item-neg{color:var(--rust);font-weight:700;}
-  .items-list .item-line{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:2px 0;}
-  .items-list .item-line .p-th{width:30px;height:30px;}
   .items-list{color:var(--cream);font-weight:500;text-align:right;display:flex;flex-direction:column;gap:2px;}
   .note-line{font-size:12px;color:#334155;margin-top:8px;background:var(--panel-2);border:1px solid var(--line);padding:9px 12px;border-radius:9px;line-height:1.5;}
   .mail-warning{
@@ -2077,7 +2075,6 @@ try{
       try{ if($('inventoryList') && $('inventoryList').children.length) renderInventory(); }catch(e){}
       try{ if(typeof noItems !== 'undefined' && noItems.length) noRender(); }catch(e){}
       try{ if(typeof editItemsList !== 'undefined' && editItemsList.length) renderItemsEditor(); }catch(e){}
-      try{ repatchItemsHolders(); }catch(e){}
     }catch(e){ /* thumbnails are optional */ }
     finally{ productImgsLoading = false; }
   }
@@ -4991,26 +4988,8 @@ ${invoiceFootHtml('')}`;
     if(lines.length === 0) return '';
     return `<div class="items-row"><span class="detail-label">${escapeHtml(label)}</span><span class="items-list">${lines.map(l=>{
       const neg = itemHasNegativeBalance(l, serial);
-      const txt = neg ? `<span class="item-neg" title="Stock balance is below zero">⚠️ ${escapeHtml(l)}</span>` : `<span>${escapeHtml(l)}</span>`;
-      return `<span class="item-line">${txt}${lineThumb(l, serial)}</span>`;
-    }).join('')}</span></div>`;
-  }
-  // Finds the product behind one line of an order's Items text (SKU from the
-  // Items sheet first, then by name) and returns its small thumbnail.
-  function lineThumb(line, serial){
-    try{
-      const name = stripItemQty(line), nl = normItemName(name), full = normItemName(line);
-      if(!nl) return '';
-      let sku = '', pname = name;
-      const rows = serial !== undefined ? allOrderItems.filter(it => String(it.orderSerial) === String(serial)) : [];
-      const r = rows.find(x => normItemName(x.item) === nl) || rows.find(x => { const n = normItemName(x.item); return n && n.length >= 4 && full.includes(n); });
-      if(r){ sku = String(r.sku || ''); pname = r.item || name; }
-      if(!sku){
-        const prod = allProducts.find(p => normItemName(p.name) === nl) || allProducts.find(p => { const pn = normItemName(p.name); return pn.length >= 4 && full.includes(pn); });
-        if(prod){ sku = String(prod.sku || ''); pname = prod.name; }
-      }
-      return pThumb(sku, pname);
-    }catch(e){ return ''; }
+      return neg ? `<span class="item-neg" title="Stock balance is below zero">⚠️ ${escapeHtml(l)}</span>` : escapeHtml(l);
+    }).join('<br>')}</span></div>`;
   }
   // ---- Negative-stock detection for the Items row of an order ----
   // Normalizes names so small spelling differences (Arabic alef/ya/ta-marbuta
@@ -7971,7 +7950,7 @@ ${invoiceFootHtml('')}`;
     const splitList = t => String(t || '').split(/[,،;|\n]+/).map(x => x.trim()).filter(Boolean);
     const slugify = t => String(t || '').replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, '').trim().toLowerCase().replace(/[\s/?#%&]+/g, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
     const imgs = txt => String(txt || '').split(/\s+/).filter(u => /^https?:\/\//i.test(u));
-    const st = { imp: null, tab: 'products', products: [], cols: [], discounts: [], events: [], q: '', filter: 'all', cq: '', ed: null, dd: null, cd: null, app: null, feed: null, site: 0, pubState: 'ok', pubText: 'Website is up to date' };
+    const st = { ov: null, carts: [], cartFilter: 'new', imp: null, tab: 'overview', products: [], cols: [], discounts: [], events: [], q: '', filter: 'all', cq: '', ed: null, dd: null, cd: null, app: null, feed: null, site: 0, pubState: 'ok', pubText: 'Website is up to date' };
 
     const css = document.createElement('style');
     css.textContent = `
@@ -8073,7 +8052,7 @@ ${invoiceFootHtml('')}`;
     }
     async function openAdmin() {
       root.hidden = false; render(); main.innerHTML = '<p class="sa-note">Loading…</p>';
-      await Promise.all([loadProducts(), loadCols(), loadDiscounts(), loadApp()]); render();
+      await Promise.all([loadProducts(), loadCols(), loadDiscounts(), loadApp()]); render(); enterTab();
     }
     const groups = () => { const m = new Map(); st.products.forEach(r => { const k = r.handle || ('id' + r.id); if (!m.has(k)) m.set(k, []); m.get(k).push(r); }); return Array.from(m.values()); };
     const gTitle = g => g[0].title_arabic || g[0].title || g[0].sku;
@@ -8104,10 +8083,12 @@ ${invoiceFootHtml('')}`;
     function pkRefresh(id) { const box = modal.querySelector('[data-pk="' + id + '"]'); if (!box) return; box.outerHTML = pkHtml(id); const nb = modal.querySelector('[data-pk="' + id + '"] .sa-pq'); if (nb) nb.focus(); }
 
     // ============ render ============
-    const TABS = [['products', 'Products'], ['collections', 'Collections'], ['discounts', 'Discounts'], ['appearance', 'Appearance'], ['integrations', 'Integrations']];
+    const TABS = [['overview', 'Overview'], ['products', 'Products'], ['collections', 'Collections'], ['discounts', 'Discounts'], ['carts', 'Abandoned carts'], ['appearance', 'Appearance'], ['integrations', 'Integrations']];
+    const tabLabel = t => t[1] + (t[0] === 'carts' && st.ov && st.ov.abandoned ? ' (' + st.ov.abandoned + ')' : '');
+    const tabHtml = () => ({ overview: overviewHtml, products: productsHtml, collections: collectionsHtml, discounts: discountsHtml, carts: cartsHtml, appearance: appearanceHtml, integrations: integrationsHtml })[st.tab]();
     function render() {
       const prevTabs = top.querySelector('.sa-tabs'), prevLeft = prevTabs ? prevTabs.scrollLeft : 0;
-      top.innerHTML = '<div class="sa-hd"><b>Store admin</b><div class="sa-tabs">' + TABS.map(t => '<button data-tab="' + t[0] + '" class="' + (st.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') +
+      top.innerHTML = '<div class="sa-hd"><b>Store admin</b><div class="sa-tabs">' + TABS.map(t => '<button data-tab="' + t[0] + '" class="' + (st.tab === t[0] ? 'on' : '') + '">' + tabLabel(t) + '</button>').join('') +
         '</div><div class="sa-act"><span class="sa-chip ' + st.pubState + '" id="saPub">' + E(st.pubText) + '</span><button class="sa-btn ico" data-act="ship" title="Shipping zones"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events:none"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></button><button class="sa-btn" data-act="close">✕</button></div></div>';
       { // phone: the tab strip scrolls sideways - keep its position and make sure the active tab is visible
         const tb = top.querySelector('.sa-tabs'), on = tb && tb.querySelector('.on');
@@ -8117,7 +8098,7 @@ ${invoiceFootHtml('')}`;
             if (x.left < y.left) tb.scrollBy({ left: x.left - y.left - 12 }); else if (x.right > y.right) tb.scrollBy({ left: x.right - y.right + 12 }); }
         }
       }
-      main.innerHTML = ({ products: productsHtml, collections: collectionsHtml, discounts: discountsHtml, appearance: appearanceHtml, integrations: integrationsHtml })[st.tab]();
+      main.innerHTML = tabHtml();
       renderModal();
       if (st.tab === 'integrations') loadEvents();
     }
@@ -8539,20 +8520,73 @@ ${invoiceFootHtml('')}`;
       im.busy = false; im.done = true;
       await Promise.all([loadProducts(), loadCols()]);
       say('Done — ' + saved + ' product' + (saved === 1 ? '' : 's') + ' and ' + cs + ' collection' + (cs === 1 ? '' : 's') + ' saved' + (failed.length ? '; ' + failed.length + ' failed: ' + failed.slice(0, 4).map(f => (f.handle || f.sku || '') + ' — ' + (f.detail || f.error)).join('; ') : '') + '.', failed.length > 0);
-      if (saved || cs) queuePublish(); main.innerHTML = ({ products: productsHtml, collections: collectionsHtml, discounts: discountsHtml, appearance: appearanceHtml, integrations: integrationsHtml })[st.tab]();
+      if (saved || cs) queuePublish(); main.innerHTML = tabHtml();
     }
+
+
+    // ============ overview (who is on the website now) ============
+    let ovTimer = null;
+    const cairoToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Cairo' });
+    const pct = (a, b) => (b > 0 ? (Math.round(a * 1000 / b) / 10) + '%' : '—');
+    const ago = ts => { const s = Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 1000)); return s < 90 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 172800 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' days ago'; };
+    const dec = s => { try { return decodeURIComponent(s || ''); } catch (e) { return s || ''; } };
+    async function loadOverview() {
+      if (root.hidden || st.tab !== 'overview') { clearInterval(ovTimer); ovTimer = null; return; }
+      const r = await SB().rpc('store_admin_overview');
+      st.ov = (r.error || (r.data && r.data.error)) ? { error: r.error ? r.error.message : r.data.error } : r.data;
+      if (st.tab === 'overview') main.innerHTML = tabHtml();
+      top.querySelectorAll('[data-tab="carts"]').forEach(b => { b.textContent = 'Abandoned carts' + (st.ov && st.ov.abandoned ? ' (' + st.ov.abandoned + ')' : ''); });
+    }
+    function overviewHtml() {
+      const o = st.ov; if (!o) return '<p class="sa-note">Loading…</p>';
+      if (o.error) return '<div class="sa-msg err">Could not load the numbers: ' + E(o.error) + '</div><div class="sa-note">Run sql/08_store_live_stats.sql in Supabase first.</div>';
+      const days = o.days || [], today = days.find(d => d.day === cairoToday()) || { visitors: 0, views: 0, carts: 0, checkouts: 0, orders: 0 };
+      const card = (n, l) => '<div class="sa-card" style="padding:14px;box-shadow:none;border:1px solid var(--line);text-align:center"><div style="font-size:26px;font-weight:800">' + n + '</div><div class="sa-s">' + l + '</div></div>';
+      const stageName = { browse: 'Browsing', cart: 'Has items in cart', checkout: 'At checkout', ordered: 'Ordered' };
+      return '<div class="sa-card" style="max-width:none;box-shadow:none;border:1px solid var(--line);display:flex;gap:18px;align-items:center;flex-wrap:wrap"><div style="font-size:52px;font-weight:800;color:#15803d;line-height:1" id="saOnline">' + E(o.online) + '</div><div><div class="sa-t">Online now</div><div class="sa-s">visitors active in the last 2 minutes · refreshes every 15 seconds</div></div>' +
+        '<div style="flex:1"></div>' + (o.abandoned ? '<button class="sa-btn pri" data-tab="carts">' + o.abandoned + ' abandoned cart' + (o.abandoned === 1 ? '' : 's') + ' waiting →</button>' : '<span class="sa-s">No abandoned carts waiting</span>') + '</div>' +
+        '<div class="sa-sec">Today</div><div class="sa-g3" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">' + card(today.visitors, 'Visitors') + card(today.views, 'Page views') + card(today.carts, 'Added to cart') + card(today.checkouts, 'Reached checkout') + card(today.orders, 'Orders') + card(pct(today.orders, today.visitors), 'Conversion') + '</div>' +
+        '<div class="sa-sec">Last 7 days</div><table class="sa-tbl"><tr><th>Day</th><th>Visitors</th><th>Views</th><th>Carts</th><th>Checkouts</th><th>Orders</th><th>Conversion</th></tr>' + (days.length ? days.map(d => '<tr><td>' + E(d.day) + '</td><td>' + d.visitors + '</td><td>' + d.views + '</td><td>' + d.carts + '</td><td>' + d.checkouts + '</td><td>' + d.orders + '</td><td>' + pct(d.orders, d.visitors) + '</td></tr>').join('') : '<tr><td colspan="7" class="sa-s">No visits recorded yet</td></tr>') + '</table>' +
+        '<div class="sa-sec">Where visitors come from (7 days)</div><table class="sa-tbl"><tr><th>Source</th><th>Visitors</th><th>Orders</th></tr>' + ((o.sources || []).length ? o.sources.map(s => '<tr><td>' + E(s.source) + '</td><td>' + s.visitors + '</td><td>' + s.orders + '</td></tr>').join('') : '<tr><td colspan="3" class="sa-s">—</td></tr>') + '</table>' +
+        '<div class="sa-sec">On the website right now</div><table class="sa-tbl"><tr><th>Page</th><th>Device</th><th>From</th><th>Cart</th><th>Status</th><th>Visit</th></tr>' + ((o.online_list || []).length ? o.online_list.map(s => '<tr><td>' + E(dec(s.path)) + '</td><td>' + E(s.device || '') + '</td><td>' + E(s.source || '') + '</td><td>' + s.cart_items + '</td><td>' + E(stageName[s.stage] || s.stage) + '</td><td>' + E(ago(s.first_seen).replace(' ago', '')) + ' · ' + s.views + ' pages</td></tr>').join('') : '<tr><td colspan="6" class="sa-s">Nobody right now</td></tr>') + '</table>' +
+        '<div class="sa-note" style="margin-top:12px">Your own visits are counted too. Open the website once with <b>?notrack=1</b> at the end of the address on each of your own phones and computers to exclude them. Visitors are counted anonymously (no cookies, no IP address).</div>';
+    }
+    function startOverview() { clearInterval(ovTimer); ovTimer = setInterval(loadOverview, 15000); }
+
+    // ============ abandoned carts ============
+    async function loadCarts() {
+      const r = await SB().from('store_carts').select('*').eq('status', 'open').order('checkout_started_at', { ascending: false }).limit(300);
+      st.carts = (r.data || []).filter(c => c.phone && c.checkout_started_at && !c.dismissed);
+    }
+    const pBySku = sku => st.products.find(x => String(x.sku || '').trim().toLowerCase() === String(sku || '').trim().toLowerCase());
+    const cartLines = c => (Array.isArray(c.items) ? c.items : []).map(i => { const p = pBySku(i.sku); return { name: p ? (p.title_arabic || p.title || p.sku) : i.sku, qty: i.qty, price: p ? (Number(p.sale_price) || Number(p.regular_price) || 0) : 0 }; });
+    const cartLink = c => siteUrl() + '/ar/cart?c=' + c.cart_id;
+    const waText = c => 'أهلاً ' + (c.name || '') + ' 👋\nلاحظنا إنك سبت طلبك عندنا في UVA، والمنتجات لسه في سلتك:\n' + cartLines(c).map(l => '• ' + l.name + ' × ' + l.qty).join('\n') + '\nتقدر تكمّل طلبك من هنا:\n' + cartLink(c) + '\nولو محتاج أي مساعدة إحنا معاك.';
+    function cartsHtml() {
+      const f = st.cartFilter, rows = st.carts.filter(c => f === 'all' || (f === 'new' ? !c.contacted_at : !!c.contacted_at));
+      return '<div class="sa-bar"><select id="saCF">' + [['new', 'Not contacted yet'], ['done', 'Contacted'], ['all', 'All']].map(o => '<option value="' + o[0] + '"' + (f === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select><span class="sa-note">Customers who typed a phone number at checkout but did not order. The reminder link opens the cart again with the same products. Links use: <b>' + E(siteUrl()) + '</b> (change it in Integrations).</span></div>' +
+        (rows.length ? rows.map(c => { const ln = cartLines(c), total = ln.reduce((s, l) => s + l.price * l.qty, 0), fresh = (Date.now() - new Date(c.checkout_started_at).getTime()) < 20 * 60000, src = c.utm && (c.utm.source || c.utm.campaign);
+          return '<div class="sa-row" style="grid-template-columns:1fr auto;cursor:default"><div><div class="sa-t">' + E(c.name || 'No name') + ' · <span dir="ltr">' + E(c.phone) + '</span></div><div class="sa-s">' + ln.map(l => E(l.name) + ' × ' + l.qty).join(' · ') + '</div><div class="sa-s">≈ ' + total + ' EGP at current prices · started ' + E(ago(c.checkout_started_at)) + (src ? ' · from ' + E(src) : '') + '</div>' +
+            '<div style="margin-top:4px">' + (fresh ? '<span class="sa-pill warn">May still be ordering</span>' : '') + (c.contacted_at ? '<span class="sa-pill ok">Contacted ' + E(ago(c.contacted_at)) + '</span>' : '') + '</div></div>' +
+            '<div class="sa-act" style="flex-wrap:wrap;justify-content:flex-end"><a class="sa-btn pri" target="_blank" rel="noopener" data-wa="' + E(c.cart_id) + '" href="https://wa.me/' + String(c.phone).replace(/\D/g, '') + '?text=' + encodeURIComponent(waText(c)) + '">WhatsApp</a><button class="sa-btn" data-copy="' + E(cartLink(c)) + '">Copy link</button>' + (c.contacted_at ? '' : '<button class="sa-btn" data-cdone="' + E(c.cart_id) + '">Mark contacted</button>') + '<button class="sa-btn dan" data-cdel="' + E(c.cart_id) + '">Dismiss</button></div></div>'; }).join('') : '<p class="sa-note">Nothing here.</p>');
+    }
+    async function cartUpdate(id, patch) { const r = await SB().from('store_carts').update(patch).eq('cart_id', id); if (r.error) { toast(r.error.message); return false; } const c = st.carts.find(x => x.cart_id === id); if (c) Object.assign(c, patch); if (patch.dismissed) { st.carts = st.carts.filter(x => x.cart_id !== id); if (st.ov && st.ov.abandoned) st.ov.abandoned--; } main.innerHTML = tabHtml(); return true; }
+    async function enterTab() { if (st.tab === 'overview') { await loadOverview(); startOverview(); } else if (st.tab === 'carts') { await loadCarts(); if (st.tab === 'carts') main.innerHTML = tabHtml(); } }
 
     // ============ events ============
     root.addEventListener('click', async e => {
       const t = e.target, tab = t.closest('[data-tab]'), act = t.closest('[data-act]'), open = t.closest('[data-open]');
       root.querySelectorAll('.sa-pr').forEach(r => { if (!r.parentElement.contains(t)) r.hidden = true; });
-      if (tab) { st.tab = tab.dataset.tab; st.ed = st.dd = st.cd = st.imp = null; render(); return; }
+      if (tab) { st.tab = tab.dataset.tab; st.ed = st.dd = st.cd = st.imp = null; render(); enterTab(); return; }
       const pick = t.closest('[data-pick]'); if (pick) { const id = pick.closest('[data-pk]').dataset.pk, p = PK[id]; p.set(p.get().concat([pick.dataset.pick])); pkRefresh(id); return; }
       if (t.dataset.unpick !== undefined) { const id = t.closest('[data-pk]').dataset.pk, p = PK[id]; p.set(p.get().filter(v => v !== t.dataset.unpick)); pkRefresh(id); return; }
       if (t.dataset.rmimg !== undefined) { st.ed.images.splice(+t.dataset.rmimg, 1); renderModal(); return; }
       if (t.dataset.firstimg !== undefined) { const u = st.ed.images.splice(+t.dataset.firstimg, 1)[0]; st.ed.images.unshift(u); renderModal(); return; }
       if (t.dataset.rmvar !== undefined) { st.ed.variants.splice(+t.dataset.rmvar, 1); renderModal(); return; }
       if (t.dataset.rmmember !== undefined) { st.cd.remove.push(t.dataset.rmmember); renderModal(); return; }
+      const wa = t.closest('[data-wa]'); if (wa) { const c = st.carts.find(x => x.cart_id === wa.dataset.wa); if (c && !c.contacted_at) setTimeout(() => cartUpdate(c.cart_id, { contacted_at: new Date().toISOString() }), 400); return; }
+      if (t.dataset.cdone) { await cartUpdate(t.dataset.cdone, { contacted_at: new Date().toISOString() }); return; }
+      if (t.dataset.cdel) { if (confirm('Remove this cart from the list?')) await cartUpdate(t.dataset.cdel, { dismissed: true }); return; }
       if (t.dataset.copy) { try { await navigator.clipboard.writeText(t.dataset.copy); toast('Copied'); } catch (x) { toast('Copy failed'); } return; }
       if (t.dataset.copyjson !== undefined) { try { await navigator.clipboard.writeText(JSON.stringify((st.events[+t.dataset.copyjson] || {}).payload || {}, null, 2)); toast('Copied'); } catch (x) { toast('Copy failed'); } return; }
       const sl = t.dataset; if (sl.slup !== undefined || sl.sldn !== undefined || sl.sldel !== undefined) { const s = st.app.hero.slides, n = +(sl.slup ?? sl.sldn ?? sl.sldel); if (sl.sldel !== undefined) s.splice(n, 1); else { const m = sl.slup !== undefined ? n - 1 : n + 1; if (m >= 0 && m < s.length) { const x = s[n]; s[n] = s[m]; s[m] = x; } } main.innerHTML = appearanceHtml(); return; }
@@ -8609,6 +8643,7 @@ ${invoiceFootHtml('')}`;
     root.addEventListener('change', async e => {
       const t = e.target;
       if (t.id === 'saImport') { const f = t.files[0]; t.value = ''; if (f) importFile(f); return; }
+      if (t.id === 'saCF') { st.cartFilter = t.value; main.innerHTML = tabHtml(); return; }
       if (t.id === 'saF') { st.filter = t.value; $('saList').innerHTML = listHtml(); return; }
       if (t.id === 'saSite') { st.site = +t.value; st.feed = null; render(); return; }
       if (t.id === 'saFile') { uploadImages(t.files); t.value = ''; return; }
