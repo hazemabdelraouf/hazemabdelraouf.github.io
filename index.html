@@ -1208,6 +1208,7 @@
     </div>
     <div class="edit-field-group"><label>Pieces</label><input type="text" data-field="pieces"></div>
     <div class="edit-field-group"><label>Weight</label><input type="text" data-field="weight"></div>
+    <div class="edit-field-group"><label>Shipping cost (EGP)</label><input type="number" id="editShipInput" min="0" step="any" inputmode="decimal" placeholder="0"><div class="no-status">COD = Total + Shipping cost. Each item's sale price can be changed in the Items list above.</div></div>
     <div class="edit-field-group"><label>Total</label><input type="text" data-field="total"></div>
     <div class="edit-field-group"><label>COD</label><input type="text" data-field="COD"></div>
     <div class="edit-field-group"><label>Note</label><textarea data-field="note"></textarea></div>
@@ -1396,8 +1397,9 @@
     <div class="modal-sub">For a supplier or customer — not Bedir, Hazem, or UVA.</div>
 
     <div class="edit-field-group">
-      <label>Party name (supplier/customer)</label>
-      <input type="text" id="debtParty" placeholder="e.g. Shipping supplier">
+      <label>Party (supplier/customer)</label>
+      <select id="debtPartySelect"><option value="">Choose party…</option></select>
+      <input type="text" id="debtParty" placeholder="New party name" style="display:none;margin-top:8px;">
     </div>
     <div class="edit-field-group">
       <label>Direction</label>
@@ -1609,9 +1611,13 @@
 
 <!-- ============ PAY HAQ ALLAH MODAL ============ -->
 <div class="modal-overlay" id="zakatPayModal">
-  <div class="modal-card">
+  <div class="modal-card edit-card">
     <div class="modal-title">Pay Haq Allah</div>
     <div class="modal-sub" id="zakatPayModalSub"></div>
+    <div class="edit-field-group">
+      <label>Amount to pay (EGP)</label>
+      <input type="number" id="zakatPayAmount" min="0" step="0.01" inputmode="decimal">
+    </div>
     <div class="modal-options">
       <button class="modal-opt-btn" data-zakat-payer="Bedir">Bedir</button>
       <button class="modal-opt-btn" data-zakat-payer="Hazem">Hazem</button>
@@ -1651,12 +1657,14 @@
     <div class="edit-field-group" id="settleFeeGroup" style="display:none;">
       <label>Fee amount</label>
       <input type="number" id="settleFee" min="0" step="0.01" placeholder="e.g. 10">
+      <div class="modal-sub" id="settleFeeNote" style="margin-top:4px;display:none;"></div>
     </div>
     <div class="edit-field-group">
       <label>Date &amp; time</label>
       <input type="datetime-local" id="settleDate">
     </div>
 
+    <div class="modal-sub" id="settlePreview" style="font-weight:700;margin:4px 0 8px;"></div>
     <div class="modal-field-error" id="settleDebtError"></div>
     <div class="modal-options" style="margin-top:6px;">
       <button class="modal-opt-btn" id="confirmSettleDebtBtn">Confirm settled</button>
@@ -2782,7 +2790,8 @@ try{
     } else {
       list.innerHTML = editItemsList.map((it, i) => `
         <div class="items-editor-row">
-          ${it.manual ? '' : pThumb(it.sku, it.name)}<span class="ie-name">${escapeHtml(it.name)}${it.manual ? '<span class="ie-tag-custom">custom</span>' : ''}${it.custom ? '' : `<span class="ie-sub">${+Number(it.salePrice).toFixed(2)} EGP · ${+Number(it.weight).toFixed(3)} kg each${it.estimated ? ' (est.)' : ''}</span>`}</span>
+          ${it.manual ? '' : pThumb(it.sku, it.name)}<span class="ie-name">${escapeHtml(it.name)}${it.manual ? '<span class="ie-tag-custom">custom</span>' : ''}${it.custom ? '' : `<span class="ie-sub">${+Number(it.weight).toFixed(3)} kg each${it.estimated ? ' (est.)' : ''}</span>`}</span>
+          ${it.custom ? '' : `<span class="ie-price-wrap"><input type="number" class="ie-price" min="0" step="any" inputmode="decimal" value="${+Number(it.salePrice).toFixed(2)}" data-idx="${i}"><small>EGP each</small></span>`}
           <input type="number" class="ie-qty" min="1" value="${it.qty}" data-idx="${i}">
           <button type="button" class="ie-remove" data-idx="${i}" title="Remove">×</button>
         </div>
@@ -2792,6 +2801,13 @@ try{
           const idx = parseInt(inp.dataset.idx, 10);
           const qty = Math.max(1, parseInt(inp.value, 10) || 1);
           editItemsList[idx].qty = qty;
+          recomputeItemsTotals();
+        });
+      });
+      list.querySelectorAll('.ie-price').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const idx = parseInt(inp.dataset.idx, 10);
+          editItemsList[idx].salePrice = Math.max(0, parseFloat(inp.value) || 0);
           recomputeItemsTotals();
         });
       });
@@ -3000,7 +3016,9 @@ try{
     // source of truth for the fee.
     const shipKey = resolveShippingAmountKey(order);
     const shipVal = shipKey ? parseFloat(order[shipKey]) : NaN;
+    editItemsList.forEach(it => { it.origPrice = it.salePrice; });
     editCodBase = !isNaN(shipVal) ? shipVal : 0;
+    $('editShipInput').value = !isNaN(shipVal) ? String(shipVal) : '';
     renderItemsEditor();
   }
 
@@ -3150,6 +3168,11 @@ try{
     renderItemsEditor();
   });
 
+  // Shipping cost is editable like on a new order: COD always = Total + Shipping.
+  $('editShipInput').addEventListener('input', () => {
+    editCodBase = Math.max(0, parseFloat($('editShipInput').value) || 0);
+    recomputeItemsTotals();
+  });
   function hideEditOrderModal(){
     $('editOrderModal').classList.remove('active');
     $('ieCustomBox').classList.remove('show');
@@ -3347,6 +3370,8 @@ try{
       try{ await fetch(url, { method:'POST', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify(payload), mode:'no-cors' }); }
       catch(e2){ new Image().src = url; }
       fetchOrders(); fetchProducts(true);
+      updateProductSalePrices(noItems.filter(it => !it.manual && it.sku).map(it => ({ sku: it.sku, price: it.salePrice, cur: (findProductBySku(it.sku) || {}).salePrice }))
+        .filter(x => x.cur !== undefined && Math.abs(Number(x.cur) - x.price) > 0.004 && x.price > 0));
     }catch(e){
       console.error('create order failed:', e);
       err.textContent = 'Network/API error — nothing was created. Please try again.';
@@ -3371,6 +3396,12 @@ try{
       if(el) payload[key] = el.value;
     });
     payload['event'] = 'update order';
+    {
+      const shipK = resolveShippingAmountKey(order) || 'Shipping cost';
+      const shipV = $('editShipInput').value.trim();
+      if(shipV !== '') payload[shipK] = Math.max(0, parseFloat(shipV) || 0);
+      else if(Object.prototype.hasOwnProperty.call(order, shipK) && String(order[shipK]).trim() !== '') payload[shipK] = 0;
+    }
     // The editor keeps items one-per-line (for the on-screen list/textarea),
     // but the webhook/sheet expects them comma-separated on a single line —
     // convert just for the outgoing payload, without touching the editor's
@@ -3399,6 +3430,14 @@ try{
     // writes the new ones directly, so the sheet itself stays the single
     // source of truth for per-item detail.
     await syncOrderItemsSheet(serial, payload);
+    // Only prices changed in THIS edit (or on newly added products) become the
+    // product's new sale price — re-saving an old order never touches it.
+    const priceUpdates = editItemsList.filter(it => !it.manual && it.sku && !it.textOnly && (Number(it.salePrice) || 0) > 0).map(it => {
+      const cur = Number((findProductBySku(it.sku) || {}).salePrice);
+      const base = it.origPrice !== undefined ? Number(it.origPrice) : cur;
+      return { sku: it.sku, price: Number(it.salePrice), base, cur };
+    }).filter(x => !isNaN(x.cur) && Math.abs(x.price - x.base) > 0.004 && Math.abs(x.price - x.cur) > 0.004);
+    await updateProductSalePrices(priceUpdates);
     await sendMakeWebhook(btn, payload, 'Order updated', EDIT_WEBHOOK_URL);
     } finally { busyEnd(editBusyTok); }
   });
@@ -3442,6 +3481,22 @@ try{
     await sendUpdateOrderItems({ action: 'updateOrderItems', orderSerial: serial, items: [] });
   }
 
+  // Last actual sale price -> products.sale_price (matched by SKU). Used by New
+  // order and Edit order; only called for prices that really changed.
+  async function updateProductSalePrices(list){
+    if(!list.length || !window.sb) return;
+    const failed = [];
+    for(const x of list){
+      try{
+        const r = await window.sb.from('products').update({ sale_price: x.price }).eq('sku', x.sku).select('sku');
+        if(r.error) throw r.error;
+        if(!r.data || !r.data.length) throw new Error('no product row updated (check permissions)');
+        const lp = findProductBySku(x.sku); if(lp) lp.salePrice = x.price;
+      }catch(e){ failed.push(x.sku + ': ' + (e && e.message || e)); }
+    }
+    if(failed.length) alert('The order was saved, but the product sale price could not be updated for:\n' + failed.join('\n'));
+    else fetchProducts(true);
+  }
   async function sendUpdateOrderItems(body){
     try{
       const res = await fetch(API_URL, { method:'POST', redirect:'follow', body: JSON.stringify(body) });
@@ -5382,6 +5437,7 @@ ${invoiceFootHtml('')}`;
       allSuppliers = Array.isArray(data.suppliers) ? data.suppliers : [];
       swrSave('suppliers', allSuppliers);
       piRenderSupplierOptions();
+      try{ dpRender(); }catch(e){}
     } catch(err){
       console.error('fetchSuppliers error:', err);
     } finally {
@@ -5903,16 +5959,53 @@ ${invoiceFootHtml('')}`;
     $('addExpenseModal').classList.add('active');
   }
 
-  // ---- Per-supplier totals: every open debt where the company owes a party,
-  // grouped by supplier name (case-insensitive), oldest invoice first. ----
-  function getSupplierGroups(){
+  // ---- Debt parties: one unique entry per name (case / spaces / Arabic spelling
+  // ignored). The Add-debt form picks from this list, like the supplier menu. ----
+  const DP_NEW = '__new__';
+  function dpClean(s){ return String(s || '').replace(/\s+/g, ' ').trim(); }
+  function dpNorm(s){ return normSearch(dpClean(s)); }
+  function dpKnownParties(){
+    const map = new Map();
+    const add = n => { const name = dpClean(n); const k = dpNorm(name); if(k && !map.has(k)) map.set(k, name); };
+    allDebts.forEach(d => add(d['Party']));
+    allSuppliers.forEach(add);
+    return Array.from(map.values()).sort((a,b)=> a.localeCompare(b));
+  }
+  // selected === undefined keeps whatever is currently picked
+  function dpRender(selected){
+    const sel = $('debtPartySelect'), inp = $('debtParty');
+    const names = dpKnownParties();
+    const want = selected === undefined ? sel.value : selected;
+    let pick = '';
+    if(want === DP_NEW){ pick = DP_NEW; }
+    else if(want){
+      const hit = names.find(n => dpNorm(n) === dpNorm(want));
+      if(hit){ pick = hit; } else { pick = dpClean(want); names.push(pick); }
+    }
+    sel.innerHTML = '<option value="">Choose party…</option>'
+      + names.map(n => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join('')
+      + `<option value="${DP_NEW}">+ New party…</option>`;
+    sel.value = pick;
+    if(pick === DP_NEW){ inp.style.display = ''; }
+    else { inp.style.display = 'none'; inp.value = pick; }
+  }
+  $('debtPartySelect').addEventListener('change', ()=>{
+    const sel = $('debtPartySelect'), inp = $('debtParty');
+    if(sel.value === DP_NEW){ inp.style.display = ''; inp.value = ''; inp.focus(); }
+    else { inp.style.display = 'none'; inp.value = sel.value; }
+  });
+
+  // ---- Per-party totals: every open debt grouped by party, oldest invoice
+  // first. dir 'out' = the company owes them, 'in' = they owe the company. ----
+  function getPartyGroups(dir){
     const map = new Map();
     allDebts.forEach(d=>{
       const amt = Number(d['Amount']) || 0;
-      if(String(d['Status'] || '').trim() === 'Settled' || amt >= 0) return;
-      const name = String(d['Party'] || '').trim();
+      if(String(d['Status'] || '').trim() === 'Settled' || amt === 0) return;
+      if(dir === 'out' ? amt > 0 : amt < 0) return;
+      const name = dpClean(d['Party']);
       if(!name) return;
-      const key = name.toLowerCase();
+      const key = dpNorm(name);
       if(!map.has(key)) map.set(key, { name, debts: [], total: 0 });
       const g = map.get(key);
       g.debts.push(d);
@@ -5927,25 +6020,33 @@ ${invoiceFootHtml('')}`;
     });
     return Array.from(map.values()).sort((a,b)=> b.total - a.total);
   }
+  function partyPayCtx(g, dir){
+    return { dir, party: g.name, debts: g.debts, total: g.total, amount: dir === 'out' ? -g.total : g.total };
+  }
   function renderSupplierSummary(){
     const box = $('supplierDebtsSummary');
-    const groups = getSupplierGroups();
-    if(!groups.length){ box.innerHTML = ''; return; }
-    box.innerHTML = '<div class="sup-head">Owed to suppliers</div>' + groups.map((g,i)=>`
+    const outG = (!debtFilter || debtFilter === 'weOwe') ? getPartyGroups('out') : [];
+    const inG = (!debtFilter || debtFilter === 'owedToUs') ? getPartyGroups('in') : [];
+    if(!outG.length && !inG.length){ box.innerHTML = ''; return; }
+    const card = (g, i, dir) => `
       <div class="sup-card">
         <div class="sup-card-top">
           <div>
             <div class="sup-name">${escapeHtml(g.name)}</div>
-            <div class="sup-meta">${g.debts.length} open invoice${g.debts.length>1?'s':''}</div>
+            <div class="sup-meta">${g.debts.length} open ${dir === 'out' ? 'invoice' : 'debt'}${g.debts.length>1?'s':''}</div>
           </div>
-          <div class="sup-owed">${fmtEGP(g.total)}</div>
+          <div class="sup-owed"${dir === 'in' ? ' style="color:var(--sage);"' : ''}>${fmtEGP(g.total)}</div>
         </div>
-        <button class="debt-settle-btn" data-pay-supplier="${i}">Pay supplier</button>
-      </div>`).join('');
-    box.querySelectorAll('[data-pay-supplier]').forEach(btn=>{
+        <button class="debt-settle-btn" data-pay-party="${i}" data-dir="${dir}">${dir === 'out' ? 'Pay supplier' : 'Receive payment'}</button>
+      </div>`;
+    box.innerHTML =
+      (outG.length ? '<div class="sup-head">Owed to suppliers</div>' + outG.map((g,i)=>card(g,i,'out')).join('') : '') +
+      (inG.length ? '<div class="sup-head">Owed by customers / parties</div>' + inG.map((g,i)=>card(g,i,'in')).join('') : '');
+    box.querySelectorAll('[data-pay-party]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
-        const g = groups[Number(btn.getAttribute('data-pay-supplier'))];
-        openSettleDebtModal({ supplier: true, party: g.name, debts: g.debts, total: g.total, amount: -g.total });
+        const dir = btn.getAttribute('data-dir');
+        const g = (dir === 'out' ? outG : inG)[Number(btn.getAttribute('data-pay-party'))];
+        if(g) openSettleDebtModal(partyPayCtx(g, dir));
       });
     });
   }
@@ -5970,8 +6071,8 @@ ${invoiceFootHtml('')}`;
     } else {
       bar.innerHTML = '';
     }
-    // The per-supplier "Pay supplier" cards only make sense for what we owe.
-    if(!debtFilter || debtFilter === 'weOwe') renderSupplierSummary(); else $('supplierDebtsSummary').innerHTML = '';
+    // Per-party cards (pay supplier / receive payment) follow the active filter.
+    renderSupplierSummary();
     if(!rows.length){
       list.innerHTML = '';
       $('debtsEmpty').textContent = debtFilter ? 'No open debts in this category.' : 'No external debts recorded.';
@@ -6013,11 +6114,15 @@ ${invoiceFootHtml('')}`;
 
     document.querySelectorAll('[data-settle-row]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
-        openSettleDebtModal({
-          row: btn.getAttribute('data-settle-row'),
-          amount: parseFloat(btn.getAttribute('data-settle-amount')) || 0,
-          party: btn.getAttribute('data-settle-party') || ''
-        });
+        // Payments always go to the party's oldest open debt first, so a row's
+        // button opens the same oldest-first payment as the party card.
+        const amt = parseFloat(btn.getAttribute('data-settle-amount')) || 0;
+        const dir = amt < 0 ? 'out' : 'in';
+        const party = btn.getAttribute('data-settle-party') || '';
+        const g = getPartyGroups(dir).find(x => dpNorm(x.name) === dpNorm(party));
+        if(g){ openSettleDebtModal(partyPayCtx(g, dir)); return; }
+        const d = allDebts.find(x => String(x._row) === String(btn.getAttribute('data-settle-row')));
+        if(d) openSettleDebtModal({ dir, party, debts: [d], total: Math.abs(amt), amount: amt });
       });
     });
     document.querySelectorAll('[data-edit-debt-row]').forEach(btn=>{
@@ -6295,6 +6400,9 @@ ${invoiceFootHtml('')}`;
     currentEditDebtRow = null;
     $('debtParty').value = '';
     $('debtParty').disabled = false;
+    $('debtPartySelect').disabled = false;
+    dpRender('');
+    if(!allSuppliers.length) fetchSuppliers();
     $('debtDirection').value = 'positive';
     $('debtDirection').disabled = false;
     $('debtAmount').value = '';
@@ -6320,7 +6428,7 @@ ${invoiceFootHtml('')}`;
     currentEditDebtRow = row;
 
     const amt = Number(item['Amount']) || 0;
-    $('debtParty').value = item['Party'] || '';
+    dpRender(item['Party'] || '');
     $('debtDirection').value = amt >= 0 ? 'positive' : 'negative';
     $('debtAmount').value = Math.abs(amt) || '';
     $('debtDescription').value = item['Description'] || '';
@@ -6334,6 +6442,7 @@ ${invoiceFootHtml('')}`;
     const isSettled = String(item['Status'] || '').trim() === 'Settled';
     const isLinked = !!purchaseLinkId || isSettled;
     $('debtParty').disabled = isLinked;
+    $('debtPartySelect').disabled = isLinked;
     $('debtDirection').disabled = isLinked;
     $('debtAmount').disabled = isLinked;
     const note = $('debtLinkedNote');
@@ -6547,13 +6656,22 @@ ${invoiceFootHtml('')}`;
   $('confirmAddDebtBtn').addEventListener('click', async ()=>{
     const isEdit = currentEditDebtRow !== null;
     const editingLinked = isEdit && $('debtAmount').disabled;
-    const party = $('debtParty').value.trim();
+    const party = dpClean($('debtParty').value);
     const amount = parseFloat($('debtAmount').value);
 
     if(!editingLinked){
       if(!party){
-        $('debtError').textContent = 'Enter the party name.';
+        $('debtError').textContent = $('debtPartySelect').value === DP_NEW ? 'Enter the new party name.' : 'Choose a party from the list, or add a new one.';
         return;
+      }
+      if($('debtPartySelect').value === DP_NEW){
+        // every party is unique: a name that already exists (ignoring case,
+        // spaces and Arabic spelling variants) must be picked from the list
+        const clash = dpKnownParties().find(n => dpNorm(n) === dpNorm(party));
+        if(clash){
+          $('debtError').textContent = '"' + clash + '" already exists — choose it from the list instead.';
+          return;
+        }
       }
       if(!amount || amount <= 0){
         $('debtError').textContent = 'Enter a valid amount greater than zero.';
@@ -7235,8 +7353,10 @@ ${invoiceFootHtml('')}`;
     const missingCost = {}; // name -> qty
     const productLines = {}; // key -> {name, qty, price, cost} (للمراجعة: بيتعرض في Profit details)
     const addLine = (key, name, qty, price, cost) => {
-      const l = productLines[key] || (productLines[key] = { name: name, qty: 0, price: price, cost: cost });
+      const l = productLines[key] || (productLines[key] = { name: name, qty: 0, sales: 0, price: price, cost: cost });
       l.qty += qty;
+      l.sales += price * qty;
+      l.price = l.qty ? l.sales / l.qty : price; // average ACTUAL sale price
     };
     const addMissing = (name, qty) => { const k = String(name || '(no name)').trim(); missingCost[k] = (missingCost[k] || 0) + (Number(qty) || 0); };
     let ordersCounted = 0, customOnlyIgnored = 0, customRowsIgnored = 0;
@@ -7259,7 +7379,9 @@ ${invoiceFootHtml('')}`;
           if(!qty) return;
           const marked = String(it.option || '').trim() === CUSTOM_ITEM_MARK;
           const product = resolveReal(it.item, it.sku, marked);
-          if(product) real.push({ product, qty });
+          // سعر البيع الفعلي = سعر الصنف المحفوظ في صف الأوردر (Items)؛ لو مفيش بيرجع لسعر شيت products
+          const rowPrice = Number(it.salePrice);
+          if(product) real.push({ product, qty, price: (!isNaN(rowPrice) && rowPrice > 0) ? rowPrice : (Number(product.salePrice) || 0) });
           else { customRowsIgnored++; addMissing(it.item, qty); }
         });
       } else {
@@ -7275,9 +7397,9 @@ ${invoiceFootHtml('')}`;
       }
       if(!real.length){ customOnlyIgnored++; return; }
       ordersCounted++;
-      // البروفيت لكل صنف = (Sale Price - Cost) × الكمية، الاتنين من شيت products.
-      real.forEach(({product, qty})=>{
-        const price = Number(product.salePrice) || 0;
+      // البروفيت لكل صنف = (سعر البيع الفعلي في الأوردر - Cost من شيت products) × الكمية.
+      real.forEach(({product, qty, price: rowSale})=>{
+        const price = rowSale !== undefined ? rowSale : (Number(product.salePrice) || 0);
         const cost = Number(product.cost) || 0;
         periodSales += price * qty;
         periodCOGS += cost * qty;
@@ -7440,7 +7562,10 @@ ${invoiceFootHtml('')}`;
 
   function openZakatPayModal(){
     if(summaryZakatAmount <= 0) return;
-    $('zakatPayModalSub').textContent = 'Amount: ' + fmtEGP(summaryZakatAmount) + ' — who paid it from their own pocket?';
+    const due = Math.round(summaryZakatAmount * 100) / 100;
+    $('zakatPayAmount').value = due;
+    $('zakatPayAmount').min = due;
+    $('zakatPayModalSub').textContent = 'Due: ' + fmtEGP(due) + ' (1% of net profit). You can raise the amount if you want to give more. Who paid it from their own pocket?';
     $('zakatPayError').textContent = '';
     $('zakatPayModal').classList.add('active');
   }
@@ -7451,8 +7576,14 @@ ${invoiceFootHtml('')}`;
   document.querySelectorAll('#zakatPayModal [data-zakat-payer]').forEach(optBtn=>{
     optBtn.addEventListener('click', async ()=>{
       const person = optBtn.getAttribute('data-zakat-payer');
-      const amount = Math.round(summaryZakatAmount * 100) / 100;
-      if(amount <= 0) return;
+      const due = Math.round(summaryZakatAmount * 100) / 100;
+      const amount = Math.round((parseFloat($('zakatPayAmount').value) || 0) * 100) / 100;
+      if(due <= 0) return;
+      if(amount < due - 0.004){
+        $('zakatPayError').textContent = 'The amount can\'t be lower than the Haq Allah due (' + fmtEGP(due) + ').';
+        return;
+      }
+      const extra = Math.round((amount - due) * 100) / 100;
       const btns = document.querySelectorAll('#zakatPayModal .modal-opt-btn');
       btns.forEach(b => b.disabled = true);
       $('zakatPayError').textContent = '';
@@ -7464,7 +7595,7 @@ ${invoiceFootHtml('')}`;
           amount: String(amount),
           commission: '0',
           category: ZAKAT_CATEGORY,
-          description: 'Haq Allah payment (1% of net profit)',
+          description: 'Haq Allah payment (1% of net profit)' + (extra > 0 ? ' + ' + extra + ' EGP extra' : ''),
           date: new Date().toISOString()
         };
         const sep = API_URL.includes('?') ? '&' : '?';
@@ -7556,18 +7687,18 @@ ${invoiceFootHtml('')}`;
   // account the money moved through, how much is being paid (full or
   // partial), and whether a fee applied, then log the matching Expense
   // entry (category "Debt settlement") alongside it. ----
-  let settlePending = null; // { row, amount, party }
+  let settlePending = null; // { dir:'out'|'in', party, debts:[oldest first], total, amount }
 
   function openSettleDebtModal(info){
+    const incoming = info.dir ? info.dir === 'in' : info.amount > 0;
+    info.dir = incoming ? 'in' : 'out';
     settlePending = info;
-    const payingOut = info.amount < 0;
     const remaining = Math.abs(info.amount);
-    $('settleDebtSub').textContent = info.supplier
-      ? `Paying ${info.party} — ${info.debts.length} open invoice${info.debts.length>1?'s':''}, total ${fmtEGP(remaining)}. The payment closes the oldest invoices first and the rest stays on the next one.`
-      : payingOut
-      ? `Paying ${fmtEGP(remaining)} to ${info.party || 'the supplier'} — which account paid it?`
-      : `Receiving ${fmtEGP(remaining)} from ${info.party || 'the party'} — which account received it?`;
-    $('settleAccountLabel').textContent = payingOut ? 'Paid from' : 'Received into';
+    const n = info.debts.length;
+    $('settleDebtSub').textContent = incoming
+      ? `Receiving from ${info.party || 'the party'} — ${n} open debt${n>1?'s':''}, total ${fmtEGP(remaining)}. The payment goes to the oldest debt first, then the next ones.`
+      : `Paying ${info.party || 'the supplier'} — ${n} open invoice${n>1?'s':''}, total ${fmtEGP(remaining)}. The payment closes the oldest invoices first and the rest stays on the next one.`;
+    $('settleAccountLabel').textContent = incoming ? 'Received into' : 'Paid from';
     $('settleAmount').value = remaining;
     $('settleAmount').max = remaining;
     $('settleAmountNote').textContent = `Remaining balance: ${fmtEGP(remaining)}. Leave as-is to settle completely, or lower it for a partial payment.`;
@@ -7575,29 +7706,72 @@ ${invoiceFootHtml('')}`;
     $('settleHasFee').checked = false;
     $('settleFeeGroup').style.display = 'none';
     $('settleFee').value = '';
+    $('settleFeeNote').textContent = incoming ? 'The fee is also deducted from what they still owe — e.g. receive 1000 with a 10 fee on a 2000 debt → 990 left.' : '';
+    $('settleFeeNote').style.display = incoming ? '' : 'none';
     $('settleDate').value = nowLocalDateTime();
     $('settleDebtError').textContent = '';
+    settleUpdatePreview();
     $('settleDebtModal').classList.add('active');
+  }
+  function settleUpdatePreview(){
+    if(!settlePending) return;
+    const total = Math.abs(settlePending.amount);
+    const pay = Math.min(total, parseFloat($('settleAmount').value) || 0);
+    const fee = $('settleHasFee').checked ? (parseFloat($('settleFee').value) || 0) : 0;
+    let left = total - pay;
+    if(settlePending.dir === 'in' && left > 0.004) left = Math.max(0, left - fee);
+    left = Math.round(left * 100) / 100;
+    $('settlePreview').textContent = left > 0 ? `Remaining after this payment: ${fmtEGP(left)}` : 'Everything will be settled.';
   }
   $('settleHasFee').addEventListener('change', ()=>{
     $('settleFeeGroup').style.display = $('settleHasFee').checked ? '' : 'none';
     if(!$('settleHasFee').checked) $('settleFee').value = '';
+    settleUpdatePreview();
   });
+  $('settleAmount').addEventListener('input', settleUpdatePreview);
+  $('settleFee').addEventListener('input', settleUpdatePreview);
   $('closeSettleDebtModalBtn').addEventListener('click', ()=> $('settleDebtModal').classList.remove('active'));
   $('settleDebtModal').addEventListener('click', (e)=>{ if(e.target === $('settleDebtModal')) $('settleDebtModal').classList.remove('active'); });
 
-  // Applies one payment across a supplier's open invoices, oldest first:
-  // each fully-covered invoice is closed, the last one touched keeps the
-  // remainder. Uses the existing settleDebt action once per invoice (fee
-  // only on the first). One summary webhook is sent at the end.
-  async function paySupplierFifo(payAmount){
+  // Applies one payment across a party's open debts, oldest first: each fully
+  // covered debt is closed, the last one touched keeps the remainder. Uses the
+  // existing settleDebt action once per debt (the fee is logged once, on the
+  // first call). When MONEY COMES IN and a fee is given, the fee is also taken
+  // off what they still owe (oldest debt that can absorb it), via editDebt.
+  async function payPartyFifo(payAmount){
     const ctx = settlePending;
+    const incoming = ctx.dir === 'in';
     const r2 = n => Math.round(n * 100) / 100;
     const account = $('settleAccount').value;
     const rawDateTime = $('settleDate').value;
     const dateIso = rawDateTime ? new Date(rawDateTime).toISOString() : new Date().toISOString();
     const fee = $('settleHasFee').checked ? (parseFloat($('settleFee').value) || 0) : 0;
     const sep = API_URL.includes('?') ? '&' : '?';
+    const callApi = async (paramsObj) => {
+      const res = await fetch(API_URL + sep + new URLSearchParams(paramsObj).toString(), { method:'GET', redirect:'follow' });
+      return res.json();
+    };
+
+    // Plan the fee deduction BEFORE any write, so a bad combination never
+    // leaves a half-applied payment.
+    let feeTarget = null;
+    if(incoming && fee > 0){
+      let leftPlan = r2(payAmount);
+      const after = ctx.debts.map(d => {
+        const rem = r2(Math.abs(Number(d['Amount']) || 0));
+        const portion = r2(Math.min(rem, leftPlan));
+        leftPlan = r2(leftPlan - portion);
+        return { d, after: r2(rem - portion) };
+      });
+      if(after.some(x => x.after > 0.004)){
+        feeTarget = after.find(x => x.after > fee + 0.004) || null;
+        if(!feeTarget){
+          $('settleDebtError').textContent = `The fee (${fmtEGP(fee)}) is not smaller than what would be left on any debt. Receive the full amount to close it, or lower the fee.`;
+          return;
+        }
+      }
+    }
+
     let left = r2(payAmount), paid = 0, feeSent = false, failed = '';
     const breakdown = [];
     for(const d of ctx.debts){
@@ -7605,17 +7779,16 @@ ${invoiceFootHtml('')}`;
       const rem = r2(Math.abs(Number(d['Amount']) || 0));
       const portion = r2(Math.min(rem, left));
       const closes = portion >= rem - 0.004;
+      let data = null;
       try{
-        const params = new URLSearchParams({
+        data = await callApi({
           action: 'settleDebt', row: String(d._row), account,
           amount: String(closes ? rem : portion),
           fee: String(feeSent ? 0 : fee), date: dateIso
         });
-        const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
-        const data = await res.json();
         if(data && data.error){ failed = data.error; break; }
       } catch(err){
-        console.error('paySupplier error:', err);
+        console.error('payParty error:', err);
         failed = 'Network error';
         break;
       }
@@ -7623,8 +7796,11 @@ ${invoiceFootHtml('')}`;
       paid = r2(paid + portion);
       left = r2(left - portion);
       breakdown.push({ row: d._row, invoice_date: d['Date'], paid: portion, closed: closes, remaining_after: closes ? 0 : r2(rem - portion) });
+      if(incoming){
+        sendExpensesWebhook(data && data.partial ? 'debt_partially_settled' : 'debt_settled', Object.assign({ row: d._row, party: ctx.party }, data));
+      }
     }
-    if(paid > 0){
+    if(paid > 0 && !incoming){
       sendExpensesWebhook('supplier_payment', {
         supplier: ctx.party,
         paid_amount: paid,
@@ -7636,20 +7812,47 @@ ${invoiceFootHtml('')}`;
         breakdown
       });
     }
-    if(failed){
-      $('settleDebtError').textContent = (paid > 0 ? `Paid ${fmtEGP(paid)} before an error: ` : 'Sheet error: ') + failed;
-    } else {
-      $('settleDebtModal').classList.remove('active');
-      settlePending = null;
+
+    // Fee taken off the remaining debt (incoming payments only).
+    let feeNote = '';
+    if(!failed && feeTarget){
+      try{
+        await fetchDebts();
+        const fresh = allDebts.find(x => String(x._row) === String(feeTarget.d._row));
+        const cur = fresh ? Math.abs(Number(fresh['Amount']) || 0) : NaN;
+        if(!fresh || isNaN(cur) || Math.abs(cur - feeTarget.after) > 0.02){
+          feeNote = 'the payment was saved, but the fee could not be deducted automatically (the debt balance was not what was expected). Please lower that debt by ' + fmtEGP(fee) + ' with Edit.';
+        } else {
+          const dd = new Date(fresh['Date']);
+          const editParams = {
+            action: 'editDebt', row: String(fresh._row), party: fresh['Party'] || ctx.party, direction: 'positive',
+            amount: String(r2(cur - fee)), description: fresh['Description'] || '',
+            date: isNaN(dd.getTime()) ? String(fresh['Date'] || '') : dd.toISOString()
+          };
+          const ed = await callApi(editParams);
+          if(ed && ed.error) feeNote = 'the payment was saved, but deducting the fee failed: ' + ed.error;
+          else sendExpensesWebhook('debt_edited', Object.assign({ fee_deducted: fee }, editParams));
+        }
+      } catch(err){
+        console.error('fee deduction error:', err);
+        feeNote = 'the payment was saved, but deducting the fee failed (network error). Please lower that debt by ' + fmtEGP(fee) + ' with Edit.';
+      }
     }
+
+    $('settleDebtModal').classList.remove('active');
+    settlePending = null;
     await Promise.all([fetchDebts(), fetchExpenses()]);
+    // The modal always closes (even on an error) so the same payment can't be
+    // sent twice from stale balances; the message says what was and wasn't applied.
+    if(failed) alert((paid > 0 ? `Paid ${fmtEGP(paid)} before an error: ` : 'Error: ') + failed + (paid > 0 ? '\nThe rest was NOT applied — check the debts list and pay the remainder again.' : ''));
+    else if(feeNote) alert('Done — ' + feeNote);
   }
 
   $('confirmSettleDebtBtn').addEventListener('click', async ()=>{
     if(!settlePending) return;
     $('settleDebtError').textContent = '';
     if(!$('settleAccount').value){
-      $('settleDebtError').textContent = settlePending.amount < 0 ? 'Choose which account paid.' : 'Choose which account received the money.';
+      $('settleDebtError').textContent = settlePending.dir === 'out' ? 'Choose which account paid.' : 'Choose which account received the money.';
       return;
     }
     const remaining = Math.abs(settlePending.amount);
@@ -7663,35 +7866,8 @@ ${invoiceFootHtml('')}`;
     const btn = $('confirmSettleDebtBtn');
     btn.disabled = true;
     btn.textContent = 'Saving...';
-    if(settlePending.supplier){
-      await paySupplierFifo(payAmount);
-      btn.disabled = false;
-      btn.textContent = 'Confirm settled';
-      return;
-    }
     try{
-      const rawDateTime = $('settleDate').value;
-      const dateIso = rawDateTime ? new Date(rawDateTime).toISOString() : new Date().toISOString();
-      const fee = $('settleHasFee').checked ? (parseFloat($('settleFee').value) || 0) : 0;
-      const params = new URLSearchParams({
-        action: 'settleDebt',
-        row: settlePending.row,
-        account: $('settleAccount').value,
-        amount: String(payAmount),
-        fee: String(fee),
-        date: dateIso
-      });
-      const sep = API_URL.includes('?') ? '&' : '?';
-      const res = await fetch(API_URL + sep + params.toString(), { method:'GET', redirect:'follow' });
-      const data = await res.json();
-      if(data && data.error){
-        $('settleDebtError').textContent = 'Sheet error: ' + data.error;
-        return;
-      }
-      sendExpensesWebhook(data && data.partial ? 'debt_partially_settled' : 'debt_settled', Object.assign({ row: settlePending.row, party: settlePending.party }, data));
-      $('settleDebtModal').classList.remove('active');
-      settlePending = null;
-      await Promise.all([fetchDebts(), fetchExpenses()]);
+      await payPartyFifo(payAmount);
     } catch(err){
       console.error('settleDebt error:', err);
       $('settleDebtError').textContent = 'Something went wrong, please try again.';
