@@ -352,6 +352,10 @@
   .no-sum .no-cod{grid-column:1 / -1;font-size:14px;color:var(--cream);}
   .order-time{color:var(--cream-dim);font-size:9.5px;opacity:.85;margin-inline-start:5px;font-weight:500;letter-spacing:.2px;}
   .order-name{font-size:14.5px;font-weight:700;margin-top:4px;color:var(--cream);}
+  .cust-link{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;}
+  .cust-link:active{opacity:.6;}
+  .cust-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px;padding:10px 12px;border:1px solid var(--line, rgba(128,128,128,.35));border-radius:12px;font-size:13px;font-weight:700;}
+  .cust-bar button{background:none;border:1px solid currentColor;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:700;color:inherit;cursor:pointer;}
   .customer-delivered-count{
     font-size:10.5px;font-weight:700;color:var(--sage);
     background:rgba(122,158,122,0.14);
@@ -976,7 +980,7 @@
 
   <div class="filters">
     <div class="search-row">
-      <input type="search" id="searchInput" placeholder="Search by order ID, name, or phone">
+      <input type="search" id="searchInput" placeholder="Search by order ID, name, phone, or tracking number">
     </div>
     <div class="filter-label">Shipping status</div>
     <div class="pill-row" id="shipPills"></div>
@@ -984,6 +988,7 @@
     <div class="pill-row" id="payPills"></div>
   </div>
 
+  <div id="custBar" class="cust-bar" style="display:none;"></div>
   <div id="list"></div>
   <div id="loadingSpinner" class="spinner" style="display:none;"></div>
   <button class="loadmore" id="loadMoreBtn" style="display:none;">Load more</button>
@@ -1945,6 +1950,7 @@ try{
   let activeShip = 'inProgress';
   let activePay = 'all';
   let searchTerm = '';
+  let customerFilter = null; // { name, phones:Set, serial } — set by tapping a customer name on a card
 
   let currentTargetBtn = null;
   let currentOrderSerial = '';
@@ -2198,6 +2204,7 @@ try{
       activeShip = 'all';
       activePay = 'all';
       searchTerm = '';
+      customerFilter = null; renderCustomerBar();
       if($('searchInput')) $('searchInput').value = '';
       buildPills();
       
@@ -4176,6 +4183,7 @@ try{
     clearTimeout(searchDebounceTimer);
     searchDebounceTimer = setTimeout(()=>{
       searchTerm = val;
+      if(val) customerFilter = null;
       applyFilters();
     }, 150);
   });
@@ -4205,25 +4213,69 @@ try{
     });
   }
 
+  // Same customer = shares a phone number (Phone / Phone2); with no usable phone, same name.
+  function orderPhoneKeys(o){
+    return [o.Phone, o.Phone2].map(normPhone).filter(n => n.length >= 7);
+  }
+  function orderIsOfCustomer(o){
+    if(!customerFilter) return true;
+    if(customerFilter.phones.size) return orderPhoneKeys(o).some(k => customerFilter.phones.has(k));
+    return String(o['Customer Name'] || '').trim().toLowerCase() === customerFilter.name.toLowerCase();
+  }
+  function renderCustomerBar(){
+    const bar = $('custBar');
+    if(!customerFilter && searchTerm){
+      bar.style.display = '';
+      bar.innerHTML = '<span>Searching all orders (' + filteredOrders.length + ')</span>';
+      return;
+    }
+    if(!customerFilter){ bar.style.display = 'none'; bar.innerHTML = ''; return; }
+    bar.style.display = '';
+    bar.innerHTML = '<span>Orders of ' + escapeHtml(customerFilter.name) + ' (' + filteredOrders.length + ')</span><button type="button" id="custBarClear">Show all</button>';
+    $('custBarClear').addEventListener('click', clearCustomerFilter);
+  }
+  function clearCustomerFilter(){
+    if(!customerFilter) return;
+    customerFilter = null;
+    applyFilters();
+  }
+  $('list').addEventListener('click', (e)=>{
+    const link = e.target.closest('.cust-link');
+    if(!link) return;
+    e.stopPropagation();
+    const o = allOrders.find(x => String(x['Order Serial']) === String(link.getAttribute('data-cust')));
+    if(!o) return;
+    customerFilter = { name: String(o['Customer Name'] || '').trim() || 'No name', phones: new Set(orderPhoneKeys(o)), serial: o['Order Serial'] };
+    // show ALL of the customer's orders: reset status filters and the search box
+    activeShip = 'all'; activePay = 'all'; searchTerm = '';
+    $('searchInput').value = '';
+    buildPills();
+    applyFilters();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
   function applyFilters(){
     rebuildReturnedPhones();
     filteredOrders = allOrders.filter(o=>{
-      // Cancelled orders are hidden from the app entirely, regardless of the active filter.
-      if(normStatus(o.shipping_status) === 'cancelled') return false;
+      // Cancelled orders are hidden from the app, except when searching (a search looks at everything).
+      if(!searchTerm && normStatus(o.shipping_status) === 'cancelled') return false;
+      // A search ignores the shipping/payment filters and looks through ALL orders.
+      if(searchTerm){
+        const hay = [pk(o), o['Order Serial'], o['Customer Name'], o['Phone'], o['Phone2'], o.tracking_number].join(' ').toLowerCase();
+        return hay.includes(searchTerm);
+      }
       if(activeShip === 'inProgress'){
         if(['delivered','cancelled','returned'].includes(normStatus(o.shipping_status))) return false;
       } else if(activeShip !== 'all' && normStatus(o.shipping_status) !== activeShip) return false;
       if(activePay !== 'all' && (o.payment_status||'') !== activePay) return false;
       // Returned orders never count as "Pending" payment, even if the sheet still says PENDING.
       if(activePay === 'PENDING' && normStatus(o.shipping_status) === 'returned') return false;
-      if(searchTerm){
-        const hay = [pk(o), o['Order Serial'], o['Customer Name'], o['Phone'], o['Phone2']].join(' ').toLowerCase();
-        if(!hay.includes(searchTerm)) return false;
-      }
+      if(customerFilter && !orderIsOfCustomer(o)) return false;
       return true;
     });
     shownCount = 0;
     $('list').innerHTML = '';
+    renderCustomerBar();
     renderMore();
   }
 
@@ -4642,7 +4694,7 @@ try{
       <div class="order-top">
         <div>
           <div class="order-id display">${escapeHtml(pkLabel(o))}</div>
-          <div class="order-name">${escapeHtml(o['Customer Name']||'No name')}${deliveredCountBadge(o)}${hasReturn ? ' <span class="returned-flag">↩️ Has returned order</span>' : ''}</div>
+          <div class="order-name"><span class="cust-link" data-cust="${escapeAttr(serial)}">${escapeHtml(o['Customer Name']||'No name')}</span>${deliveredCountBadge(o)}${hasReturn ? ' <span class="returned-flag">↩️ Has returned order</span>' : ''}</div>
           <div class="order-sub">
             <span>${escapeHtml(o.Phone||'')}</span>
             ${city? `<span>${escapeHtml(city)}</span>`:''}
