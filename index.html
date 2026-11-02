@@ -8397,7 +8397,7 @@ ${invoiceFootHtml('')}`;
     function collectionsHtml() {
       const q = norm(st.cq).trim();
       const rows = ordered().filter(([c]) => !q || norm([c.title, c.title_en, c.match_name].join(' ')).includes(q));
-      return '<div class="sa-bar"><input type="search" id="saCQ" placeholder="Search collections (Arabic or English)" value="' + E(st.cq) + '"><button class="sa-btn" data-act="export">Export to Excel</button><button class="sa-btn" data-act="import">Import from Excel</button><button class="sa-btn pri" data-act="newcol">+ New collection</button></div>' +
+      return '<div class="sa-bar"><input type="search" id="saCQ" placeholder="Search collections (Arabic or English)" value="' + E(st.cq) + '"><button class="sa-btn" data-act="exportcols">Export to Excel</button><button class="sa-btn" data-act="import">Import from Excel</button><button class="sa-btn pri" data-act="newcol">+ New collection</button></div>' +
         '<div class="sa-note" style="margin-bottom:10px">Top-level collections appear in the website menu; sub-collections appear under each parent they belong to. A parent page also shows the products of its sub-collections.</div><div id="saColList">' +
         (rows.length ? rows.map(([c, lvl]) => '<div class="sa-row' + (lvl ? ' sub' : '') + '" data-opencol="' + E(c.id) + '">' + (c.image ? '<img class="sa-th" src="' + E(c.image) + '" alt="">' : '<span class="sa-th"></span>') +
           '<div><div class="sa-t">' + E(colName(c, true)) + '</div><div class="sa-s">' + E(c.title_en || '') + ' · ' + membersOf(c.match_name).length + ' products</div></div><div style="text-align:right"><span class="sa-pill ' + (c.published ? 'ok' : 'off') + '">' + (c.published ? 'Visible' : 'Hidden') + '</span>' + (c.show_in_menu ? '<span class="sa-pill">Menu</span>' : '') + (c.show_on_home ? '<span class="sa-pill">Home</span>' : '') + '</div></div>').join('') : '<p class="sa-note">No collections</p>') + '</div>';
@@ -8554,16 +8554,19 @@ ${invoiceFootHtml('')}`;
       const ds = st.discounts.map(d => ({ Name: d.name, Code: d.code || '(automatic)', Type: d.kind, Value: d.value, 'Applies to': d.applies_to, 'Min subtotal': d.min_subtotal, 'Min qty': d.min_qty, SKUs: (d.skus || []).join(', '), Collections: (d.collections || []).join(', '), Starts: d.starts_at, Ends: d.ends_at, Active: d.active ? 'Yes' : 'No', Used: d.used_count }));
       return [['Products', pr], ['Collections', cl], ['Discounts', ds]];
     }
-    async function exportExcel() {
+    // kind: 'products' or 'collections' — each export button downloads only its own list.
+    async function exportExcel(kind) {
+      kind = kind === 'collections' ? 'collections' : 'products';
       const stamp = new Date().toISOString().slice(0, 10);
+      const chosen = sheets().filter(x => x[0].toLowerCase() === kind);
       try {
         const X = await loadXlsx(), wb = X.utils.book_new();
-        sheets().forEach(s => X.utils.book_append_sheet(wb, X.utils.json_to_sheet(s[1]), s[0]));
-        X.writeFile(wb, 'uva-store-' + stamp + '.xlsx'); toast('Excel file downloaded');
+        chosen.forEach(x => X.utils.book_append_sheet(wb, X.utils.json_to_sheet(x[1]), x[0]));
+        X.writeFile(wb, 'uva-' + kind + '-' + stamp + '.xlsx'); toast('Excel file downloaded');
       } catch (e) {                                   // no internet access to the Excel library: fall back to a CSV that Excel opens (Arabic safe)
-        const s = sheets()[0][1], cols = Object.keys(s[0] || {}), q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+        const s = chosen[0][1], cols = Object.keys(s[0] || {}), q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
         const csv = '\ufeff' + [cols.map(q).join(',')].concat(s.map(r => cols.map(c => q(r[c])).join(','))).join('\r\n');
-        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = 'uva-products-' + stamp + '.csv'; a.click(); toast('Downloaded as CSV (Excel opens it)');
+        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = 'uva-' + kind + '-' + stamp + '.csv'; a.click(); toast('Downloaded as CSV (Excel opens it)');
       }
     }
 
@@ -8884,7 +8887,8 @@ ${invoiceFootHtml('')}`;
         const r = await SB().rpc('store_admin_sync_stock'); if (r.error || (r.data && r.data.error)) { toast('Failed'); return; }
         await loadProducts(); render(); toast('Matched: ' + ((r.data || {}).changed || 0));
       }
-      else if (a === 'export') await exportExcel();
+      else if (a === 'export') await exportExcel('products');
+      else if (a === 'exportcols') await exportExcel('collections');
       else if (a === 'import') $('saImport').click();
       else if (a === 'applyimport') await applyImport();
       else if (a === 'addslide') { st.app.hero.slides.push({ image: '', mobile: '', title_ar: '', title_en: '', subtitle_ar: '', subtitle_en: '', cta_ar: 'تسوق الآن', cta_en: 'Shop now', href: '/{lang}/products/' }); main.innerHTML = appearanceHtml(); updateCounters(); }
