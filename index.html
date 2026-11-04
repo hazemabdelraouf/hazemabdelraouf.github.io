@@ -345,6 +345,9 @@
   .order-date{color:var(--cream-dim);font-size:11.5px;}
   #noError:not(:empty){display:block;}
   .no-status{font-size:12px;color:var(--cream-dim);margin:6px 2px 0;}
+  .op-row{display:flex;align-items:center;gap:8px;margin:8px 2px 0;font-size:13px;font-weight:700;color:var(--cream);cursor:pointer;user-select:none;}
+  .op-row input[type=checkbox]{width:17px;height:17px;margin:0;cursor:pointer;accent-color:var(--gold);flex:0 0 auto;}
+  .op-row small{font-weight:600;color:var(--cream-dim);font-size:12px;}
   .no-status.ok{color:var(--sage);}
   .no-low{color:var(--rust)!important;}
   .no-sum{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12.5px;color:var(--cream-dim);margin:4px 0 8px;padding:10px;border:1px solid var(--line);border-radius:10px;}
@@ -1213,7 +1216,7 @@
     </div>
     <div class="edit-field-group"><label>Pieces</label><input type="text" data-field="pieces"></div>
     <div class="edit-field-group"><label>Weight</label><input type="text" data-field="weight"></div>
-    <div class="edit-field-group"><label>Shipping cost (EGP)</label><input type="number" id="editShipInput" min="0" step="any" inputmode="decimal" placeholder="0"><div class="no-status">COD = Total + Shipping cost. Each item's sale price can be changed in the Items list above.</div></div>
+    <div class="edit-field-group"><label>Shipping cost (EGP)</label><input type="number" id="editShipInput" min="0" step="any" inputmode="decimal" placeholder="0"><label class="op-row"><input type="checkbox" id="editOpenPkg"><span>Open package</span><small class="opFeeTxt"></small></label><div class="no-status">COD = Total + Shipping cost. Each item's sale price can be changed in the Items list above.</div></div>
     <div class="edit-field-group"><label>Total</label><input type="text" data-field="total"></div>
     <div class="edit-field-group"><label>COD</label><input type="text" data-field="COD"></div>
     <div class="edit-field-group"><label>Note</label><textarea data-field="note"></textarea></div>
@@ -1267,7 +1270,7 @@
         <button type="button" id="noCustomAddBtn">Add custom item</button>
       </div>
     </div>
-    <div class="edit-field-group"><label>Shipping cost (EGP)</label><input type="number" id="noShip" min="0" step="any" inputmode="decimal" placeholder="0"><div class="no-status" id="noShipHint"></div></div>
+    <div class="edit-field-group"><label>Shipping cost (EGP)</label><input type="number" id="noShip" min="0" step="any" inputmode="decimal" placeholder="0"><label class="op-row"><input type="checkbox" id="noOpenPkg"><span>Open package</span><small class="opFeeTxt"></small></label><div class="no-status" id="noShipHint"></div></div>
     <div class="edit-field-group"><label>Note</label><textarea id="noNote"></textarea></div>
     <div class="no-sum" id="noSummary"></div>
     <div class="modal-field-error" id="noError"></div>
@@ -3175,6 +3178,34 @@ try{
     renderItemsEditor();
   });
 
+  // ---- Open package: adds the fee saved in Shipping zones to the shipping cost ----
+  let openPkgFee = 7;
+  function opPaintFee(){ document.querySelectorAll('.opFeeTxt').forEach(el => el.textContent = '+' + openPkgFee + ' EGP'); }
+  async function loadOpenPkgFee(){
+    try{
+      if(window.sb){
+        const r = await window.sb.from('store_settings').select('*');
+        const f = (r.data || []).find(x => x.key === 'open_package_fee');
+        if(f && !isNaN(Number(f.value))) openPkgFee = Number(f.value);
+      }
+    }catch(e){ /* keep last known fee */ }
+    opPaintFee();
+    return openPkgFee;
+  }
+  function opShift(input, checked){
+    const raw = input.value.trim();
+    if(!checked && raw === '') return;
+    const cur = parseFloat(raw) || 0;
+    const next = Math.max(0, Math.round((cur + (checked ? openPkgFee : -openPkgFee)) * 1000) / 1000);
+    input.value = String(next);
+  }
+  function opIsTrue(v){ return ['true','yes','y','1','نعم'].indexOf(String(v == null ? '' : v).trim().toLowerCase()) > -1; }
+  opPaintFee();
+  $('editOpenPkg').addEventListener('change', () => {
+    opShift($('editShipInput'), $('editOpenPkg').checked);
+    $('editShipInput').dispatchEvent(new Event('input'));   // recompute COD
+  });
+
   // Shipping cost is editable like on a new order: COD always = Total + Shipping.
   $('editShipInput').addEventListener('input', () => {
     editCodBase = Math.max(0, parseFloat($('editShipInput').value) || 0);
@@ -3195,6 +3226,8 @@ try{
       if(el) el.value = order[key] !== undefined && order[key] !== null ? order[key] : '';
     });
     initItemsEditor(order);
+    $('editOpenPkg').checked = opIsTrue(order['open package']);
+    loadOpenPkgFee();
     $('editOrderModal').classList.add('active');
   }
   // ============ NEW ORDER (created from the dashboard) ============
@@ -3255,11 +3288,12 @@ try{
     $('noQty').value = '1'; $('noError').textContent = '';
     ['noCustomName','noCustomPrice','noCustomWeight'].forEach(id => $(id).value = ''); $('noCustomQty').value = '1'; $('noCustomBox').classList.remove('show');
     $('noCustResults').classList.remove('show'); $('noProdResults').classList.remove('show');
-    noShipTouched = false; noShipDone = ''; $('noShipHint').textContent = '';
+    noShipTouched = false; noShipDone = ''; $('noShipHint').textContent = ''; $('noOpenPkg').checked = false;
     noItems = []; noCustomer = null; noCustStatus(); noRender();
   }
   async function openNewOrderModal(){
     noReset();
+    loadOpenPkgFee();
     $('newOrderModal').classList.add('active');
     if(!allProducts.length) await fetchProducts();
   }
@@ -3352,7 +3386,8 @@ try{
     const itemsText = noItems.map(it => `${it.name} (${it.qty} قطعة )`).join(', ');
     const fields = { customerName: v('noName'), phone: noStdPhone($('noPhone').value), phone2: v('noPhone2') ? noStdPhone($('noPhone2').value) : '',
       gov: v('noGov'), city: v('noCity'), addressLine1: v('noAddr1'), addressLine2: v('noAddr2'), note: v('noNote'),
-      items: itemsText, pieces: t.pieces, weight: t.weight, total: t.total, shippingCost: t.ship, cod: t.cod };
+      items: itemsText, pieces: t.pieces, weight: t.weight, total: t.total, shippingCost: t.ship, cod: t.cod,
+      openPackage: $('noOpenPkg').checked ? 'true' : '', 'open package': $('noOpenPkg').checked ? 'true' : '' };
     const btn = $('noSaveBtn'), label = btn.textContent;
     btn.textContent = 'Creating...';
     try{
@@ -3369,7 +3404,7 @@ try{
       const payload = { event: 'new order', 'Order Serial': serial, 'order ID': 'D' + serial, 'Customer Name': fields.customerName,
         Phone: fields.phone, Phone2: fields.phone2, Gov: fields.gov, city: fields.city, Address_line1: fields.addressLine1,
         Address_line2: fields.addressLine2, Address: fields.city + '-' + fields.gov, items: itemsText, pieces: t.pieces, weight: t.weight,
-        total: t.total, 'Shipping cost': t.ship, COD: t.cod, note: fields.note, shipping_status: 'request needed', payment_status: 'PENDING',
+        total: t.total, 'Shipping cost': t.ship, COD: t.cod, 'open package': fields['open package'], note: fields.note, shipping_status: 'request needed', payment_status: 'PENDING',
         customer_id: data.customer_id || '', timestamp: new Date().toISOString() };
       const qs = new URLSearchParams();
       Object.keys(payload).forEach(k => { if(payload[k] !== null && payload[k] !== undefined) qs.append(k, payload[k]); });
@@ -3403,6 +3438,11 @@ try{
       if(el) payload[key] = el.value;
     });
     payload['event'] = 'update order';
+    {
+      const opK = Object.keys(order).find(k => k.trim().toLowerCase() === 'open package') || 'open package';
+      if($('editOpenPkg').checked) payload[opK] = 'true';
+      else if(opIsTrue(order[opK])) payload[opK] = 'false';   // was true, now unchecked -> clear it
+    }
     {
       const shipK = resolveShippingAmountKey(order) || 'Shipping cost';
       const shipV = $('editShipInput').value.trim();
@@ -7968,6 +8008,7 @@ ${invoiceFootHtml('')}`;
   })();
 
   // ===== New order: shipping cost filled from the zones (still editable) =====
+  $('noOpenPkg').addEventListener('change', () => { opShift($('noShip'), $('noOpenPkg').checked); noSummary(); });
   function noAutoShipSoon(){ clearTimeout(noShipTimer); noShipTimer = setTimeout(noAutoShip, 350); }
   async function noAutoShip(){
     const hint = $('noShipHint');
@@ -7983,7 +8024,8 @@ ${invoiceFootHtml('')}`;
       noShipDone = key;
       if(r.data === null || r.data === undefined){ hint.textContent = 'No shipping zone covers this area — enter the cost by hand.'; return; }
       $('noShip').value = r.data;
-      hint.textContent = 'Filled from shipping zones for ' + w + ' kg. You can still change it.';
+      if($('noOpenPkg').checked) opShift($('noShip'), true);
+      hint.textContent = 'Filled from shipping zones for ' + w + ' kg' + ($('noOpenPkg').checked ? ' + open package fee' : '') + '. You can still change it.';
       noSummary();
     }catch(e){ console.error('shipping quote failed:', e); hint.textContent = ''; }
   }
@@ -8161,6 +8203,7 @@ ${invoiceFootHtml('')}`;
     if(isNaN(v) || v < 0){ m.className = 'sz-msg err'; m.textContent = 'Enter a valid amount'; return; }
     const r = await window.sb.from('store_settings').upsert({ key: 'open_package_fee', value: v }, { onConflict: 'key' });
     m.className = r.error ? 'sz-msg err' : 'sz-msg ok'; m.textContent = r.error ? r.error.message : 'Saved';
+    if(!r.error){ openPkgFee = v; opPaintFee(); }
   });
   window.openShipZones = () => { $('szTOut').textContent = ''; $('shipZonesModal').classList.add('active'); szLoad(); szLoadFee(); };
   $('szCloseBtn').addEventListener('click', () => $('shipZonesModal').classList.remove('active'));
