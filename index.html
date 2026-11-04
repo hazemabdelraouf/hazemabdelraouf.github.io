@@ -3226,7 +3226,7 @@ try{
       if(el) el.value = order[key] !== undefined && order[key] !== null ? order[key] : '';
     });
     initItemsEditor(order);
-    $('editOpenPkg').checked = opIsTrue(order['open package']);
+    $('editOpenPkg').checked = opIsTrue(order['open package']) || opIsTrue(order['open_package']);
     loadOpenPkgFee();
     $('editOrderModal').classList.add('active');
   }
@@ -3387,7 +3387,7 @@ try{
     const fields = { customerName: v('noName'), phone: noStdPhone($('noPhone').value), phone2: v('noPhone2') ? noStdPhone($('noPhone2').value) : '',
       gov: v('noGov'), city: v('noCity'), addressLine1: v('noAddr1'), addressLine2: v('noAddr2'), note: v('noNote'),
       items: itemsText, pieces: t.pieces, weight: t.weight, total: t.total, shippingCost: t.ship, cod: t.cod,
-      openPackage: $('noOpenPkg').checked ? 'true' : '', 'open package': $('noOpenPkg').checked ? 'true' : '' };
+      openPackage: $('noOpenPkg').checked ? 'true' : '', open_package: $('noOpenPkg').checked ? 'true' : '', 'open package': $('noOpenPkg').checked ? 'true' : '' };
     const btn = $('noSaveBtn'), label = btn.textContent;
     btn.textContent = 'Creating...';
     try{
@@ -3404,7 +3404,7 @@ try{
       const payload = { event: 'new order', 'Order Serial': serial, 'order ID': 'D' + serial, 'Customer Name': fields.customerName,
         Phone: fields.phone, Phone2: fields.phone2, Gov: fields.gov, city: fields.city, Address_line1: fields.addressLine1,
         Address_line2: fields.addressLine2, Address: fields.city + '-' + fields.gov, items: itemsText, pieces: t.pieces, weight: t.weight,
-        total: t.total, 'Shipping cost': t.ship, COD: t.cod, 'open package': fields['open package'], note: fields.note, shipping_status: 'request needed', payment_status: 'PENDING',
+        total: t.total, 'Shipping cost': t.ship, COD: t.cod, 'open package': fields['open package'], open_package: fields.open_package, note: fields.note, shipping_status: 'request needed', payment_status: 'PENDING',
         customer_id: data.customer_id || '', timestamp: new Date().toISOString() };
       const qs = new URLSearchParams();
       Object.keys(payload).forEach(k => { if(payload[k] !== null && payload[k] !== undefined) qs.append(k, payload[k]); });
@@ -3439,9 +3439,13 @@ try{
     });
     payload['event'] = 'update order';
     {
-      const opK = Object.keys(order).find(k => k.trim().toLowerCase() === 'open package') || 'open package';
-      if($('editOpenPkg').checked) payload[opK] = 'true';
-      else if(opIsTrue(order[opK])) payload[opK] = 'false';   // was true, now unchecked -> clear it
+      const opKeys = Object.keys(order).filter(k => ['open package','open_package'].indexOf(k.trim().toLowerCase()) > -1);
+      if(!opKeys.length) opKeys.push('open_package');
+      const wasOn = opKeys.some(k => opIsTrue(order[k]));
+      opKeys.concat(['open_package']).forEach(k => {
+        if($('editOpenPkg').checked) payload[k] = 'true';
+        else if(wasOn) payload[k] = 'false';   // was true, now unchecked -> clear it
+      });
     }
     {
       const shipK = resolveShippingAmountKey(order) || 'Shipping cost';
@@ -4818,7 +4822,7 @@ try{
           ${detailRow('Tracking number', o.tracking_number)}
           ${detailRow('Pickup reference', o.pickup_reference)}
           ${detailRow('Pickup location', o.pickup_location)}
-          ${detailRow('Open package', o['open package'])}
+          ${detailRow('Open package', o['open package'] !== undefined && o['open package'] !== null && o['open package'] !== '' ? o['open package'] : o['open_package'])}
           ${detailRow('Language', o.Lang)}
           ${detailRow('Date', fmtDate(o.date))}
           ${detailRow('Last updated', fmtDate(o.Updated))}
