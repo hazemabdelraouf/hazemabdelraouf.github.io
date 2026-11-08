@@ -8251,7 +8251,8 @@ ${invoiceFootHtml('')}`;
   // ============ STORE ADMIN (controls the customer website) — English only ============
   (function () {
     // The Cloudflare deploy hook is no longer in this page: the website's /api/publish function holds it and only accepts a signed-in user.
-    const publishUrl = () => SITES[0][1] + '/api/publish';
+    // Until the real domain (uvacoffee.com) is connected to Cloudflare Pages, publish through the pages.dev address. Change this back to SITES[0][1] when the domain is live.
+    const publishUrl = () => 'https://uva-store.pages.dev/api/publish';
     async function accessToken() { try { const s = await window.sb.auth.getSession(); return (s.data && s.data.session && s.data.session.access_token) || ''; } catch (e) { return ''; } }
     const SITES = [['Live site', 'https://uvacoffee.com'], ['Preview site', 'https://uva-store.pages.dev']];
     const SB = () => window.sb;
