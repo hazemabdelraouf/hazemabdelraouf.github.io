@@ -8501,7 +8501,7 @@ ${invoiceFootHtml('')}`;
       const o = { id: r.id || rowId(), type: r.type, on: rowBool(r.on, true), title_ar: String(r.title_ar || '').trim(), title_en: String(r.title_en || '').trim(), show_title: rowBool(r.show_title, true), bg: r.bg || 'none', align: r.align || 'start', space: r.space || 'normal' };
       const n = (v, a, b) => { const x = parseInt(v, 10); return x >= a && x <= b ? x : undefined; };
       const prod = () => { o.layout = r.layout === 'slider' ? 'slider' : 'grid'; o.cols_desktop = n(r.cols_desktop, 2, 6); o.cols_mobile = n(r.cols_mobile, 1, 3); o.ratio = r.ratio || undefined; };
-      if (r.type === 'categories') { o.count = n(r.count, 1, 24) || 8; o.style = r.style === 'circles' ? 'circles' : 'tiles'; o.ratio = r.ratio || '4/5'; }
+      if (r.type === 'categories') { o.cols = Array.isArray(r.cols) ? r.cols : []; o.count = n(r.count, 1, 24) || 8; o.style = r.style === 'circles' ? 'circles' : 'tiles'; o.ratio = r.ratio || '4/5'; }
       else if (r.type === 'latest') { prod(); o.count = n(r.count, 1, 48) || 12; o.more = rowBool(r.more, true); }
       else if (r.type === 'collection') { prod(); o.col = r.col || ''; o.count = n(r.count, 1, 48) || 8; o.more = rowBool(r.more, true); }
       else if (r.type === 'products') { prod(); o.skus = Array.isArray(r.skus) ? r.skus : []; }
@@ -8518,7 +8518,8 @@ ${invoiceFootHtml('')}`;
         '<div><label>Columns on mobile</label>' + sel('cols_mobile', [['', 'Same as the site setting'], [1, '1'], [2, '2'], [3, '3']]) + '</div>' +
         '<div><label>Image shape</label>' + sel('ratio', [['', 'Same as the site setting'], ['1/1', 'Square'], ['4/5', 'Portrait 4:5'], ['3/4', 'Portrait 3:4'], ['4/3', 'Landscape 4:3']]) + '</div>';
       let body = '';
-      if (r.type === 'categories') body = inp('count', 'How many tiles (1-24)', 'type="number" min="1" max="24"') + '<div><label>Tile style</label>' + sel('style', [['tiles', 'Rounded tiles'], ['circles', 'Circles']]) + '</div><div><label>Tile shape</label>' + sel('ratio', [['4/5', 'Portrait 4:5'], ['1/1', 'Square'], ['16/9', 'Wide 16:9']]) + '</div>';
+      if (r.type === 'categories') body = inp('count', 'How many tiles (1-24)', 'type="number" min="1" max="24"') + '<div><label>Tile style</label>' + sel('style', [['tiles', 'Rounded tiles'], ['circles', 'Circles']]) + '</div><div><label>Tile shape</label>' + sel('ratio', [['4/5', 'Portrait 4:5'], ['1/1', 'Square'], ['16/9', 'Wide 16:9']]) + '</div>' +
+        '<div style="grid-column:1/-1"><label>Collections to show — optional (empty = the automatic ones, in the collections order)</label><div class="sa-chips">' + (r.cols || []).map(m => { const c = st.cols.find(x => x.match_name === m); return '<span class="sa-ch">' + E(c ? colName(c, true) : m) + '<b data-runcol="' + n + '|' + E(m) + '">×</b></span>'; }).join('') + '</div><select data-rcol="' + n + '"><option value="">+ Add a collection…</option>' + st.cols.filter(c => !(r.cols || []).includes(c.match_name)).map(c => '<option value="' + E(c.match_name) + '">' + E(colName(c, true)) + '</option>').join('') + '</select></div>';
       else if (r.type === 'latest') body = inp('count', 'How many products (1-48)', 'type="number" min="1" max="48"') + prodOpts + '<div><label>"View all" button</label>' + sel('more', [['true', 'Show'], ['false', 'Hide']]) + '</div>';
       else if (r.type === 'collection') body = '<div><label>Collection</label>' + '<select data-r="' + n + '.col"><option value="">Choose…</option>' + st.cols.map(c => '<option value="' + E(c.match_name) + '"' + (c.match_name === r.col ? ' selected' : '') + '>' + E(colName(c, true)) + (c.title_en && c.title ? ' — ' + E(c.title_en) : '') + '</option>').join('') + '</select></div>' +
         inp('count', 'How many products (1-48)', 'type="number" min="1" max="48"') + prodOpts + '<div><label>"View all" button</label>' + sel('more', [['true', 'Show'], ['false', 'Hide']]) + '</div>';
@@ -9157,6 +9158,7 @@ ${invoiceFootHtml('')}`;
       if (t.dataset.glsave) { await glSave(t.dataset.glsave); return; }
       if (t.dataset.gldel) { await glDelete(t.dataset.gldel); return; }
       const rp = t.closest('[data-rpick]'); if (rp) { const s = rp.dataset.rpick, i = s.indexOf('|'), row = st.app.sections[+s.slice(0, i)], sku = s.slice(i + 1); if (row && !(row.skus || []).includes(sku)) row.skus = (row.skus || []).concat([sku]); main.innerHTML = appearanceHtml(); return; }
+      if (t.dataset.runcol !== undefined) { const s = t.dataset.runcol, i = s.indexOf('|'), row = st.app.sections[+s.slice(0, i)], m = s.slice(i + 1); if (row) row.cols = (row.cols || []).filter(x => x !== m); main.innerHTML = appearanceHtml(); return; }
       if (t.dataset.runpick !== undefined) { const s = t.dataset.runpick, i = s.indexOf('|'), row = st.app.sections[+s.slice(0, i)], sku = s.slice(i + 1); if (row) row.skus = (row.skus || []).filter(x => x !== sku); main.innerHTML = appearanceHtml(); return; }
       if (t.dataset.rup !== undefined || t.dataset.rdn !== undefined || t.dataset.rdel !== undefined) { const rows = st.app.sections, n = +(t.dataset.rup ?? t.dataset.rdn ?? t.dataset.rdel); if (t.dataset.rdel !== undefined) { if (!confirm('Delete this row?')) return; rows.splice(n, 1); } else { const m = t.dataset.rup !== undefined ? n - 1 : n + 1; if (m >= 0 && m < rows.length) { const x = rows[n]; rows[n] = rows[m]; rows[m] = x; } } main.innerHTML = appearanceHtml(); updateCounters(); return; }
       if (t.dataset.rimg) { st.rowTarget = t.dataset.rimg; $('saRowFile').click(); return; }
@@ -9233,6 +9235,7 @@ ${invoiceFootHtml('')}`;
       if (t.id === 'saCF') { st.cartFilter = t.value; main.innerHTML = tabHtml(); return; }
       if (t.id === 'saF') { st.filter = t.value; $('saList').innerHTML = listHtml(); return; }
       if (t.id === 'saSite') { st.site = +t.value; st.feed = null; render(); return; }
+      if (t.dataset.rcol !== undefined) { const row = st.app.sections[+t.dataset.rcol]; if (row && t.value && !(row.cols || []).includes(t.value)) row.cols = (row.cols || []).concat([t.value]); main.innerHTML = appearanceHtml(); return; }
       if (t.id === 'saGlGov') { st.gl.gov = t.value; main.innerHTML = locationsHtml(); return; }
       if (t.id === 'saGlMiss') { st.gl.miss = t.checked; main.innerHTML = locationsHtml(); return; }
       if (t.id === 'saRowFile' && t.files[0] && st.rowTarget) { const p = st.rowTarget.split('|'); try { st.app.sections[+p[0]][p[1]] = await uploadOne(t.files[0], 'banners', 2400); main.innerHTML = appearanceHtml(); updateCounters(); } catch (x) { toast('Upload failed: ' + (x.message || x)); } t.value = ''; return; }
