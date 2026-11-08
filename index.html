@@ -7999,17 +7999,51 @@ ${invoiceFootHtml('')}`;
         }
       });
     }
+    const fillGovs = govSel => { govSel.innerHTML = ''; govSel.appendChild(opt('', 'Select governorate')); Object.keys(GOV_CITIES).forEach(g => govSel.appendChild(opt(g, g))); };
+    const geoPairs = [];
     function setup(govSel, citySel){
-      govSel.appendChild(opt('', 'Select governorate'));
-      Object.keys(GOV_CITIES).forEach(g => govSel.appendChild(opt(g, g)));
+      fillGovs(govSel);
       fillCities(citySel, '', '');
       patchValue(govSel, v => fillCities(citySel, v, ''));   // new gov -> reload its cities
       patchValue(citySel, null);
       govSel.addEventListener('change', () => fillCities(citySel, govSel.value, ''));
+      geoPairs.push([govSel, citySel]);
     }
     setup($('noGov'), $('noCity'));
     setup(document.querySelector('#editOrderModal [data-field="Gov"]'), document.querySelector('#editOrderModal [data-field="city"]'));
+    // called after the governorates / cities tables are loaded or edited: refills the lists and keeps what is selected
+    window.refreshGeoSelects = function(){
+      const nativeSet = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+      geoPairs.forEach(([g, c]) => {
+        const gv = g.value, cv = c.value;
+        fillGovs(g); if(gv && !GOV_CITIES[gv]) g.appendChild(opt(gv, gv));
+        nativeSet.call(g, gv); fillCities(c, gv, cv);
+      });
+    };
   })();
+
+  // ===== Governorates / cities live in their own tables (sql/09_store_geo.sql). The ENGLISH name is the key that orders and shipping zones use. =====
+  const GEO_DB = { govs: [], cities: [], ok: false };
+  window.loadGeoFromDb = async function(){
+    if(!window.sb) return false;
+    try{
+      const [g, c] = await Promise.all([
+        window.sb.from('store_geo_govs').select('*').order('sort_order').order('name_en'),
+        window.sb.from('store_geo_cities').select('*').order('sort_order').order('name_en')
+      ]);
+      if(g.error || c.error) throw (g.error || c.error);
+      GEO_DB.govs = g.data || []; GEO_DB.cities = c.data || []; GEO_DB.ok = true;
+      if(GEO_DB.govs.length){                       // dropdowns (new order, edit order, shipping zones) follow the tables
+        const byName = (a, b) => ((a.sort_order || 0) - (b.sort_order || 0)) || String(a.name_en).localeCompare(String(b.name_en));
+        Object.keys(GOV_CITIES).forEach(k => delete GOV_CITIES[k]);
+        GEO_DB.govs.slice().sort(byName).forEach(gv => { GOV_CITIES[gv.name_en] = GEO_DB.cities.filter(ct => ct.gov_id === gv.id).sort(byName).map(ct => ct.name_en); });
+        if(window.refreshGeoSelects) window.refreshGeoSelects();
+      }
+      return true;
+    }catch(e){ GEO_DB.ok = false; return false; }   // tables not created yet: the built-in list stays in use
+  };
+  if(window.sb) window.sb.auth.onAuthStateChange(function(evt){ if(evt === 'SIGNED_IN' || evt === 'INITIAL_SESSION') setTimeout(function(){ window.loadGeoFromDb(); }, 0); });
+
 
   // ===== New order: shipping cost filled from the zones (still editable) =====
   $('noOpenPkg').addEventListener('change', () => { opShift($('noShip'), $('noOpenPkg').checked); noSummary(); });
@@ -8209,14 +8243,16 @@ ${invoiceFootHtml('')}`;
     m.className = r.error ? 'sz-msg err' : 'sz-msg ok'; m.textContent = r.error ? r.error.message : 'Saved';
     if(!r.error){ openPkgFee = v; opPaintFee(); }
   });
-  window.openShipZones = () => { $('szTOut').textContent = ''; $('shipZonesModal').classList.add('active'); szLoad(); szLoadFee(); };
+  window.openShipZones = () => { $('szTOut').textContent = ''; $('shipZonesModal').classList.add('active'); Promise.resolve(window.loadGeoFromDb && window.loadGeoFromDb()).then(szLoad, szLoad); szLoadFee(); };
   $('szCloseBtn').addEventListener('click', () => $('shipZonesModal').classList.remove('active'));
   $('shipZonesModal').addEventListener('click', (e) => { if(e.target === $('shipZonesModal')) $('shipZonesModal').classList.remove('active'); });
 
 
   // ============ STORE ADMIN (controls the customer website) — English only ============
   (function () {
-    const HOOK = 'https://api.cloudflare.com/client/v4/pages/webhooks/deploy_hooks/b3957a39-edb6-4e31-af15-57dca510a050';
+    // The Cloudflare deploy hook is no longer in this page: the website's /api/publish function holds it and only accepts a signed-in user.
+    const publishUrl = () => SITES[0][1] + '/api/publish';
+    async function accessToken() { try { const s = await window.sb.auth.getSession(); return (s.data && s.data.session && s.data.session.access_token) || ''; } catch (e) { return ''; } }
     const SITES = [['Live site', 'https://uvacoffee.com'], ['Preview site', 'https://uva-store.pages.dev']];
     const SB = () => window.sb;
     const E = s => escapeHtml(s == null ? '' : String(s));
@@ -8225,7 +8261,7 @@ ${invoiceFootHtml('')}`;
     const splitList = t => String(t || '').split(/[,،;|\n]+/).map(x => x.trim()).filter(Boolean);
     const slugify = t => String(t || '').replace(/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/g, '').trim().toLowerCase().replace(/[\s/?#%&]+/g, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '');
     const imgs = txt => String(txt || '').split(/\s+/).filter(u => /^https?:\/\//i.test(u));
-    const st = { mk: null, seoOpen: '', utm: { page: '/ar/', custom: '', source: 'facebook', medium: 'paid_social', campaign: '', content: '', term: '' }, ov: null, carts: [], cartFilter: 'new', imp: null, tab: 'overview', products: [], cols: [], discounts: [], events: [], q: '', filter: 'all', cq: '', ed: null, dd: null, cd: null, app: null, feed: null, site: 0, pubState: 'ok', pubText: 'Website is up to date' };
+    const st = { mk: null, seoOpen: '', utm: { page: '/ar/', custom: '', source: 'facebook', medium: 'paid_social', campaign: '', content: '', term: '' }, ov: null, carts: [], cartFilter: 'new', imp: null, tab: 'overview', gl: { gov: '', q: '', miss: false, draft: {}, msg: null }, products: [], cols: [], discounts: [], events: [], q: '', filter: 'all', cq: '', ed: null, dd: null, cd: null, app: null, feed: null, site: 0, pubState: 'ok', pubText: 'Website is up to date' };
 
     const css = document.createElement('style');
     css.textContent = `
@@ -8269,6 +8305,7 @@ ${invoiceFootHtml('')}`;
     .sa-pr{position:absolute;left:0;right:0;top:100%;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.2);z-index:20;max-height:260px;overflow:auto;margin-top:4px}
     .sa-pr div{padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--line)}.sa-pr div:hover{background:var(--panel-2)}.sa-pr small{display:block;color:var(--cream-dim);font-size:11.5px}
     .sa-sl{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--panel)}
+    .sa-gl input:not([type=checkbox]){width:100%;min-width:90px}.sa-gl th{text-align:left;font-size:12px;color:var(--cream-dim);font-weight:600;padding:4px 8px}
     .sa-code{font-family:monospace;font-size:12px;background:var(--panel-2);padding:6px 8px;border-radius:8px;word-break:break-all;display:block;margin:4px 0}
     .sa-tbl{width:100%;border-collapse:collapse;font-size:13px}.sa-tbl td,.sa-tbl th{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
     @media(max-width:700px){.sa-g2,.sa-g3{grid-template-columns:1fr}.sa-var{grid-template-columns:1fr 1fr}}
@@ -8304,13 +8341,13 @@ ${invoiceFootHtml('')}`;
     // Prices, stock display, discounts and vouchers are live and need no rebuild.
     let pubTimer = null;
     function setPub(state, text) { st.pubState = state; st.pubText = text; const el = $('saPub'); if (el) { el.textContent = text; el.className = 'sa-chip ' + state; } }
-    function queuePublish() { clearTimeout(pubTimer); setPub('wait', 'Changes go live in a moment…'); pubTimer = setTimeout(firePublish, 20000); }
+    function queuePublish() { accessToken().then(tk => { st.tk = tk; }); clearTimeout(pubTimer); setPub('wait', 'Changes go live in a moment…'); pubTimer = setTimeout(firePublish, 20000); }
     async function firePublish() {
       clearTimeout(pubTimer); pubTimer = null;
-      try { await fetch(HOOK, { method: 'POST', mode: 'no-cors' }); setPub('busy', 'Publishing — live in 1–2 minutes'); setTimeout(() => { if (st.pubState === 'busy') setPub('ok', 'Website is up to date'); }, 100000); }
+      try { const tk = await accessToken(); const r = await fetch(publishUrl(), { method: 'POST', headers: { authorization: 'Bearer ' + tk } }); if (!r.ok) throw new Error('publish ' + r.status); setPub('busy', 'Publishing — live in 1–2 minutes'); setTimeout(() => { if (st.pubState === 'busy') setPub('ok', 'Website is up to date'); }, 100000); }
       catch (e) { setPub('err', 'Could not start publishing'); }
     }
-    window.addEventListener('pagehide', () => { if (pubTimer) { try { navigator.sendBeacon(HOOK); } catch (e) { /* ignore */ } } });
+    window.addEventListener('pagehide', () => { if (pubTimer) { try { fetch(publishUrl(), { method: 'POST', keepalive: true, headers: { authorization: 'Bearer ' + (st.tk || '') } }); } catch (e) { /* ignore */ } } });
 
     // ============ data ============
     async function loadProducts() { const r = await SB().rpc('store_admin_products'); if (r.error) { main.innerHTML = '<p class="sa-msg err">' + E(r.error.message) + '</p>'; return; } st.products = r.data || []; }
@@ -8325,7 +8362,7 @@ ${invoiceFootHtml('')}`;
       st.mk = Object.assign({ meta_pixel: '', tiktok_pixel: '', snap_pixel: '', ga4: '', gads_id: '', gads_purchase_label: '', clarity: '', consent_mode: 'off', consent_text_ar: '', consent_text_en: '', verify_google: '', verify_bing: '', verify_meta: '', verify_pinterest: '', ai_search_bots: 'true', ai_training_bots: 'true', indexnow_key: '', test_on_preview: 'false' }, Object.fromEntries(Object.entries(mv).filter(([k]) => k !== 'social').map(([k, v]) => [k, typeof v === 'boolean' ? String(v) : v])), { social: Object.assign({ facebook: '', instagram: '', tiktok: '', youtube: '', x: '', snapchat: '' }, mv.social || {}) });
       const a = (row && row.value) || {};
       st.app = { hero: Object.assign({ height_vh: 82, autoplay: 6, slides: [] }, a.hero || {}), products: Object.assign({ cols_desktop: 4, cols_mobile: 2, ratio: '1/1', fit: 'cover', quick_add: true }, a.products || {}),
-        announcement: Object.assign({ ar: '', en: '' }, a.announcement || {}), anim: Object.assign({ on: 'true', hero: 'fade', reveal: 'fade-up', hover: 'lift', speed: 'normal', pulse: 'false' }, Object.fromEntries(Object.entries(a.anim || {}).map(([k, v]) => [k, String(v)]))), home: Object.assign({ title_ar: '', title_en: '', desc_ar: '', desc_en: '', latest_count: 12, show_categories: true }, a.home || {}) };
+        announcement: Object.assign({ ar: '', en: '' }, a.announcement || {}), anim: Object.assign({ on: 'true', hero: 'fade', reveal: 'fade-up', hover: 'lift', speed: 'normal', pulse: 'false' }, Object.fromEntries(Object.entries(a.anim || {}).map(([k, v]) => [k, String(v)]))), home: Object.assign({ title_ar: '', title_en: '', desc_ar: '', desc_en: '', latest_count: 12, show_categories: true }, a.home || {}), sections: Array.isArray(a.sections) ? a.sections.map(r => Object.assign({}, r)) : null };
     }
     async function openAdmin() {
       root.hidden = false; render(); main.innerHTML = '<p class="sa-note">Loading…</p>';
@@ -8359,10 +8396,168 @@ ${invoiceFootHtml('')}`;
     }
     function pkRefresh(id) { const box = modal.querySelector('[data-pk="' + id + '"]'); if (!box) return; box.outerHTML = pkHtml(id); const nb = modal.querySelector('[data-pk="' + id + '"] .sa-pq'); if (nb) nb.focus(); }
 
+    // ============ locations: governorates + cities (Arabic + English) ============
+    const glKey = (k, id) => k + ':' + id;
+    const glVal = (k, row, f) => { const d = st.gl.draft[glKey(k, row.id)]; return d && f in d ? d[f] : row[f]; };
+    const glNote = (text, err) => { st.gl.msg = { text, err: !!err }; };
+    function glRow(k, row, cells) {
+      const id = glKey(k, row.id), dirty = !!st.gl.draft[id], miss = !String(glVal(k, row, 'name_ar') || '').trim();
+      return '<tr><td><input data-gld="' + id + ':name_en" value="' + E(glVal(k, row, 'name_en')) + '"></td>' +
+        '<td><input dir="rtl" data-gld="' + id + ':name_ar" value="' + E(glVal(k, row, 'name_ar')) + '" placeholder="' + (miss ? 'No Arabic yet' : '') + '"' + (miss ? ' style="border-color:#c2410c"' : '') + '></td>' +
+        '<td style="width:74px"><input type="number" data-gld="' + id + ':sort_order" value="' + E(glVal(k, row, 'sort_order') || 0) + '"></td>' +
+        '<td style="text-align:center;width:64px"><input type="checkbox" data-gld="' + id + ':active"' + (glVal(k, row, 'active') !== false ? ' checked' : '') + '></td>' + (cells || '') +
+        '<td style="white-space:nowrap"><button class="sa-btn' + (dirty ? ' pri' : '') + '" data-glsave="' + id + '">Save</button> <button class="sa-btn dan" data-gldel="' + id + '">Delete</button></td></tr>';
+    }
+    function locationsHtml() {
+      const G = GEO_DB, gl = st.gl;
+      if (!G.ok) return '<div class="sa-card" style="max-width:none;box-shadow:none;border:1px solid var(--line)"><h3>Locations</h3><div class="sa-note">The governorates and cities tables are not available yet. Run <b>sql/09_store_geo.sql</b> once in the Supabase SQL Editor, then reload this page.</div></div>';
+      const q = norm(gl.q || ''), hit = x => !q || norm((x.name_en || '') + ' ' + (x.name_ar || '')).includes(q);
+      const cnt = id => G.cities.filter(c => c.gov_id === id), noAr = G.govs.filter(x => !String(x.name_ar || '').trim()).length + G.cities.filter(x => !String(x.name_ar || '').trim()).length;
+      const govs = G.govs.filter(hit);
+      const sel = G.govs.find(x => x.id === gl.gov), cities = sel ? cnt(sel.id).filter(c => hit(c) && (!gl.miss || !String(c.name_ar || '').trim())) : [];
+      const th = '<tr><th>English (the key)</th><th>Arabic</th><th>Order</th><th>Show</th>';
+      return '<div class="sa-card" style="max-width:none;box-shadow:none;border:1px solid var(--line)"><h3>Governorates and cities</h3>' +
+        '<div class="sa-note">' + G.govs.length + ' governorates · ' + G.cities.length + ' cities · ' + noAr + ' without an Arabic name. The Arabic website shows the Arabic name (English if empty); the English website shows the English name. ' +
+        '<b>Order</b>: lower numbers come first, the same number sorts A–Z. <b>Show</b> off = hidden from the checkout list. Changing an English name also renames it inside your shipping zones. Orders already placed keep the name they were saved with.</div>' +
+        (gl.msg ? '<div class="sa-msg ' + (gl.msg.err ? 'err' : 'ok') + '">' + E(gl.msg.text) + '</div>' : '') +
+        '<div class="sa-bar" style="margin:10px 0"><input id="saGlQ" placeholder="Search Arabic or English" value="' + E(gl.q) + '" style="max-width:320px"></div>' +
+        '<div class="sa-sec">Governorates</div><div style="overflow:auto"><table class="sa-tbl sa-gl">' + th + '<th>Cities</th><th></th></tr>' +
+        govs.map(x => glRow('g', x, '<td><button class="sa-btn" data-glopen="' + x.id + '">' + cnt(x.id).length + ' ›</button></td>')).join('') + '</table></div>' +
+        '<div class="sa-bar" style="margin-top:10px"><input id="saGlNewGEn" placeholder="New governorate (English)"><input id="saGlNewGAr" dir="rtl" placeholder="بالعربي"><button class="sa-btn pri" data-act="gl-addgov">+ Add governorate</button></div>' +
+        '<div class="sa-sec" id="saGlCities">Cities</div><div class="sa-bar"><select id="saGlGov"><option value="">Choose a governorate…</option>' + G.govs.map(x => '<option value="' + E(x.id) + '"' + (x.id === gl.gov ? ' selected' : '') + '>' + E(x.name_en) + (x.name_ar ? ' — ' + E(x.name_ar) : '') + '</option>').join('') + '</select>' +
+        '<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="saGlMiss"' + (gl.miss ? ' checked' : '') + '> Only cities without Arabic</label></div>' +
+        (sel ? '<div style="overflow:auto;margin-top:8px"><table class="sa-tbl sa-gl">' + th + '<th></th></tr>' + cities.map(x => glRow('c', x, '')).join('') + '</table></div>' +
+          '<div class="sa-bar" style="margin-top:10px"><input id="saGlNewCEn" placeholder="New city (English)"><input id="saGlNewCAr" dir="rtl" placeholder="بالعربي"><button class="sa-btn pri" data-act="gl-addcity">+ Add city</button></div>' +
+          '<label style="margin-top:12px">Add many cities at once — one per line: <b>English | العربية</b> (the Arabic part is optional)</label><textarea id="saGlBulk" rows="4" placeholder="Maadi | المعادي&#10;Zamalek | الزمالك"></textarea><div class="sa-bar" style="margin-top:6px"><button class="sa-btn" data-act="gl-bulk">Add these cities</button></div>'
+          : '<div class="sa-note" style="margin-top:8px">Choose a governorate (or press the number in its row) to see and edit its cities.</div>') + '</div>';
+    }
+    async function glAfter(text) {
+      glNote(text); await window.loadGeoFromDb(); if (st.tab === 'locations') main.innerHTML = tabHtml(); queuePublish();
+    }
+    async function glSave(id) {
+      const k = id.split(':')[0], rid = id.slice(2), rows = k === 'g' ? GEO_DB.govs : GEO_DB.cities, dr = st.gl.draft[id] || {};
+      if (!rows.find(x => x.id === rid)) return;
+      const patch = {};
+      if ('name_en' in dr) { const v = String(dr.name_en).trim(); if (!v) { glNote('The English name cannot be empty.', true); main.innerHTML = locationsHtml(); return; } patch.name_en = v; }
+      if ('name_ar' in dr) patch.name_ar = String(dr.name_ar).trim() || null;
+      if ('sort_order' in dr) patch.sort_order = parseInt(dr.sort_order, 10) || 0;
+      if ('active' in dr) patch.active = !!dr.active;
+      if (!Object.keys(patch).length) { glNote('Nothing changed in this row.'); main.innerHTML = locationsHtml(); return; }
+      const r = await SB().from(k === 'g' ? 'store_geo_govs' : 'store_geo_cities').update(patch).eq('id', rid);
+      if (r.error) { glNote(r.error.code === '23505' ? 'That English name already exists there.' : r.error.message, true); main.innerHTML = locationsHtml(); return; }
+      delete st.gl.draft[id]; await glAfter('Saved.');
+    }
+    async function glDelete(id) {
+      const k = id.split(':')[0], rid = id.slice(2), row = (k === 'g' ? GEO_DB.govs : GEO_DB.cities).find(x => x.id === rid); if (!row) return;
+      const n = k === 'g' ? GEO_DB.cities.filter(c => c.gov_id === rid).length : 0;
+      if (!confirm('Delete "' + row.name_en + '"' + (n ? ' and its ' + n + ' cities' : '') + '?\nShipping zone rules that mention it are not removed — clean them in Shipping zones. Old orders keep their text.')) return;
+      const r = await SB().from(k === 'g' ? 'store_geo_govs' : 'store_geo_cities').delete().eq('id', rid);
+      if (r.error) { glNote(r.error.message, true); main.innerHTML = locationsHtml(); return; }
+      delete st.gl.draft[id]; if (k === 'g' && st.gl.gov === rid) st.gl.gov = ''; await glAfter('Deleted.');
+    }
+    async function glAddGov() {
+      const en = $('saGlNewGEn').value.trim(), ar = $('saGlNewGAr').value.trim();
+      if (!en) { glNote('Write the English name first.', true); main.innerHTML = locationsHtml(); return; }
+      const r = await SB().from('store_geo_govs').insert({ name_en: en, name_ar: ar || null });
+      if (r.error) { glNote(r.error.code === '23505' ? 'That governorate already exists.' : r.error.message, true); main.innerHTML = locationsHtml(); return; }
+      await glAfter('Governorate added. Add it to a shipping zone so customers there can order.');
+    }
+    async function glAddCity() {
+      if (!st.gl.gov) return; const en = $('saGlNewCEn').value.trim(), ar = $('saGlNewCAr').value.trim();
+      if (!en) { glNote('Write the English name first.', true); main.innerHTML = locationsHtml(); return; }
+      const r = await SB().from('store_geo_cities').insert({ gov_id: st.gl.gov, name_en: en, name_ar: ar || null });
+      if (r.error) { glNote(r.error.code === '23505' ? 'That city already exists in this governorate.' : r.error.message, true); main.innerHTML = locationsHtml(); return; }
+      await glAfter('City added.');
+    }
+    async function glBulk() {
+      if (!st.gl.gov) return;
+      const have = new Set(GEO_DB.cities.filter(c => c.gov_id === st.gl.gov).map(c => String(c.name_en).trim().toLowerCase())), seen = new Set(), rows = [];
+      $('saGlBulk').value.split(/\r?\n/).forEach(line => {
+        const p = line.split(/\s*[|\t]\s*/), en = (p[0] || '').trim(), ar = (p[1] || '').trim(), key = en.toLowerCase();
+        if (en && !have.has(key) && !seen.has(key)) { seen.add(key); rows.push({ gov_id: st.gl.gov, name_en: en, name_ar: ar || null }); }
+      });
+      if (!rows.length) { glNote('Nothing new to add (empty lines and cities that already exist are skipped).', true); main.innerHTML = locationsHtml(); return; }
+      const r = await SB().from('store_geo_cities').insert(rows);
+      if (r.error) { glNote(r.error.message, true); main.innerHTML = locationsHtml(); return; }
+      await glAfter(rows.length + ' cities added.');
+    }
+
+    // ============ home page rows (Appearance) ============
+    const ROW_TYPES = [['categories', 'Category tiles'], ['latest', 'Latest products'], ['collection', 'Products of one collection'], ['products', 'Hand-picked products'], ['banner', 'Image banner'], ['text', 'Text block']];
+    const rowTypeName = t => (ROW_TYPES.find(x => x[0] === t) || [t, t])[1];
+    const rowId = () => 'r' + Math.random().toString(36).slice(2, 9);
+    function newRow(type) {
+      const r = { id: rowId(), type, on: true, title_ar: '', title_en: '', show_title: true, bg: 'none', align: 'start', space: 'normal' };
+      if (type === 'categories') Object.assign(r, { count: 8, style: 'tiles', ratio: '4/5' });
+      else if (type === 'latest') Object.assign(r, { count: 12, layout: 'grid', cols_desktop: '', cols_mobile: '', ratio: '', more: true });
+      else if (type === 'collection') Object.assign(r, { col: (st.cols[0] || {}).match_name || '', count: 8, layout: 'grid', cols_desktop: '', cols_mobile: '', ratio: '', more: true });
+      else if (type === 'products') Object.assign(r, { skus: [], layout: 'grid', cols_desktop: '', cols_mobile: '', ratio: '' });
+      else if (type === 'banner') Object.assign(r, { image: '', mobile: '', href: '/{lang}/products/', height: 'auto', full: false, cta_ar: '', cta_en: '' });
+      else if (type === 'text') Object.assign(r, { html_ar: '', html_en: '' });
+      return r;
+    }
+    const rowBool = (v, d) => (v === undefined || v === null || v === '' ? d : String(v) !== 'false');
+    function cleanRow(r) {
+      const o = { id: r.id || rowId(), type: r.type, on: rowBool(r.on, true), title_ar: String(r.title_ar || '').trim(), title_en: String(r.title_en || '').trim(), show_title: rowBool(r.show_title, true), bg: r.bg || 'none', align: r.align || 'start', space: r.space || 'normal' };
+      const n = (v, a, b) => { const x = parseInt(v, 10); return x >= a && x <= b ? x : undefined; };
+      const prod = () => { o.layout = r.layout === 'slider' ? 'slider' : 'grid'; o.cols_desktop = n(r.cols_desktop, 2, 6); o.cols_mobile = n(r.cols_mobile, 1, 3); o.ratio = r.ratio || undefined; };
+      if (r.type === 'categories') { o.count = n(r.count, 1, 24) || 8; o.style = r.style === 'circles' ? 'circles' : 'tiles'; o.ratio = r.ratio || '4/5'; }
+      else if (r.type === 'latest') { prod(); o.count = n(r.count, 1, 48) || 12; o.more = rowBool(r.more, true); }
+      else if (r.type === 'collection') { prod(); o.col = r.col || ''; o.count = n(r.count, 1, 48) || 8; o.more = rowBool(r.more, true); }
+      else if (r.type === 'products') { prod(); o.skus = Array.isArray(r.skus) ? r.skus : []; }
+      else if (r.type === 'banner') { o.image = r.image || ''; o.mobile = r.mobile || ''; o.href = String(r.href || '').trim(); o.height = r.height || 'auto'; o.full = rowBool(r.full, false); o.cta_ar = String(r.cta_ar || '').trim(); o.cta_en = String(r.cta_en || '').trim(); }
+      else if (r.type === 'text') { o.html_ar = r.html_ar || ''; o.html_en = r.html_en || ''; }
+      return o;
+    }
+    const rowIncomplete = r => (r.type === 'collection' && !r.col) || (r.type === 'banner' && !r.image) || (r.type === 'products' && !(r.skus || []).length) || (r.type === 'text' && !String(r.html_ar || '').trim() && !String(r.html_en || '').trim());
+    function rowCardHtml(r, n, total) {
+      const sel = (f, opts) => '<select data-r="' + n + '.' + f + '">' + opts.map(o => '<option value="' + E(o[0]) + '"' + (String(r[f] === undefined || r[f] === null ? '' : r[f]) === String(o[0]) ? ' selected' : '') + '>' + E(o[1]) + '</option>').join('') + '</select>';
+      const inp = (f, label, extra) => '<div><label>' + label + '</label><input data-r="' + n + '.' + f + '" ' + (extra || '') + ' value="' + E(r[f]) + '"></div>';
+      const prodOpts = '<div><label>How the products are laid out</label>' + sel('layout', [['grid', 'Grid (wraps to more lines)'], ['slider', 'One scrolling line (swipe)']]) + '</div>' +
+        '<div><label>Columns on desktop</label>' + sel('cols_desktop', [['', 'Same as the site setting'], [2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6']]) + '</div>' +
+        '<div><label>Columns on mobile</label>' + sel('cols_mobile', [['', 'Same as the site setting'], [1, '1'], [2, '2'], [3, '3']]) + '</div>' +
+        '<div><label>Image shape</label>' + sel('ratio', [['', 'Same as the site setting'], ['1/1', 'Square'], ['4/5', 'Portrait 4:5'], ['3/4', 'Portrait 3:4'], ['4/3', 'Landscape 4:3']]) + '</div>';
+      let body = '';
+      if (r.type === 'categories') body = inp('count', 'How many tiles (1-24)', 'type="number" min="1" max="24"') + '<div><label>Tile style</label>' + sel('style', [['tiles', 'Rounded tiles'], ['circles', 'Circles']]) + '</div><div><label>Tile shape</label>' + sel('ratio', [['4/5', 'Portrait 4:5'], ['1/1', 'Square'], ['16/9', 'Wide 16:9']]) + '</div>';
+      else if (r.type === 'latest') body = inp('count', 'How many products (1-48)', 'type="number" min="1" max="48"') + prodOpts + '<div><label>"View all" button</label>' + sel('more', [['true', 'Show'], ['false', 'Hide']]) + '</div>';
+      else if (r.type === 'collection') body = '<div><label>Collection</label>' + '<select data-r="' + n + '.col"><option value="">Choose…</option>' + st.cols.map(c => '<option value="' + E(c.match_name) + '"' + (c.match_name === r.col ? ' selected' : '') + '>' + E(colName(c, true)) + (c.title_en && c.title ? ' — ' + E(c.title_en) : '') + '</option>').join('') + '</select></div>' +
+        inp('count', 'How many products (1-48)', 'type="number" min="1" max="48"') + prodOpts + '<div><label>"View all" button</label>' + sel('more', [['true', 'Show'], ['false', 'Hide']]) + '</div>';
+      else if (r.type === 'products') {
+        const byS = new Map(st.products.map(x => [x.sku, x]));
+        body = '<div style="grid-column:1/-1"><label>Products (shown in this order)</label><div class="sa-pk" data-rowpk="' + n + '"><div class="sa-chips">' + (r.skus || []).map(s => '<span class="sa-ch">' + E(byS.has(s) ? (byS.get(s).title_arabic || byS.get(s).title || s) : s) + '<b data-runpick="' + n + '|' + E(s) + '">×</b></span>').join('') + '</div><input class="sa-rq" placeholder="Add a product — search Arabic or English name or SKU" autocomplete="off"><div class="sa-pr" hidden></div></div></div>' + prodOpts;
+      }
+      else if (r.type === 'banner') body = '<div style="grid-column:1/-1" class="sa-bar">' + (r.image ? '<img class="sa-th" src="' + E(r.image) + '" alt="">' : '<span class="sa-th"></span>') + '<button class="sa-btn" data-rimg="' + n + '|image">Upload desktop image</button>' + (r.mobile ? '<img class="sa-th" src="' + E(r.mobile) + '" alt="">' : '') + '<button class="sa-btn" data-rimg="' + n + '|mobile">Upload mobile image (optional)</button></div>' +
+        '<div style="grid-column:1/-1">' + inp('href', 'Link when tapped ({lang} becomes ar or en, e.g. /{lang}/collections/tools/)') + '</div>' +
+        '<div><label>Width</label>' + sel('full', [['false', 'Inside the page margins'], ['true', 'Edge to edge']]) + '</div><div><label>Height</label>' + sel('height', [['auto', 'Natural (whole image)'], ['short', 'Short strip'], ['tall', 'Tall']]) + '</div><div></div>' +
+        inp('cta_ar', 'Button text (Arabic)', 'dir="rtl"') + inp('cta_en', 'Button text (English)');
+      else if (r.type === 'text') body = '<div style="grid-column:1/-1"><label>Text (Arabic) — plain text or simple HTML</label><textarea rows="4" dir="rtl" data-r="' + n + '.html_ar">' + E(r.html_ar) + '</textarea></div><div style="grid-column:1/-1"><label>Text (English)</label><textarea rows="4" data-r="' + n + '.html_en">' + E(r.html_en) + '</textarea></div>';
+      const titleHint = r.type === 'categories' ? 'Shop by category' : r.type === 'latest' ? 'Latest products' : r.type === 'collection' ? 'the collection name' : '';
+      return '<div class="sa-sl"' + (r.on === false ? ' style="opacity:.6"' : '') + '><div class="sa-bar" style="margin-bottom:6px"><b>Row ' + (n + 1) + ' · ' + E(rowTypeName(r.type)) + '</b>' + (rowIncomplete(r) ? '<span class="sa-chip err" style="margin-inline-start:8px">incomplete — will not show</span>' : '') + '<span style="flex:1"></span>' +
+        '<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-r="' + n + '.on"' + (r.on !== false ? ' checked' : '') + '> Visible</label>' +
+        '<button class="sa-btn" data-rup="' + n + '"' + (n === 0 ? ' disabled' : '') + '>↑</button><button class="sa-btn" data-rdn="' + n + '"' + (n === total - 1 ? ' disabled' : '') + '>↓</button><button class="sa-btn dan" data-rdel="' + n + '">Delete</button></div>' +
+        '<div class="sa-g2">' + (r.type === 'text' || r.type === 'banner' || r.type === 'categories' || r.type === 'latest' || r.type === 'collection' || r.type === 'products' ? inp('title_ar', 'Title (Arabic)' + (titleHint ? ' — empty = ' + titleHint : ''), 'dir="rtl"') + inp('title_en', 'Title (English)' + (titleHint ? ' — empty = ' + titleHint : '')) : '') + '</div>' +
+        '<div class="sa-g3">' + body + '</div>' +
+        '<div class="sa-g3" style="margin-top:8px"><div><label>Background</label>' + sel('bg', [['none', 'None (page colour)'], ['cream', 'Light cream'], ['dark', 'Dark coffee'], ['brand', 'Brand orange']]) + '</div><div><label>Title position</label>' + sel('align', [['start', 'Start (left in English, right in Arabic)'], ['center', 'Centre']]) + '</div><div><label>Space above / below</label>' + sel('space', [['compact', 'Small'], ['normal', 'Normal'], ['wide', 'Large']]) + '</div><div><label>Show the title</label>' + sel('show_title', [['true', 'Yes'], ['false', 'No']]) + '</div></div></div>';
+    }
+    function rowsHtml() {
+      const rows = st.app.sections;
+      if (!Array.isArray(rows)) return '<div class="sa-sec">Home page rows</div><div class="sa-note">Right now the home page shows the classic layout: category tiles, then the latest products. Turn on custom rows to choose which rows appear, their order, and how each one looks (columns, one scrolling line, background colour, banners, text blocks…).</div><button class="sa-btn" data-act="rows-custom">Customize home rows</button>';
+      return '<div class="sa-sec">Home page rows</div><div class="sa-note">Rows appear under the banner, top to bottom. A row with nothing to show (empty collection, no image…) is skipped automatically. Press <b>Save appearance</b> at the bottom when you are done.</div>' +
+        rows.map((r, n) => rowCardHtml(r, n, rows.length)).join('') +
+        '<div class="sa-bar"><select id="saRowType">' + ROW_TYPES.map(t => '<option value="' + t[0] + '">' + t[1] + '</option>').join('') + '</select><button class="sa-btn" data-act="rows-add">+ Add row</button><span style="flex:1"></span><button class="sa-btn dan" data-act="rows-reset">Back to the classic layout</button></div><input type="file" id="saRowFile" accept="image/*" hidden>';
+    }
+    function rqSearch(box, q) {
+      const n = +box.dataset.rowpk, res = box.querySelector('.sa-pr'), nq = norm(q).trim(); if (!nq) { res.hidden = true; return; }
+      const have = new Set(st.app.sections[n].skus || []);
+      const hit = st.products.filter(x => !have.has(x.sku) && norm([x.title, x.title_arabic, x.sku, x.handle].join(' ')).includes(nq)).slice(0, 12);
+      res.innerHTML = hit.length ? hit.map(x => '<div data-rpick="' + n + '|' + E(x.sku) + '">' + E((x.title_arabic || x.title || x.sku) + (x.option1_value ? ' — ' + x.option1_value : '')) + '<small>' + E(x.sku) + '</small></div>').join('') : '<div style="cursor:default">No match</div>';
+      res.hidden = false;
+    }
+
     // ============ render ============
-    const TABS = [['overview', 'Overview'], ['products', 'Products'], ['collections', 'Collections'], ['discounts', 'Discounts'], ['carts', 'Abandoned carts'], ['appearance', 'Appearance'], ['marketing', 'Marketing'], ['integrations', 'Integrations']];
+    const TABS = [['overview', 'Overview'], ['products', 'Products'], ['collections', 'Collections'], ['discounts', 'Discounts'], ['carts', 'Abandoned carts'], ['locations', 'Locations'], ['appearance', 'Appearance'], ['marketing', 'Marketing'], ['integrations', 'Integrations']];
     const tabLabel = t => t[1] + (t[0] === 'carts' && st.ov && st.ov.abandoned ? ' (' + st.ov.abandoned + ')' : '');
-    const tabHtml = () => ({ overview: overviewHtml, products: productsHtml, collections: collectionsHtml, discounts: discountsHtml, carts: cartsHtml, appearance: appearanceHtml, marketing: marketingHtml, integrations: integrationsHtml })[st.tab]();
+    const tabHtml = () => ({ overview: overviewHtml, products: productsHtml, collections: collectionsHtml, discounts: discountsHtml, carts: cartsHtml, locations: locationsHtml, appearance: appearanceHtml, marketing: marketingHtml, integrations: integrationsHtml })[st.tab]();
     function render() {
       const prevTabs = top.querySelector('.sa-tabs'), prevLeft = prevTabs ? prevTabs.scrollLeft : 0;
       top.innerHTML = '<div class="sa-hd"><b>Store admin</b><div class="sa-tabs">' + TABS.map(t => '<button data-tab="' + t[0] + '" class="' + (st.tab === t[0] ? 'on' : '') + '">' + tabLabel(t) + '</button>').join('') +
@@ -8594,6 +8789,7 @@ ${invoiceFootHtml('')}`;
           '<div><label>Button text (Arabic)</label><input data-s="' + n + '.cta_ar" dir="rtl" value="' + E(s.cta_ar) + '"></div><div><label>Button text (English)</label><input data-s="' + n + '.cta_en" value="' + E(s.cta_en) + '"></div></div>' +
           '<label>Button link ({lang} becomes ar or en, e.g. /{lang}/collections/tools/)</label><input data-s="' + n + '.href" value="' + E(s.href) + '"></div>').join('') +
         '<button class="sa-btn" data-act="addslide">+ Add slide</button><input type="file" id="saSlFile" accept="image/*" hidden>' +
+        rowsHtml() +
         '<div class="sa-sec">How products are shown</div><div class="sa-g3"><div><label>Columns on desktop</label>' + sel('products.cols_desktop', [[2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6']]) + '</div><div><label>Columns on mobile</label>' + sel('products.cols_mobile', [[1, '1'], [2, '2'], [3, '3']]) + '</div><div><label>Image shape</label>' + sel('products.ratio', [['1/1', 'Square'], ['4/5', 'Portrait 4:5'], ['3/4', 'Portrait 3:4'], ['4/3', 'Landscape 4:3']]) + '</div>' +
         '<div><label>Image fit</label>' + sel('products.fit', [['cover', 'Fill (crop edges)'], ['contain', 'Show whole image']]) + '</div><div><label>"Add to cart" button on cards</label>' + sel('products.quick_add', [['true', 'Show'], ['false', 'Hide']]) + '</div><div><label>Latest products on home</label><input data-a="home.latest_count" type="number" min="4" max="48" value="' + E(a.home.latest_count) + '"></div></div>' +
         '<div class="sa-sec">Motion and animation</div><div class="sa-g3"><div><label>Animations</label>' + sel('anim.on', [['true', 'On'], ['false', 'Off — fully still website']]) + '</div><div><label>Banner effect</label>' + sel('anim.hero', [['fade', 'Fade'], ['zoom', 'Slow zoom'], ['slide', 'Slide']]) + '</div><div><label>When scrolling</label>' + sel('anim.reveal', [['fade-up', 'Rise and fade in'], ['fade', 'Fade in'], ['zoom-in', 'Zoom in'], ['none', 'Nothing']]) + '</div><div><label>Product card hover</label>' + sel('anim.hover', [['lift', 'Lift up'], ['zoom', 'Zoom the picture'], ['none', 'Nothing']]) + '</div><div><label>Speed</label>' + sel('anim.speed', [['fast', 'Fast'], ['normal', 'Normal'], ['slow', 'Slow']]) + '</div><div><label>Pulsing banner button</label>' + sel('anim.pulse', [['false', 'Off'], ['true', 'On']]) + '</div></div><div class="sa-note">Visitors who turn on "reduce motion" on their phone or computer always see a still website.</div>' +
@@ -8603,10 +8799,11 @@ ${invoiceFootHtml('')}`;
     }
     async function saveAppearance() {
       const a = st.app, c = Object.assign({}, a, { hero: Object.assign({}, a.hero, { height_vh: Math.min(100, Math.max(40, num(a.hero.height_vh) || 82)), autoplay: Math.min(20, Math.max(3, num(a.hero.autoplay) || 6)) }),
-        products: Object.assign({}, a.products, { cols_desktop: +a.products.cols_desktop || 4, cols_mobile: +a.products.cols_mobile || 2, quick_add: String(a.products.quick_add) !== 'false' }), anim: { on: String(a.anim.on) !== 'false', hero: a.anim.hero, reveal: a.anim.reveal, hover: a.anim.hover, speed: a.anim.speed, pulse: String(a.anim.pulse) === 'true' }, home: Object.assign({}, a.home, { latest_count: Math.min(48, Math.max(4, num(a.home.latest_count) || 12)) }) });
+        products: Object.assign({}, a.products, { cols_desktop: +a.products.cols_desktop || 4, cols_mobile: +a.products.cols_mobile || 2, quick_add: String(a.products.quick_add) !== 'false' }), anim: { on: String(a.anim.on) !== 'false', hero: a.anim.hero, reveal: a.anim.reveal, hover: a.anim.hover, speed: a.anim.speed, pulse: String(a.anim.pulse) === 'true' }, home: Object.assign({}, a.home, { latest_count: Math.min(48, Math.max(4, num(a.home.latest_count) || 12)) }), sections: Array.isArray(a.sections) ? a.sections.map(cleanRow) : null });
+      const bad = Array.isArray(a.sections) ? a.sections.filter(x => x.on !== false && rowIncomplete(x)).length : 0;
       const r = await SB().from('store_settings').upsert({ key: 'appearance', value: c }, { onConflict: 'key' }); const el = $('saAMsg');
       if (r.error) { el.className = 'sa-msg err'; el.textContent = r.error.message; return; }
-      el.className = 'sa-msg ok'; el.textContent = 'Saved'; queuePublish(); toast('Appearance saved');
+      el.className = 'sa-msg ok'; el.textContent = 'Saved' + (bad ? ' — ' + bad + ' row(s) are incomplete and will not show on the website.' : ''); queuePublish(); toast('Appearance saved');
     }
 
     // ============ integrations: API, Facebook / Instagram / WhatsApp catalogue ============
@@ -8851,7 +9048,7 @@ ${invoiceFootHtml('')}`;
             '<div class="sa-act" style="flex-wrap:wrap;justify-content:flex-end"><a class="sa-btn pri" target="_blank" rel="noopener" data-wa="' + E(c.cart_id) + '" href="https://wa.me/' + String(c.phone).replace(/\D/g, '') + '?text=' + encodeURIComponent(waText(c)) + '">WhatsApp</a><button class="sa-btn" data-copy="' + E(cartLink(c)) + '">Copy link</button>' + (c.contacted_at ? '' : '<button class="sa-btn" data-cdone="' + E(c.cart_id) + '">Mark contacted</button>') + '<button class="sa-btn dan" data-cdel="' + E(c.cart_id) + '">Dismiss</button></div></div>'; }).join('') : '<p class="sa-note">Nothing here.</p>');
     }
     async function cartUpdate(id, patch) { const r = await SB().from('store_carts').update(patch).eq('cart_id', id); if (r.error) { toast(r.error.message); return false; } const c = st.carts.find(x => x.cart_id === id); if (c) Object.assign(c, patch); if (patch.dismissed) { st.carts = st.carts.filter(x => x.cart_id !== id); if (st.ov && st.ov.abandoned) st.ov.abandoned--; } main.innerHTML = tabHtml(); return true; }
-    async function enterTab() { if (st.tab === 'overview') { await loadOverview(); startOverview(); } else if (st.tab === 'carts') { await loadCarts(); if (st.tab === 'carts') main.innerHTML = tabHtml(); } }
+    async function enterTab() { if (st.tab === 'overview') { await loadOverview(); startOverview(); } else if (st.tab === 'carts') { await loadCarts(); if (st.tab === 'carts') main.innerHTML = tabHtml(); } else if (st.tab === 'locations') { await window.loadGeoFromDb(); if (st.tab === 'locations') main.innerHTML = tabHtml(); } }
 
 
     // ============ marketing: ad pixels, search engines, AI visibility ============
@@ -8956,6 +9153,13 @@ ${invoiceFootHtml('')}`;
       const sk = t.closest('[data-seo]'); if (sk) { st.seoOpen = st.seoOpen === sk.dataset.seo ? '' : sk.dataset.seo; main.innerHTML = tabHtml(); return; }
       if (t.dataset.copy) { try { await navigator.clipboard.writeText(t.dataset.copy); toast('Copied'); } catch (x) { toast('Copy failed'); } return; }
       if (t.dataset.copyjson !== undefined) { try { await navigator.clipboard.writeText(JSON.stringify((st.events[+t.dataset.copyjson] || {}).payload || {}, null, 2)); toast('Copied'); } catch (x) { toast('Copy failed'); } return; }
+      if (t.dataset.glopen !== undefined) { st.gl.gov = t.dataset.glopen; main.innerHTML = locationsHtml(); const gc = $('saGlCities'); if (gc) gc.scrollIntoView({ behavior: 'smooth' }); return; }
+      if (t.dataset.glsave) { await glSave(t.dataset.glsave); return; }
+      if (t.dataset.gldel) { await glDelete(t.dataset.gldel); return; }
+      const rp = t.closest('[data-rpick]'); if (rp) { const s = rp.dataset.rpick, i = s.indexOf('|'), row = st.app.sections[+s.slice(0, i)], sku = s.slice(i + 1); if (row && !(row.skus || []).includes(sku)) row.skus = (row.skus || []).concat([sku]); main.innerHTML = appearanceHtml(); return; }
+      if (t.dataset.runpick !== undefined) { const s = t.dataset.runpick, i = s.indexOf('|'), row = st.app.sections[+s.slice(0, i)], sku = s.slice(i + 1); if (row) row.skus = (row.skus || []).filter(x => x !== sku); main.innerHTML = appearanceHtml(); return; }
+      if (t.dataset.rup !== undefined || t.dataset.rdn !== undefined || t.dataset.rdel !== undefined) { const rows = st.app.sections, n = +(t.dataset.rup ?? t.dataset.rdn ?? t.dataset.rdel); if (t.dataset.rdel !== undefined) { if (!confirm('Delete this row?')) return; rows.splice(n, 1); } else { const m = t.dataset.rup !== undefined ? n - 1 : n + 1; if (m >= 0 && m < rows.length) { const x = rows[n]; rows[n] = rows[m]; rows[m] = x; } } main.innerHTML = appearanceHtml(); updateCounters(); return; }
+      if (t.dataset.rimg) { st.rowTarget = t.dataset.rimg; $('saRowFile').click(); return; }
       const sl = t.dataset; if (sl.slup !== undefined || sl.sldn !== undefined || sl.sldel !== undefined) { const s = st.app.hero.slides, n = +(sl.slup ?? sl.sldn ?? sl.sldel); if (sl.sldel !== undefined) s.splice(n, 1); else { const m = sl.slup !== undefined ? n - 1 : n + 1; if (m >= 0 && m < s.length) { const x = s[n]; s[n] = s[m]; s[m] = x; } } main.innerHTML = appearanceHtml(); return; }
       if (sl.slimg) { st.slTarget = sl.slimg; $('saSlFile').click(); return; }
       const oc = t.closest('[data-opencol]'); if (oc) { openCollection(oc.dataset.opencol); return; }
@@ -8991,6 +9195,12 @@ ${invoiceFootHtml('')}`;
       else if (a === 'import') $('saImport').click();
       else if (a === 'applyimport') await applyImport();
       else if (a === 'addslide') { st.app.hero.slides.push({ image: '', mobile: '', title_ar: '', title_en: '', subtitle_ar: '', subtitle_en: '', cta_ar: 'تسوق الآن', cta_en: 'Shop now', href: '/{lang}/products/' }); main.innerHTML = appearanceHtml(); updateCounters(); }
+      else if (a === 'rows-custom') { st.app.sections = [Object.assign(newRow('categories'), { on: st.app.home.show_categories !== false }), Object.assign(newRow('latest'), { count: Math.min(48, Math.max(4, num(st.app.home.latest_count) || 12)) })]; main.innerHTML = appearanceHtml(); updateCounters(); }
+      else if (a === 'rows-add') { st.app.sections.push(newRow($('saRowType').value)); main.innerHTML = appearanceHtml(); updateCounters(); }
+      else if (a === 'rows-reset') { if (confirm('Go back to the classic home layout (category tiles + latest products)? Your custom rows are removed when you save.')) { st.app.sections = null; main.innerHTML = appearanceHtml(); } }
+      else if (a === 'gl-addgov') await glAddGov();
+      else if (a === 'gl-addcity') await glAddCity();
+      else if (a === 'gl-bulk') await glBulk();
       else if (a === 'saveapp') await saveAppearance();
       else if (a === 'savemk') await saveMarketing();
       else if (a === 'genkey') { const b = new Uint8Array(16); crypto.getRandomValues(b); st.mk.indexnow_key = Array.from(b).map(x => x.toString(16).padStart(2, '0')).join(''); main.innerHTML = tabHtml(); }
@@ -9001,12 +9211,16 @@ ${invoiceFootHtml('')}`;
     root.addEventListener('input', e => {
       const t = e.target;
       if (t.classList.contains('sa-pq')) { pkSearch(t.closest('[data-pk]'), t.value); return; }
+      if (t.classList.contains('sa-rq')) { rqSearch(t.closest('[data-rowpk]'), t.value); return; }
+      if (t.id === 'saGlQ') { st.gl.q = t.value; main.innerHTML = locationsHtml(); const gq = $('saGlQ'); gq.focus(); gq.setSelectionRange(gq.value.length, gq.value.length); return; }
       if (t.id === 'saQ') { st.q = t.value; $('saList').innerHTML = listHtml(); return; }
       if (t.id === 'saCQ') { st.cq = t.value; const keep = t; main.innerHTML = collectionsHtml(); const n = $('saCQ'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); return; }
       if (t.dataset.f !== undefined && st.ed) st.ed.shared[t.dataset.f] = t.value;
       else if (t.dataset.v !== undefined && st.ed) { const p = t.dataset.v.split('.'); st.ed.variants[+p[0]][p[1]] = t.value; }
       else if (t.dataset.c !== undefined && st.cd) st.cd.f[t.dataset.c] = t.type === 'checkbox' ? t.checked : t.value;
       else if (t.dataset.d !== undefined && st.dd) st.dd.f[t.dataset.d] = t.type === 'checkbox' ? t.checked : t.value;
+      else if (t.dataset.r !== undefined && st.app && Array.isArray(st.app.sections)) { const i = t.dataset.r.indexOf('.'), row = st.app.sections[+t.dataset.r.slice(0, i)]; if (row) row[t.dataset.r.slice(i + 1)] = t.type === 'checkbox' ? t.checked : t.value; }
+      else if (t.dataset.gld !== undefined && st.gl) { const p = t.dataset.gld.split(':'), gid = p[0] + ':' + p[1]; (st.gl.draft[gid] = st.gl.draft[gid] || {})[p[2]] = t.type === 'checkbox' ? t.checked : t.value; }
       else if (t.dataset.a !== undefined && st.app) { const p = t.dataset.a.split('.'); st.app[p[0]][p[1]] = t.value; }
       else if (t.dataset.s !== undefined && st.app) { const p = t.dataset.s.split('.'); st.app.hero.slides[+p[0]][p[1]] = t.value; }
       else if (t.dataset.m !== undefined && st.mk) { const p = t.dataset.m.split('.'); if (p.length === 2) st.mk[p[0]][p[1]] = t.value; else st.mk[p[0]] = t.value; if (t.tagName === 'INPUT') mkChip(t); }
@@ -9019,6 +9233,9 @@ ${invoiceFootHtml('')}`;
       if (t.id === 'saCF') { st.cartFilter = t.value; main.innerHTML = tabHtml(); return; }
       if (t.id === 'saF') { st.filter = t.value; $('saList').innerHTML = listHtml(); return; }
       if (t.id === 'saSite') { st.site = +t.value; st.feed = null; render(); return; }
+      if (t.id === 'saGlGov') { st.gl.gov = t.value; main.innerHTML = locationsHtml(); return; }
+      if (t.id === 'saGlMiss') { st.gl.miss = t.checked; main.innerHTML = locationsHtml(); return; }
+      if (t.id === 'saRowFile' && t.files[0] && st.rowTarget) { const p = st.rowTarget.split('|'); try { st.app.sections[+p[0]][p[1]] = await uploadOne(t.files[0], 'banners', 2400); main.innerHTML = appearanceHtml(); updateCounters(); } catch (x) { toast('Upload failed: ' + (x.message || x)); } t.value = ''; return; }
       if (t.id === 'saFile') { uploadImages(t.files); t.value = ''; return; }
       if (t.id === 'saColFile' && t.files[0]) { try { st.cd.f.image = await uploadOne(t.files[0], 'collections', 1400); renderModal(); } catch (x) { st.cd.msg = 'Image upload failed: ' + (x.message || x); renderModal(); } t.value = ''; return; }
       if (t.id === 'saSlFile' && t.files[0] && st.slTarget) { const p = st.slTarget.split('|'); try { st.app.hero.slides[+p[0]][p[1]] = await uploadOne(t.files[0], 'banners', 2400); main.innerHTML = appearanceHtml(); updateCounters(); } catch (x) { toast('Upload failed: ' + (x.message || x)); } t.value = ''; return; }
@@ -9026,6 +9243,8 @@ ${invoiceFootHtml('')}`;
       else if (t.dataset.v !== undefined && st.ed) { const p = t.dataset.v.split('.'); st.ed.variants[+p[0]][p[1]] = t.value; }
       else if (t.dataset.c !== undefined && st.cd) st.cd.f[t.dataset.c] = t.type === 'checkbox' ? t.checked : t.value;
       else if (t.dataset.d !== undefined && st.dd) { st.dd.f[t.dataset.d] = t.type === 'checkbox' ? t.checked : t.value; if (t.dataset.d === 'kind') renderModal(); }
+      else if (t.dataset.r !== undefined && st.app && Array.isArray(st.app.sections)) { const i = t.dataset.r.indexOf('.'), row = st.app.sections[+t.dataset.r.slice(0, i)]; if (row) row[t.dataset.r.slice(i + 1)] = t.type === 'checkbox' ? t.checked : t.value; if (/\.(col)$/.test(t.dataset.r)) main.innerHTML = appearanceHtml(); }
+      else if (t.dataset.gld !== undefined && st.gl) { const p = t.dataset.gld.split(':'), gid = p[0] + ':' + p[1]; (st.gl.draft[gid] = st.gl.draft[gid] || {})[p[2]] = t.type === 'checkbox' ? t.checked : t.value; }
       else if (t.dataset.a !== undefined && st.app) { const p = t.dataset.a.split('.'); st.app[p[0]][p[1]] = t.value; }
       else if (t.dataset.m !== undefined && st.mk) { const p = t.dataset.m.split('.'); if (p.length === 2) st.mk[p[0]][p[1]] = t.value; else st.mk[p[0]] = t.value; }
       else if (t.dataset.u !== undefined) { st.utm[t.dataset.u] = t.value; const o = $('saUtmOut'); if (o) o.textContent = utmLink(); }
