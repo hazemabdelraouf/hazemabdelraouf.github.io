@@ -8490,9 +8490,9 @@ ${invoiceFootHtml('')}`;
     function newRow(type) {
       const r = { id: rowId(), type, on: true, title_ar: '', title_en: '', show_title: true, bg: 'none', align: 'start', space: 'normal' };
       if (type === 'categories') Object.assign(r, { count: 12, style: 'tiles', ratio: '4/5', layout: 'slider', cols_desktop: 4, cols_mobile: 2, auto: 'normal', arrows: true });
-      else if (type === 'latest') Object.assign(r, { count: 12, layout: 'grid', cols_desktop: '', cols_mobile: '', ratio: '', more: true });
+      else if (type === 'latest') Object.assign(r, { count: 12, layout: 'slider', cols_desktop: 4, cols_mobile: 2, ratio: '', more: true, auto: 'normal', arrows: true });
       else if (type === 'collection') Object.assign(r, { col: (st.cols[0] || {}).match_name || '', count: 12, layout: 'slider', cols_desktop: 4, cols_mobile: 2, ratio: '', more: true, auto: 'normal', arrows: true });
-      else if (type === 'products') Object.assign(r, { skus: [], layout: 'grid', cols_desktop: '', cols_mobile: '', ratio: '' });
+      else if (type === 'products') Object.assign(r, { skus: [], layout: 'slider', cols_desktop: 4, cols_mobile: 2, ratio: '', auto: 'normal', arrows: true });
       else if (type === 'banner') Object.assign(r, { image: '', mobile: '', href: '/{lang}/products/', height: 'auto', full: false, cta_ar: '', cta_en: '' });
       else if (type === 'text') Object.assign(r, { html_ar: '', html_en: '' });
       return r;
@@ -9200,7 +9200,7 @@ ${invoiceFootHtml('')}`;
       else if (a === 'import') $('saImport').click();
       else if (a === 'applyimport') await applyImport();
       else if (a === 'addslide') { st.app.hero.slides.push({ image: '', mobile: '', title_ar: '', title_en: '', subtitle_ar: '', subtitle_en: '', cta_ar: 'تسوق الآن', cta_en: 'Shop now', href: '/{lang}/products/' }); main.innerHTML = appearanceHtml(); updateCounters(); }
-      else if (a === 'rows-custom') { st.app.sections = [Object.assign(newRow('categories'), { on: st.app.home.show_categories !== false, count: 8, layout: 'grid', cols_desktop: '', cols_mobile: '', auto: '' }), Object.assign(newRow('latest'), { count: Math.min(48, Math.max(4, num(st.app.home.latest_count) || 12)) })]; main.innerHTML = appearanceHtml(); updateCounters(); }
+      else if (a === 'rows-custom') { st.app.sections = [Object.assign(newRow('categories'), { on: st.app.home.show_categories !== false, count: 12, layout: 'slider', cols_desktop: 5, cols_mobile: 2, auto: 'normal' })]; main.innerHTML = appearanceHtml(); updateCounters(); }
       else if (a === 'rows-add') { st.app.sections.push(newRow($('saRowType').value)); main.innerHTML = appearanceHtml(); updateCounters(); }
       else if (a === 'rows-reset') { if (confirm('Go back to the classic home layout (category tiles + latest products)? Your custom rows are removed when you save.')) { st.app.sections = null; main.innerHTML = appearanceHtml(); } }
       else if (a === 'gl-addgov') await glAddGov();
