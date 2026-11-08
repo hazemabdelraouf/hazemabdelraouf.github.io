@@ -8344,8 +8344,8 @@ ${invoiceFootHtml('')}`;
     function queuePublish() { accessToken().then(tk => { st.tk = tk; }); clearTimeout(pubTimer); setPub('wait', 'Changes go live in a moment…'); pubTimer = setTimeout(firePublish, 20000); }
     async function firePublish() {
       clearTimeout(pubTimer); pubTimer = null;
-      try { const tk = await accessToken(); const r = await fetch(publishUrl(), { method: 'POST', headers: { authorization: 'Bearer ' + tk } }); if (!r.ok) throw new Error('publish ' + r.status); setPub('busy', 'Publishing — live in 1–2 minutes'); setTimeout(() => { if (st.pubState === 'busy') setPub('ok', 'Website is up to date'); }, 100000); }
-      catch (e) { setPub('err', 'Could not start publishing'); }
+      try { const tk = await accessToken(); const r = await fetch(publishUrl(), { method: 'POST', headers: { authorization: 'Bearer ' + tk } }); if (!r.ok) { let c = ''; try { c = (await r.json()).error || ''; } catch (x) { /* not json */ } const err = new Error('publish ' + r.status + (c ? ' ' + c : '')); err.detail = r.status + (c ? ' ' + c : ''); throw err; } setPub('busy', 'Publishing — live in 1–2 minutes'); setTimeout(() => { if (st.pubState === 'busy') setPub('ok', 'Website is up to date'); }, 100000); }
+      catch (e) { console.error('publish failed', e); setPub('err', 'Could not start publishing (' + (e.detail || 'blocked: origin not allowed / site unreachable') + ')'); }
     }
     window.addEventListener('pagehide', () => { if (pubTimer) { try { fetch(publishUrl(), { method: 'POST', keepalive: true, headers: { authorization: 'Bearer ' + (st.tk || '') } }); } catch (e) { /* ignore */ } } });
 
