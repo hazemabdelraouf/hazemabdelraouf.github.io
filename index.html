@@ -8489,9 +8489,9 @@ ${invoiceFootHtml('')}`;
     const rowId = () => 'r' + Math.random().toString(36).slice(2, 9);
     function newRow(type) {
       const r = { id: rowId(), type, on: true, title_ar: '', title_en: '', show_title: true, bg: 'none', align: 'start', space: 'normal' };
-      if (type === 'categories') Object.assign(r, { count: 8, style: 'tiles', ratio: '4/5' });
+      if (type === 'categories') Object.assign(r, { count: 12, style: 'tiles', ratio: '4/5', layout: 'slider', cols_desktop: 4, cols_mobile: 2, auto: 'normal', arrows: true });
       else if (type === 'latest') Object.assign(r, { count: 12, layout: 'grid', cols_desktop: '', cols_mobile: '', ratio: '', more: true });
-      else if (type === 'collection') Object.assign(r, { col: (st.cols[0] || {}).match_name || '', count: 8, layout: 'grid', cols_desktop: '', cols_mobile: '', ratio: '', more: true });
+      else if (type === 'collection') Object.assign(r, { col: (st.cols[0] || {}).match_name || '', count: 12, layout: 'slider', cols_desktop: 4, cols_mobile: 2, ratio: '', more: true, auto: 'normal', arrows: true });
       else if (type === 'products') Object.assign(r, { skus: [], layout: 'grid', cols_desktop: '', cols_mobile: '', ratio: '' });
       else if (type === 'banner') Object.assign(r, { image: '', mobile: '', href: '/{lang}/products/', height: 'auto', full: false, cta_ar: '', cta_en: '' });
       else if (type === 'text') Object.assign(r, { html_ar: '', html_en: '' });
@@ -8501,8 +8501,8 @@ ${invoiceFootHtml('')}`;
     function cleanRow(r) {
       const o = { id: r.id || rowId(), type: r.type, on: rowBool(r.on, true), title_ar: String(r.title_ar || '').trim(), title_en: String(r.title_en || '').trim(), show_title: rowBool(r.show_title, true), bg: r.bg || 'none', align: r.align || 'start', space: r.space || 'normal' };
       const n = (v, a, b) => { const x = parseInt(v, 10); return x >= a && x <= b ? x : undefined; };
-      const prod = () => { o.layout = r.layout === 'slider' ? 'slider' : 'grid'; o.cols_desktop = n(r.cols_desktop, 2, 6); o.cols_mobile = n(r.cols_mobile, 1, 3); o.ratio = r.ratio || undefined; };
-      if (r.type === 'categories') { o.cols = Array.isArray(r.cols) ? r.cols : []; o.count = n(r.count, 1, 24) || 8; o.style = r.style === 'circles' ? 'circles' : 'tiles'; o.ratio = r.ratio || '4/5'; }
+      const prod = () => { o.layout = r.layout === 'slider' ? 'slider' : 'grid'; o.auto = ['slow', 'normal', 'fast'].includes(r.auto) ? r.auto : ''; o.arrows = rowBool(r.arrows, true); o.cols_desktop = n(r.cols_desktop, 2, 6); o.cols_mobile = n(r.cols_mobile, 1, 3); o.ratio = r.ratio || undefined; };
+      if (r.type === 'categories') { o.layout = r.layout === 'slider' ? 'slider' : 'grid'; o.auto = ['slow', 'normal', 'fast'].includes(r.auto) ? r.auto : ''; o.arrows = rowBool(r.arrows, true); o.cols_desktop = n(r.cols_desktop, 2, 6); o.cols_mobile = n(r.cols_mobile, 1, 3); o.cols = Array.isArray(r.cols) ? r.cols : []; o.count = n(r.count, 1, 24) || 8; o.style = r.style === 'circles' ? 'circles' : 'tiles'; o.ratio = r.ratio || '4/5'; }
       else if (r.type === 'latest') { prod(); o.count = n(r.count, 1, 48) || 12; o.more = rowBool(r.more, true); }
       else if (r.type === 'collection') { prod(); o.col = r.col || ''; o.count = n(r.count, 1, 48) || 8; o.more = rowBool(r.more, true); }
       else if (r.type === 'products') { prod(); o.skus = Array.isArray(r.skus) ? r.skus : []; }
@@ -8514,12 +8514,14 @@ ${invoiceFootHtml('')}`;
     function rowCardHtml(r, n, total) {
       const sel = (f, opts) => '<select data-r="' + n + '.' + f + '">' + opts.map(o => '<option value="' + E(o[0]) + '"' + (String(r[f] === undefined || r[f] === null ? '' : r[f]) === String(o[0]) ? ' selected' : '') + '>' + E(o[1]) + '</option>').join('') + '</select>';
       const inp = (f, label, extra) => '<div><label>' + label + '</label><input data-r="' + n + '.' + f + '" ' + (extra || '') + ' value="' + E(r[f]) + '"></div>';
-      const prodOpts = '<div><label>How the products are laid out</label>' + sel('layout', [['grid', 'Grid (wraps to more lines)'], ['slider', 'One scrolling line (swipe)']]) + '</div>' +
-        '<div><label>Columns on desktop</label>' + sel('cols_desktop', [['', 'Same as the site setting'], [2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6']]) + '</div>' +
-        '<div><label>Columns on mobile</label>' + sel('cols_mobile', [['', 'Same as the site setting'], [1, '1'], [2, '2'], [3, '3']]) + '</div>' +
+      const prodOpts = '<div><label>How the products are laid out</label>' + sel('layout', [['slider', 'One row — slideshow (arrows + swipe)'], ['grid', 'Grid (wraps to more lines)']]) + '</div>' +
+        '<div><label>Products visible at once — desktop</label>' + sel('cols_desktop', [['', 'Same as the site setting'], [2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6']]) + '</div>' +
+        '<div><label>Products visible at once — mobile</label>' + sel('cols_mobile', [['', 'Same as the site setting'], [1, '1'], [2, '2'], [3, '3']]) + '</div>' +
+        '<div><label>Auto-slide (slideshow only)</label>' + sel('auto', [['', 'Off — visitor slides by hand'], ['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']]) + '</div>' +
+        '<div><label>Arrows (slideshow only)</label>' + sel('arrows', [['true', 'Show'], ['false', 'Hide']]) + '</div>' +
         '<div><label>Image shape</label>' + sel('ratio', [['', 'Same as the site setting'], ['1/1', 'Square'], ['4/5', 'Portrait 4:5'], ['3/4', 'Portrait 3:4'], ['4/3', 'Landscape 4:3']]) + '</div>';
       let body = '';
-      if (r.type === 'categories') body = inp('count', 'How many tiles (1-24)', 'type="number" min="1" max="24"') + '<div><label>Tile style</label>' + sel('style', [['tiles', 'Rounded tiles'], ['circles', 'Circles']]) + '</div><div><label>Tile shape</label>' + sel('ratio', [['4/5', 'Portrait 4:5'], ['1/1', 'Square'], ['16/9', 'Wide 16:9']]) + '</div>' +
+      if (r.type === 'categories') body = inp('count', 'How many collections (1-24)', 'type="number" min="1" max="24"') + '<div><label>How the collections are laid out</label>' + sel('layout', [['slider', 'One row — slideshow (arrows + swipe)'], ['grid', 'Grid (wraps to more lines)']]) + '</div><div><label>Collections visible at once — desktop</label>' + sel('cols_desktop', [['', 'Automatic'], [2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6']]) + '</div><div><label>Collections visible at once — mobile</label>' + sel('cols_mobile', [['', 'Automatic'], [1, '1'], [2, '2'], [3, '3']]) + '</div><div><label>Auto-slide (slideshow only)</label>' + sel('auto', [['', 'Off — visitor slides by hand'], ['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']]) + '</div><div><label>Arrows (slideshow only)</label>' + sel('arrows', [['true', 'Show'], ['false', 'Hide']]) + '</div><div><label>Tile style</label>' + sel('style', [['tiles', 'Rounded tiles'], ['circles', 'Circles']]) + '</div><div><label>Tile shape</label>' + sel('ratio', [['4/5', 'Portrait 4:5'], ['1/1', 'Square'], ['16/9', 'Wide 16:9']]) + '</div>' +
         '<div style="grid-column:1/-1"><label>Collections to show — optional (empty = the automatic ones, in the collections order)</label><div class="sa-chips">' + (r.cols || []).map(m => { const c = st.cols.find(x => x.match_name === m); return '<span class="sa-ch">' + E(c ? colName(c, true) : m) + '<b data-runcol="' + n + '|' + E(m) + '">×</b></span>'; }).join('') + '</div><select data-rcol="' + n + '"><option value="">+ Add a collection…</option>' + st.cols.filter(c => !(r.cols || []).includes(c.match_name)).map(c => '<option value="' + E(c.match_name) + '">' + E(colName(c, true)) + '</option>').join('') + '</select></div>';
       else if (r.type === 'latest') body = inp('count', 'How many products (1-48)', 'type="number" min="1" max="48"') + prodOpts + '<div><label>"View all" button</label>' + sel('more', [['true', 'Show'], ['false', 'Hide']]) + '</div>';
       else if (r.type === 'collection') body = '<div><label>Collection</label>' + '<select data-r="' + n + '.col"><option value="">Choose…</option>' + st.cols.map(c => '<option value="' + E(c.match_name) + '"' + (c.match_name === r.col ? ' selected' : '') + '>' + E(colName(c, true)) + (c.title_en && c.title ? ' — ' + E(c.title_en) : '') + '</option>').join('') + '</select></div>' +
@@ -9198,7 +9200,7 @@ ${invoiceFootHtml('')}`;
       else if (a === 'import') $('saImport').click();
       else if (a === 'applyimport') await applyImport();
       else if (a === 'addslide') { st.app.hero.slides.push({ image: '', mobile: '', title_ar: '', title_en: '', subtitle_ar: '', subtitle_en: '', cta_ar: 'تسوق الآن', cta_en: 'Shop now', href: '/{lang}/products/' }); main.innerHTML = appearanceHtml(); updateCounters(); }
-      else if (a === 'rows-custom') { st.app.sections = [Object.assign(newRow('categories'), { on: st.app.home.show_categories !== false }), Object.assign(newRow('latest'), { count: Math.min(48, Math.max(4, num(st.app.home.latest_count) || 12)) })]; main.innerHTML = appearanceHtml(); updateCounters(); }
+      else if (a === 'rows-custom') { st.app.sections = [Object.assign(newRow('categories'), { on: st.app.home.show_categories !== false, count: 8, layout: 'grid', cols_desktop: '', cols_mobile: '', auto: '' }), Object.assign(newRow('latest'), { count: Math.min(48, Math.max(4, num(st.app.home.latest_count) || 12)) })]; main.innerHTML = appearanceHtml(); updateCounters(); }
       else if (a === 'rows-add') { st.app.sections.push(newRow($('saRowType').value)); main.innerHTML = appearanceHtml(); updateCounters(); }
       else if (a === 'rows-reset') { if (confirm('Go back to the classic home layout (category tiles + latest products)? Your custom rows are removed when you save.')) { st.app.sections = null; main.innerHTML = appearanceHtml(); } }
       else if (a === 'gl-addgov') await glAddGov();
