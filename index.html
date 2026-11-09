@@ -8289,6 +8289,14 @@ ${invoiceFootHtml('')}`;
     .sa-pill.ok{background:#dcfce7;color:#166534}.sa-pill.warn{background:#fff7ed;color:#9a3412}.sa-pill.off{background:#f3f4f6;color:#6b7280}
     .sa-mod{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:950;display:flex;align-items:flex-start;justify-content:center;padding:20px 10px;overflow:auto}
     .sa-card{background:var(--panel);border-radius:16px;width:100%;max-width:820px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+    
+    .ap-tabs{display:flex;gap:4px;overflow-x:auto;padding:8px 10px 0;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:6;scrollbar-width:thin;border-radius:16px 16px 0 0}
+    .ap-tab{flex:none;border:0;background:transparent;color:var(--cream-dim);font:inherit;font-weight:700;font-size:13px;padding:10px 14px;border-radius:10px 10px 0 0;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+    .ap-tab:hover{color:var(--cream);background:rgba(127,127,127,.08)}.ap-tab.on{color:var(--cream);border-bottom-color:var(--gold,#c8a45d);background:rgba(127,127,127,.1)}
+    .ap-pane{padding:6px 18px 20px}.ap-ph{margin:14px 0 2px;font-size:19px}.ap-lead{margin:0 0 14px;font-size:13px;color:var(--cream-dim);line-height:1.6}
+    .ap-sticky{position:sticky;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;z-index:6;margin:0;border-radius:0 0 16px 16px}
+    .ap-dirty{font-size:12.5px;font-weight:700;color:#d97706}.ap-wrap #saAMsg{margin:0 18px 8px}
+    @media(max-width:640px){.ap-pane{padding:4px 12px 16px}.ap-wrap .sa-g2,.ap-wrap .sa-g3{grid-template-columns:1fr}}
     .sa-card h3{margin:0 0 12px;font-size:18px}.sa-sec{font-size:12px;font-weight:800;color:var(--cream-dim);text-transform:uppercase;margin:16px 0 6px}
     .sa-g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.sa-g3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
     .sa-card label,.sa-body label.l{display:block;font-size:12px;font-weight:700;color:var(--cream-dim);margin:8px 0 3px}
@@ -8819,15 +8827,15 @@ ${invoiceFootHtml('')}`;
 
     function footerPagesHtml(sel, tf) {
       const a = st.app, yn = p => sel(p, [['true', 'Show'], ['false', 'Hide']]);
-      let h = '<div class="sa-sec">Footer (bottom of every page)</div><div class="sa-note">The footer has: a strip of 4 trust badges, the logo with a short text, the categories, customer-care links (the pages you tick below) and your contact details. Social-media links come from the Marketing tab.</div>' +
+      let h = '<div class="sa-note">The footer has: a strip of 4 trust badges, the logo with a short text, the categories, customer-care links (the pages you tick below) and your contact details. Social-media links come from the Marketing tab.</div>' +
         '<div class="sa-g3"><div><label>Trust strip (shipping · cash on delivery · 14-day returns · WhatsApp)</label>' + yn('footer.trust') + '</div><div><label>Categories column</label>' + yn('footer.cats') + '</div><div><label>How many categories to list</label><input data-a="footer.cats_count" type="number" min="2" max="12" value="' + E(a.footer.cats_count) + '"></div>' +
         '<div><label>Customer-care column (policy pages)</label>' + yn('footer.care') + '</div><div><label>Contact column</label>' + yn('footer.contact') + '</div><div><label>“Cash on delivery” note in the bottom bar</label>' + yn('footer.pay') + '</div></div>' +
         '<div class="sa-g2">' + tf('footer.about_ar', 'Short text under the logo (Arabic)', 'Empty = the slogan', 400, 1) + tf('footer.about_en', 'Short text under the logo (English)', 'Empty = the slogan', 400, 1) + '</div>' +
         '<div class="sa-g2">' + tf('footer.phone', 'Phone (optional — WhatsApp is always shown)', '', 40) + tf('footer.email', 'Email (optional)', '', 120) + tf('footer.address_ar', 'Address (Arabic)', '', 240) + tf('footer.address_en', 'Address (English)', '', 240) + tf('footer.hours_ar', 'Working hours (Arabic)', '', 160) + tf('footer.hours_en', 'Working hours (English)', '', 160) + '</div>' +
-        '<div class="sa-g2">' + tf('footer.legal_ar', 'Legal line, e.g. commercial register / tax no. (Arabic)', '', 200) + tf('footer.legal_en', 'Legal line (English)', '', 200) + tf('footer.copy_ar', 'Copyright text (Arabic) — empty = automatic', '', 200) + tf('footer.copy_en', 'Copyright text (English) — empty = automatic', '', 200) + '</div>' +
-        '<div class="sa-sec">Pages (policies, about, FAQ, contact…)</div><div class="sa-note">Each page below becomes a page on the website (address shown inside it). The standard texts are ready — edit them freely, or press “Restore standard text”. ' +
+        '<div class="sa-g2">' + tf('footer.legal_ar', 'Legal line, e.g. commercial register / tax no. (Arabic)', '', 200) + tf('footer.legal_en', 'Legal line (English)', '', 200) + tf('footer.copy_ar', 'Copyright text (Arabic) — empty = automatic', '', 200) + tf('footer.copy_en', 'Copyright text (English) — empty = automatic', '', 200) + '</div>';
+      let ph = '<div class="sa-note">Each page below becomes a page on the website (address shown inside it). The standard texts are ready — edit them freely, or press “Restore standard text”. ' +
         'You can write simple HTML (&lt;h2&gt;, &lt;p&gt;, &lt;ul&gt;, &lt;a href&gt;). Variables: <b>{{brand}}</b> (UVA / أوڤا), <b>{{slogan}}</b>, <b>{{wa}}</b> (WhatsApp number link), <b>{{contact}}</b> (your contact details list), <b>{{lang}}</b> (ar or en, for links like /{{lang}}/pages/refund-policy/). Do not add the page title inside the text — it is added automatically.</div>';
-      h += a.pages.map((p, n) => {
+      ph += a.pages.map((p, n) => {
         const flags = (p.on === 'false' ? ' · <span style="color:#b91c1c">Hidden</span>' : '') + (p.footer === 'false' ? ' · not in footer' : '') + (p.custom ? ' · custom' : '');
         return '<details class="sa-help" style="margin:8px 0"><summary>' + E(p.title_en || p.title_ar || p.slug) + ' <span style="font-weight:500;color:var(--muted)">— ' + E(p.title_ar) + flags + '</span></summary><div class="sa-hbody">' +
           '<div class="sa-g3"><div><label>Page status</label><select data-pg="' + n + '.on"><option value="true"' + (p.on !== 'false' ? ' selected' : '') + '>Published</option><option value="false"' + (p.on === 'false' ? ' selected' : '') + '>Hidden (not on the website)</option></select></div>' +
@@ -8837,25 +8845,38 @@ ${invoiceFootHtml('')}`;
           '<div><label>Text (Arabic)</label><textarea data-pg="' + n + '.html_ar" dir="rtl" rows="14" style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">' + E(p.html_ar) + '</textarea></div><div><label>Text (English)</label><textarea data-pg="' + n + '.html_en" rows="14" style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px">' + E(p.html_en) + '</textarea></div></div>' +
           '<div class="sa-bar"><button class="sa-btn" data-pgup="' + n + '">↑ Move up</button><button class="sa-btn" data-pgdn="' + n + '">↓ Move down</button>' + (p.custom ? '<button class="sa-btn dan" data-pgdel="' + n + '">Delete page</button>' : '<button class="sa-btn" data-pgreset="' + n + '">Restore standard text</button>') + '</div></div></details>';
       }).join('') + '<button class="sa-btn" data-act="page-add">+ Add a page</button>';
-      return h;
+      return { footer: h, pages: ph };
     }
     function appearanceHtml() {
       const a = st.app, sel = (path, opts) => { const v = path.split('.').reduce((o, k) => o[k], a); return '<select data-a="' + path + '">' + opts.map(o => '<option value="' + o[0] + '"' + (String(v) === String(o[0]) ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>'; };
-      return '<div class="sa-card" style="max-width:none;box-shadow:none;border:1px solid var(--line)"><h3>Home banner (slider)</h3><div class="sa-g3"><div><label>Banner height (% of the screen)</label><input data-a="hero.height_vh" type="number" min="40" max="100" value="' + E(a.hero.height_vh) + '"></div><div><label>Seconds per slide</label><input data-a="hero.autoplay" type="number" min="3" max="20" value="' + E(a.hero.autoplay) + '"></div></div>' +
+      const fp = footerPagesHtml(sel, tf);
+      const panes = [
+        ['banner', '🖼️', 'Banner', 'The big slider at the top of the home page. Each slide has its own picture, text and button.',
+          '<div class="sa-g3"><div><label>Banner height (% of the screen)</label><input data-a="hero.height_vh" type="number" min="40" max="100" value="' + E(a.hero.height_vh) + '"></div><div><label>Seconds per slide</label><input data-a="hero.autoplay" type="number" min="3" max="20" value="' + E(a.hero.autoplay) + '"></div></div>' +
         a.hero.slides.map((s, n) => '<div class="sa-sl"><div class="sa-bar" style="margin-bottom:6px"><b>Slide ' + (n + 1) + '</b><span style="flex:1"></span><button class="sa-btn" data-slup="' + n + '">↑</button><button class="sa-btn" data-sldn="' + n + '">↓</button><button class="sa-btn dan" data-sldel="' + n + '">Delete</button></div>' +
           '<div class="sa-bar">' + (s.image ? '<img class="sa-th" src="' + E(s.image) + '" alt="">' : '<span class="sa-th"></span>') + '<button class="sa-btn" data-slimg="' + n + '|image">Upload desktop image</button>' + (s.mobile ? '<img class="sa-th" src="' + E(s.mobile) + '" alt="">' : '') + '<button class="sa-btn" data-slimg="' + n + '|mobile">Upload mobile image (optional)</button></div>' +
           '<div class="sa-g2"><div><label>Title (Arabic)</label><input data-s="' + n + '.title_ar" dir="rtl" value="' + E(s.title_ar) + '"></div><div><label>Title (English)</label><input data-s="' + n + '.title_en" value="' + E(s.title_en) + '"></div>' +
           '<div><label>Subtitle (Arabic)</label><input data-s="' + n + '.subtitle_ar" dir="rtl" value="' + E(s.subtitle_ar) + '"></div><div><label>Subtitle (English)</label><input data-s="' + n + '.subtitle_en" value="' + E(s.subtitle_en) + '"></div>' +
           '<div><label>Button text (Arabic)</label><input data-s="' + n + '.cta_ar" dir="rtl" value="' + E(s.cta_ar) + '"></div><div><label>Button text (English)</label><input data-s="' + n + '.cta_en" value="' + E(s.cta_en) + '"></div></div>' +
           '<label>Button link ({lang} becomes ar or en, e.g. /{lang}/collections/tools/)</label><input data-s="' + n + '.href" value="' + E(s.href) + '"></div>').join('') +
-        '<button class="sa-btn" data-act="addslide">+ Add slide</button><input type="file" id="saSlFile" accept="image/*" hidden>' +
-        rowsHtml() +
-        '<div class="sa-sec">How products are shown</div><div class="sa-g3"><div><label>Columns on desktop</label>' + sel('products.cols_desktop', [[2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6']]) + '</div><div><label>Columns on mobile</label>' + sel('products.cols_mobile', [[1, '1'], [2, '2'], [3, '3']]) + '</div><div><label>Image shape</label>' + sel('products.ratio', [['1/1', 'Square'], ['4/5', 'Portrait 4:5'], ['3/4', 'Portrait 3:4'], ['4/3', 'Landscape 4:3']]) + '</div>' +
-        '<div><label>Image fit</label>' + sel('products.fit', [['cover', 'Fill (crop edges)'], ['contain', 'Show whole image']]) + '</div><div><label>"Add to cart" button on cards</label>' + sel('products.quick_add', [['true', 'Show'], ['false', 'Hide']]) + '</div><div><label>Latest products on home</label><input data-a="home.latest_count" type="number" min="4" max="48" value="' + E(a.home.latest_count) + '"></div></div>' +
-        '<div class="sa-sec">Motion and animation</div><div class="sa-g3"><div><label>Animations</label>' + sel('anim.on', [['true', 'On'], ['false', 'Off — fully still website']]) + '</div><div><label>Banner effect</label>' + sel('anim.hero', [['fade', 'Fade'], ['zoom', 'Slow zoom'], ['slide', 'Slide']]) + '</div><div><label>When scrolling</label>' + sel('anim.reveal', [['fade-up', 'Rise and fade in'], ['fade', 'Fade in'], ['zoom-in', 'Zoom in'], ['none', 'Nothing']]) + '</div><div><label>Product card hover</label>' + sel('anim.hover', [['lift', 'Lift up'], ['zoom', 'Zoom the picture'], ['none', 'Nothing']]) + '</div><div><label>Speed</label>' + sel('anim.speed', [['fast', 'Fast'], ['normal', 'Normal'], ['slow', 'Slow']]) + '</div><div><label>Pulsing banner button</label>' + sel('anim.pulse', [['false', 'Off'], ['true', 'On']]) + '</div></div><div class="sa-note">Visitors who turn on "reduce motion" on their phone or computer always see a still website.</div>' +
-        '<div class="sa-sec">Announcement bar (top of every page)</div><div class="sa-g2">' + tf('announcement.ar', 'Arabic', '', 0) + tf('announcement.en', 'English', '', 0) + '</div>' +
-        '<div class="sa-sec">Home page in Google</div><div class="sa-g2">' + tf('home.title_ar', 'Page title (Arabic)', '', 60) + tf('home.title_en', 'Page title (English)', '', 60) + tf('home.desc_ar', 'Meta description (Arabic)', '', 160, 1) + tf('home.desc_en', 'Meta description (English)', '', 160, 1) + '</div>' +
-        footerPagesHtml(sel, tf) + '<div class="sa-msg ok" id="saAMsg"></div><div class="sa-foot"><button class="sa-btn pri" data-act="saveapp">Save appearance</button></div></div>';
+        '<button class="sa-btn" data-act="addslide">+ Add slide</button><input type="file" id="saSlFile" accept="image/*" hidden>'],
+        ['rows', '🧱', 'Home rows', 'Everything between the banner and the footer on the home page: the fixed “Shop by category” row, the rows you add, and the fixed “Latest products” block.', rowsHtml()],
+        ['products', '🛍️', 'Product cards', 'How product cards look everywhere on the website (home, collections, search).',
+          '<div class="sa-g3"><div><label>Columns on desktop</label>' + sel('products.cols_desktop', [[2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6']]) + '</div><div><label>Columns on mobile</label>' + sel('products.cols_mobile', [[1, '1'], [2, '2'], [3, '3']]) + '</div><div><label>Image shape</label>' + sel('products.ratio', [['1/1', 'Square'], ['4/5', 'Portrait 4:5'], ['3/4', 'Portrait 3:4'], ['4/3', 'Landscape 4:3']]) + '</div>' +
+        '<div><label>Image fit</label>' + sel('products.fit', [['cover', 'Fill (crop edges)'], ['contain', 'Show whole image']]) + '</div><div><label>"Add to cart" button on cards</label>' + sel('products.quick_add', [['true', 'Show'], ['false', 'Hide']]) + '</div></div>'],
+        ['motion', '✨', 'Motion', 'Animations of the whole website. Turn everything off here to get a completely still website.',
+          '<div class="sa-g3"><div><label>Animations</label>' + sel('anim.on', [['true', 'On'], ['false', 'Off — fully still website']]) + '</div><div><label>Banner effect</label>' + sel('anim.hero', [['fade', 'Fade'], ['zoom', 'Slow zoom'], ['slide', 'Slide']]) + '</div><div><label>When scrolling</label>' + sel('anim.reveal', [['fade-up', 'Rise and fade in'], ['fade', 'Fade in'], ['zoom-in', 'Zoom in'], ['none', 'Nothing']]) + '</div><div><label>Product card hover</label>' + sel('anim.hover', [['lift', 'Lift up'], ['zoom', 'Zoom the picture'], ['none', 'Nothing']]) + '</div><div><label>Speed</label>' + sel('anim.speed', [['fast', 'Fast'], ['normal', 'Normal'], ['slow', 'Slow']]) + '</div><div><label>Pulsing banner button</label>' + sel('anim.pulse', [['false', 'Off'], ['true', 'On']]) + '</div></div><div class="sa-note">Visitors who turn on "reduce motion" on their phone or computer always see a still website.</div>'],
+        ['site', '📣', 'Top bar & Google', 'The announcement bar above the header, and how the home page appears in Google search results.',
+          '<div class="sa-sec">Announcement bar (top of every page)</div><div class="sa-g2">' + tf('announcement.ar', 'Arabic', '', 0) + tf('announcement.en', 'English', '', 0) + '</div>' +
+        '<div class="sa-sec">Home page in Google</div><div class="sa-g2">' + tf('home.title_ar', 'Page title (Arabic)', '', 60) + tf('home.title_en', 'Page title (English)', '', 60) + tf('home.desc_ar', 'Meta description (Arabic)', '', 160, 1) + tf('home.desc_en', 'Meta description (English)', '', 160, 1) + '</div>'],
+        ['footer', '🦶', 'Footer', 'The bottom of every page: trust badges, categories, customer-care links and your contact details.', fp.footer],
+        ['pages', '📄', 'Pages', 'Policies, about, FAQ, contact and any page you add. Pages ticked “show in footer” appear under Customer care.', fp.pages]
+      ];
+      const cur = panes.find(p => p[0] === st.appTab) || panes[0];
+      return '<div class="sa-card ap-wrap" style="max-width:none;box-shadow:none;border:1px solid var(--line);padding:0">' +
+        '<div class="ap-tabs" role="tablist">' + panes.map(p => '<button type="button" class="ap-tab' + (p === cur ? ' on' : '') + '" data-atab="' + p[0] + '" role="tab"><span aria-hidden="true">' + p[1] + '</span> ' + p[2] + '</button>').join('') + '</div>' +
+        '<div id="saAp" class="ap-pane"><h3 class="ap-ph">' + cur[1] + ' ' + cur[2] + '</h3><p class="ap-lead">' + cur[3] + '</p>' + cur[4] + '</div>' +
+        '<div class="sa-msg ok" id="saAMsg"></div><div class="sa-foot ap-sticky"><span id="saDirty" class="ap-dirty"' + (st.appDirty ? '' : ' hidden') + '>● Unsaved changes — press Save</span><button class="sa-btn pri" data-act="saveapp">Save appearance</button></div></div>';
     }
     async function saveAppearance() {
       const a = st.app, c = Object.assign({}, a, { hero: Object.assign({}, a.hero, { height_vh: Math.min(100, Math.max(40, num(a.hero.height_vh) || 82)), autoplay: Math.min(20, Math.max(3, num(a.hero.autoplay) || 6)) }),
@@ -8863,11 +8884,12 @@ ${invoiceFootHtml('')}`;
         footer: Object.fromEntries(Object.entries(a.footer).map(([k, v]) => [k, ['trust', 'cats', 'care', 'contact', 'pay'].includes(k) ? String(v) !== 'false' : (k === 'cats_count' ? Math.min(12, Math.max(2, num(v) || 6)) : String(v || '').trim())])),
         pages: a.pages.map(p => ({ slug: String(p.slug || '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40), on: String(p.on) !== 'false', footer: String(p.footer) !== 'false', title_ar: String(p.title_ar || '').trim(), title_en: String(p.title_en || '').trim(), html_ar: String(p.html_ar || '').trim(), html_en: String(p.html_en || '').trim() })) });
       const seen = new Set(), badPg = c.pages.find(p => { const dup = seen.has(p.slug); seen.add(p.slug); return dup || p.slug.length < 2 || (!DEFAULT_PAGES[p.slug] && !p.html_ar.replace(/<[^>]*>/g, '').trim() && !p.html_en.replace(/<[^>]*>/g, '').trim()); });
-      if (badPg) { const el0 = $('saAMsg'); el0.className = 'sa-msg err'; el0.textContent = 'A page has a repeated or too-short address (at least 2 letters/numbers), or a custom page has no text: “' + (badPg.title_en || badPg.title_ar || badPg.slug) + '”.'; return; }
+      if (badPg) { st.appTab = 'pages'; main.innerHTML = appearanceHtml(); updateCounters(); const el0 = $('saAMsg'); el0.className = 'sa-msg err'; el0.textContent = 'A page has a repeated or too-short address (at least 2 letters/numbers), or a custom page has no text: “' + (badPg.title_en || badPg.title_ar || badPg.slug) + '”.'; return; }
       const bad = Array.isArray(a.sections) ? a.sections.filter(x => x.on !== false && rowIncomplete(x)).length : 0;
       const r = await SB().from('store_settings').upsert({ key: 'appearance', value: c }, { onConflict: 'key' }); const el = $('saAMsg');
       if (r.error) { el.className = 'sa-msg err'; el.textContent = r.error.message; return; }
-      el.className = 'sa-msg ok'; el.textContent = 'Saved' + (bad ? ' — ' + bad + ' row(s) are incomplete and will not show on the website.' : ''); queuePublish(); toast('Appearance saved');
+      st.appDirty = false; { const dd = $('saDirty'); if (dd) dd.hidden = true; }
+      el.className = 'sa-msg ok'; el.textContent = 'Saved' + (bad ? ' — ' + bad + ' row(s) are incomplete and will not show on the website (see the Home rows tab).' : ''); queuePublish(); toast('Appearance saved');
     }
 
     // ============ integrations: API, Facebook / Instagram / WhatsApp catalogue ============
@@ -9221,6 +9243,8 @@ ${invoiceFootHtml('')}`;
       if (t.dataset.glsave) { await glSave(t.dataset.glsave); return; }
       if (t.dataset.gldel) { await glDelete(t.dataset.gldel); return; }
       const rp = t.closest('[data-rpick]'); if (rp) { const s = rp.dataset.rpick, i = s.indexOf('|'), row = st.app.sections[+s.slice(0, i)], sku = s.slice(i + 1); if (row && !(row.skus || []).includes(sku)) row.skus = (row.skus || []).concat([sku]); main.innerHTML = appearanceHtml(); return; }
+      const atab = t.closest('[data-atab]');
+      if (atab) { st.appTab = atab.dataset.atab; main.innerHTML = appearanceHtml(); updateCounters(); (main.closest('.sa-body') || main).scrollTop = 0; window.scrollTo(0, 0); return; }
       if (t.dataset.pgup !== undefined || t.dataset.pgdn !== undefined) { const n = +(t.dataset.pgup !== undefined ? t.dataset.pgup : t.dataset.pgdn), m = t.dataset.pgup !== undefined ? n - 1 : n + 1, L = st.app.pages; if (L[m]) { const x = L[n]; L[n] = L[m]; L[m] = x; } main.innerHTML = appearanceHtml(); return; }
       if (t.dataset.pgdel !== undefined) { const n = +t.dataset.pgdel; if (st.app.pages[n] && confirm('Delete this page?')) { st.app.pages.splice(n, 1); main.innerHTML = appearanceHtml(); } return; }
       if (t.dataset.pgreset !== undefined) { const n = +t.dataset.pgreset, p = st.app.pages[n], d = p && DEFAULT_PAGES[p.slug]; if (d && confirm('Replace this page with the standard text? Your edits to it will be lost.')) { Object.assign(p, { title_ar: d.title.ar, title_en: d.title.en, html_ar: d.html.ar, html_en: d.html.en }); main.innerHTML = appearanceHtml(); } return; }
@@ -9279,6 +9303,9 @@ ${invoiceFootHtml('')}`;
       else if (a === 'checkfeed') { st.feed = { bad: false, issues: [], summary: 'Checking…' }; render(); await checkFeed(); }
       else if (a === 'checkapi') { const el = $('saApiRes'); el.textContent = 'Checking…'; try { await fetch(siteUrl() + '/api/cart?id=check', { mode: 'no-cors' }); el.textContent = 'The website API answered ✓'; } catch (x) { el.textContent = 'No answer — is the site published?'; } }
     });
+    const markDirty = () => { if (!st.appDirty) { st.appDirty = true; const d = $('saDirty'); if (d) d.hidden = false; } };
+    root.addEventListener('input', e => { if (e.target.closest && e.target.closest('#saAp')) markDirty(); }, true);
+    root.addEventListener('click', e => { const b = e.target.closest && e.target.closest('#saAp button, #saAp [data-rpick], #saAp [data-runcol]'); if (b && !b.dataset.atab) markDirty(); }, true);
     root.addEventListener('input', e => {
       const t = e.target;
       if (t.classList.contains('sa-pq')) { pkSearch(t.closest('[data-pk]'), t.value); return; }
