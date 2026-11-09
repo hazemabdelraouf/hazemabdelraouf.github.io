@@ -8503,7 +8503,7 @@ ${invoiceFootHtml('')}`;
     }
 
     // ============ home page rows (Appearance) ============
-    const ROW_TYPES = [['categories', 'Category tiles'], ['latest', 'Latest products'], ['collection', 'Products of one collection'], ['products', 'Hand-picked products'], ['banner', 'Image banner'], ['text', 'Text block']];
+    const ROW_TYPES = [['categories', 'Collections (tiles or circles)'], ['latest', 'Latest products'], ['collection', 'Products of one collection'], ['products', 'Hand-picked products'], ['banner', 'Image banner'], ['text', 'Text block']];
     const rowTypeName = t => (ROW_TYPES.find(x => x[0] === t) || [t, t])[1];
     const rowId = () => 'r' + Math.random().toString(36).slice(2, 9);
     function newRow(type) {
@@ -8519,8 +8519,8 @@ ${invoiceFootHtml('')}`;
     // Home page order: banner > Shop by category (fixed, first) > rows you add > Latest products (fixed, last) > footer
     function fixedRows(list) {
       const arr = Array.isArray(list) ? list.map(r => Object.assign({}, r)) : [];
-      const cats = arr.find(r => r.type === 'categories'), lat = arr.find(r => r.type === 'latest');
-      const mid = arr.filter(r => r.type !== 'categories' && r.type !== 'latest');
+      const cats = arr.find(r => r.type === 'categories' && r.fixed) || arr.find(r => r.type === 'categories'), lat = arr.find(r => r.type === 'latest');
+      const mid = arr.filter(r => r !== cats && r.type !== 'latest');
       return [Object.assign(newRow('categories'), cats || {}, { fixed: true, on: true }), ...mid, Object.assign(newRow('latest'), lat || {}, { fixed: true, on: true })];
     }
     const rowBool = (v, d) => (v === undefined || v === null || v === '' ? d : String(v) !== 'false');
@@ -8589,7 +8589,7 @@ ${invoiceFootHtml('')}`;
       const rows = st.app.sections;
       return '<div class="sa-sec">Home page rows</div><div class="sa-note">Order on the home page: banner → <b>Shop by category</b> (fixed) → your rows → <b>Latest products</b> (fixed) → footer. Add rows between the two fixed blocks, then press <b>Save appearance</b> at the bottom.</div>' + ROW_HELP +
         rows.map((r, n) => rowCardHtml(r, n, rows.length)).join('') +
-        '<div class="sa-bar"><select id="saRowType">' + ROW_TYPES.filter(t => t[0] !== 'categories' && t[0] !== 'latest').map(t => '<option value="' + t[0] + '">' + t[1] + '</option>').join('') + '</select><button class="sa-btn" data-act="rows-add">+ Add row</button><span style="flex:1"></span><button class="sa-btn dan" data-act="rows-reset">Remove all rows I added</button></div><input type="file" id="saRowFile" accept="image/*" hidden>';
+        '<div class="sa-bar"><select id="saRowType">' + ROW_TYPES.filter(t => t[0] !== 'latest').map(t => '<option value="' + t[0] + '">' + t[1] + '</option>').join('') + '</select><button class="sa-btn" data-act="rows-add">+ Add row</button><span style="flex:1"></span><button class="sa-btn dan" data-act="rows-reset">Remove all rows I added</button></div><input type="file" id="saRowFile" accept="image/*" hidden>';
     }
     function rqSearch(box, q) {
       const n = +box.dataset.rowpk, res = box.querySelector('.sa-pr'), nq = norm(q).trim(); if (!nq) { res.hidden = true; return; }
@@ -9293,7 +9293,7 @@ ${invoiceFootHtml('')}`;
       else if (a === 'applyimport') await applyImport();
       else if (a === 'addslide') { st.app.hero.slides.push({ image: '', mobile: '', title_ar: '', title_en: '', subtitle_ar: '', subtitle_en: '', cta_ar: 'تسوق الآن', cta_en: 'Shop now', href: '/{lang}/products/' }); main.innerHTML = appearanceHtml(); updateCounters(); }
       else if (a === 'rows-custom') { main.innerHTML = appearanceHtml(); }
-      else if (a === 'rows-add') { st.app.sections.splice(st.app.sections.length - 1, 0, newRow($('saRowType').value)); main.innerHTML = appearanceHtml(); updateCounters(); }
+      else if (a === 'rows-add') { const nr = newRow($('saRowType').value); if (nr.type === 'categories') Object.assign(nr, { id: rowId(), size: '', full: false, cols_desktop: 5, count: 12 }); st.app.sections.splice(st.app.sections.length - 1, 0, nr); main.innerHTML = appearanceHtml(); updateCounters(); }
       else if (a === 'rows-reset') { if (confirm('Remove all the rows you added? The fixed Shop by category and Latest products blocks stay.')) { st.app.sections = st.app.sections.filter(r => r.fixed); main.innerHTML = appearanceHtml(); } }
       else if (a === 'gl-addgov') await glAddGov();
       else if (a === 'gl-addcity') await glAddCity();
