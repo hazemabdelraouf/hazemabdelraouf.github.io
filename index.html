@@ -1377,8 +1377,10 @@
       </label>
       <div class="modal-field-note" style="margin-top:4px;">Stock is deducted now, but the money stays pending as a debt on the customer until you settle it from the External debts tab. Leave unchecked if he pays on the spot.</div>
       <div id="colPayLaterFields" style="display:none;margin-top:8px;">
-        <label>Customer name</label>
-        <input type="text" id="colCustomer" placeholder="Who will pay this amount later?">
+        <label>Customer who will pay later</label>
+        <select id="colCustomerSelect"><option value="">Choose customer…</option></select>
+        <input type="text" id="colCustomer" placeholder="New customer name" style="display:none;margin-top:8px;">
+        <div class="modal-field-note" style="margin-top:4px;">The list shows the people who already owe you money (with what they owe now), then every other name you have used. Pick “+ New customer…” to add someone new.</div>
       </div>
     </div>
     <div class="edit-field-group">
@@ -6339,8 +6341,36 @@ ${invoiceFootHtml('')}`;
   // Pay later: the money isn't with any of the three accounts yet, so the
   // account / direction / commission fields don't apply — hide them and ask
   // for the customer's name instead.
+  // ---- Pay-later customer: pick from the people who already owe you (or any known name), or add a new one ----
+  const CC_NEW = '__new__';
+  function ccRender(selected){
+    const sel = $('colCustomerSelect'), inp = $('colCustomer');
+    const owing = getPartyGroups('in'), owingKeys = new Set(owing.map(g => dpNorm(g.name)));
+    const others = dpKnownParties().filter(n => !owingKeys.has(dpNorm(n)));
+    const want = selected === undefined ? sel.value : selected;
+    let pick = '';
+    if(want === CC_NEW){ pick = CC_NEW; }
+    else if(want){
+      const all = owing.map(g => g.name).concat(others);
+      const hit = all.find(n => dpNorm(n) === dpNorm(want));
+      if(hit){ pick = hit; } else { pick = dpClean(want); others.push(pick); }
+    }
+    sel.innerHTML = '<option value="">Choose customer…</option>'
+      + (owing.length ? '<optgroup label="Owe you now">' + owing.map(g => `<option value="${escapeAttr(g.name)}">${escapeHtml(g.name)} — ${fmtEGP(g.total)}</option>`).join('') + '</optgroup>' : '')
+      + (others.length ? '<optgroup label="Other names">' + others.map(n => `<option value="${escapeAttr(n)}">${escapeHtml(n)}</option>`).join('') + '</optgroup>' : '')
+      + `<option value="${CC_NEW}">+ New customer…</option>`;
+    sel.value = pick;
+    if(pick === CC_NEW){ inp.style.display = ''; if(selected !== undefined || inp.value === '') inp.value = ''; }
+    else { inp.style.display = 'none'; inp.value = pick; }
+  }
+  $('colCustomerSelect').addEventListener('change', ()=>{
+    const sel = $('colCustomerSelect'), inp = $('colCustomer');
+    if(sel.value === CC_NEW){ inp.style.display = ''; inp.value = ''; inp.focus(); }
+    else { inp.style.display = 'none'; inp.value = sel.value; }
+  });
   function colApplyPayLater(){
     const on = colIsDeferred();
+    if(on) ccRender();
     $('colPayLaterFields').style.display = on ? '' : 'none';
     ['expAccountGroup','expDirectionGroup','expCommissionGroup'].forEach(id=>{
       $(id).style.display = on ? 'none' : '';
@@ -6464,6 +6494,7 @@ ${invoiceFootHtml('')}`;
     $('colQty').value = '1';
     $('colPayLater').checked = false;
     $('colCustomer').value = '';
+    ccRender('');
     colHideResults();
     colRenderItems();
     colUpdateVisibility();
@@ -6578,9 +6609,10 @@ ${invoiceFootHtml('')}`;
 
     if(deferred){
       const customerName = $('colCustomer').value.trim();
+      if(customerName){ const hit = dpKnownParties().find(n => dpNorm(n) === dpNorm(customerName)); if(hit) $('colCustomer').value = hit; }   // same person, same spelling
       const dAmount = parseFloat($('expAmount').value);
       if(!customerName){
-        $('expError').textContent = 'Enter the customer name.';
+        $('expError').textContent = $('colCustomerSelect').value === CC_NEW ? 'Enter the new customer name.' : 'Choose a customer from the list, or add a new one.';
         return;
       }
       if(!dAmount || dAmount <= 0){
