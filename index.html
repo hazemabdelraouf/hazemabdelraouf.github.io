@@ -3383,6 +3383,7 @@ try{
     const low = noItems.filter(it => !it.manual && it.balance !== undefined && it.balance !== null && it.qty > Number(it.balance));
     if(low.length && !confirm('Not enough stock for:\n\n' + low.map(it => '• ' + it.name + ' (' + it.qty + ' > ' + it.balance + ')').join('\n') + '\n\nStock will go below zero. Continue?')) return;
 
+    const stockLow = noItems.filter(it => !it.manual && it.balance !== undefined && it.balance !== null && Number(it.balance) <= 0);
     const t = noTotals();
     // Same single-line, comma-separated format the "update order" flow sends.
     const itemsText = noItems.map(it => `${it.name} (${it.qty} قطعة )`).join(', ');
@@ -3423,6 +3424,8 @@ try{
         customer_id: data.customer_id || '', timestamp: new Date().toISOString(),
         // where the order came from (the website sends source 'website' + lang ar/en) and new vs existing customer
         source: 'dashboard', lang: '', source_label: 'Dashboard',
+        // item(s) ordered while their stock is 0 or less (stock shown is the stock before this order)
+        stock_alert: stockLow.length ? 'true' : 'false', stock_alert_count: stockLow.length, stock_alert_items: stockLow.map(it => it.name + ' (stock ' + it.balance + ')').join(', '),
         customer_type: custExisting ? 'existing' : (custUnknown ? 'unknown' : 'new'), is_new_customer: custExisting ? 'false' : (custUnknown ? '' : 'true'), previous_orders: custExisting ? prevOrders : (custUnknown ? '' : 0) };
       const qs = new URLSearchParams();
       Object.keys(payload).forEach(k => { if(payload[k] !== null && payload[k] !== undefined) qs.append(k, payload[k]); });
