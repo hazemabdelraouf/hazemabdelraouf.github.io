@@ -3393,6 +3393,19 @@ try{
     const btn = $('noSaveBtn'), label = btn.textContent;
     btn.textContent = 'Creating...';
     try{
+      // New or existing customer? Checked BEFORE the order is created (creating it adds the customer).
+      let custExisting = !!noCustomer, custUnknown = false, prevOrders = noCustomer ? (Number(noCustomer.orders_count) || 0) : 0;
+      if(!custExisting){
+        try{
+          const sr = await fetch(API_URL, { method:'POST', redirect:'follow', body: JSON.stringify({ action:'searchCustomers', q: normPhone(fields.phone) }) });
+          const rows = await sr.json();
+          if(Array.isArray(rows)){
+            const keys = [normPhone(fields.phone), fields.phone2 ? normPhone(fields.phone2) : ''].filter(Boolean);
+            const hit = rows.find(c => keys.includes(normPhone(c.phone)) || (c.phone2 && keys.includes(normPhone(c.phone2))));
+            if(hit){ custExisting = true; prevOrders = Number(hit.orders_count) || 0; }
+          } else custUnknown = true;
+        }catch(e3){ custUnknown = true; }
+      }
       const res = await fetch(API_URL, { method:'POST', redirect:'follow', body: JSON.stringify(Object.assign({ action:'createOrder' }, fields)) });
       const data = await res.json();
       if(!data || data.error || !data.serial){ err.textContent = (data && data.error) || 'Could not create the order.'; return; }
@@ -3407,7 +3420,10 @@ try{
         Phone: fields.phone, Phone2: fields.phone2, Gov: fields.gov, city: fields.city, Address_line1: fields.addressLine1,
         Address_line2: fields.addressLine2, Address: fields.city + '-' + fields.gov, items: itemsText, pieces: t.pieces, weight: t.weight,
         total: t.total, 'Shipping cost': t.ship, COD: t.cod, 'open package': fields['open package'], open_package: fields.open_package, note: fields.note, shipping_status: 'request needed', payment_status: 'PENDING',
-        customer_id: data.customer_id || '', timestamp: new Date().toISOString() };
+        customer_id: data.customer_id || '', timestamp: new Date().toISOString(),
+        // where the order came from (the website sends source 'website' + lang ar/en) and new vs existing customer
+        source: 'dashboard', lang: '', source_label: 'Dashboard',
+        customer_type: custExisting ? 'existing' : (custUnknown ? 'unknown' : 'new'), is_new_customer: custExisting ? 'false' : (custUnknown ? '' : 'true'), previous_orders: custExisting ? prevOrders : (custUnknown ? '' : 0) };
       const qs = new URLSearchParams();
       Object.keys(payload).forEach(k => { if(payload[k] !== null && payload[k] !== undefined) qs.append(k, payload[k]); });
       const url = NEW_ORDER_WEBHOOK_URL + '?' + qs.toString();
