@@ -3394,19 +3394,10 @@ try{
     const btn = $('noSaveBtn'), label = btn.textContent;
     btn.textContent = 'Creating...';
     try{
-      // New or existing customer? Checked BEFORE the order is created (creating it adds the customer).
-      let custExisting = !!noCustomer, custUnknown = false, prevOrders = noCustomer ? (Number(noCustomer.orders_count) || 0) : 0;
-      if(!custExisting){
-        try{
-          const sr = await fetch(API_URL, { method:'POST', redirect:'follow', body: JSON.stringify({ action:'searchCustomers', q: normPhone(fields.phone) }) });
-          const rows = await sr.json();
-          if(Array.isArray(rows)){
-            const keys = [normPhone(fields.phone), fields.phone2 ? normPhone(fields.phone2) : ''].filter(Boolean);
-            const hit = rows.find(c => keys.includes(normPhone(c.phone)) || (c.phone2 && keys.includes(normPhone(c.phone2))));
-            if(hit){ custExisting = true; prevOrders = Number(hit.orders_count) || 0; }
-          } else custUnknown = true;
-        }catch(e3){ custUnknown = true; }
-      }
+      // New or existing customer — the SAME rule as the "New Customer / N orders" badge on the order cards:
+      // only DELIVERED orders with the same phone number count (phoneOrderCounts, built from every order row).
+      const custKnown = Array.isArray(allOrders) && allOrders.length > 0;
+      const deliveredBefore = phoneOrderCounts[normPhone(fields.phone)] || 0;
       const res = await fetch(API_URL, { method:'POST', redirect:'follow', body: JSON.stringify(Object.assign({ action:'createOrder' }, fields)) });
       const data = await res.json();
       if(!data || data.error || !data.serial){ err.textContent = (data && data.error) || 'Could not create the order.'; return; }
@@ -3426,7 +3417,9 @@ try{
         source: 'dashboard', lang: '', source_label: 'Dashboard',
         // item(s) ordered while their stock is 0 or less (stock shown is the stock before this order)
         stock_alert: stockLow.length ? 'true' : 'false', stock_alert_count: stockLow.length, stock_alert_items: stockLow.map(it => it.name + ' (stock ' + it.balance + ')').join(', '),
-        customer_type: custExisting ? 'existing' : (custUnknown ? 'unknown' : 'new'), is_new_customer: custExisting ? 'false' : (custUnknown ? '' : 'true'), previous_orders: custExisting ? prevOrders : (custUnknown ? '' : 0) };
+        customer_type: !custKnown ? 'unknown' : (deliveredBefore > 0 ? 'existing' : 'new'), is_new_customer: !custKnown ? '' : String(deliveredBefore === 0),
+        previous_orders: custKnown ? deliveredBefore : '', delivered_orders: custKnown ? deliveredBefore : '',
+        customer_label: !custKnown ? '' : (deliveredBefore > 0 ? (deliveredBefore + 1) + ' orders' : 'New Customer') };
       const qs = new URLSearchParams();
       Object.keys(payload).forEach(k => { if(payload[k] !== null && payload[k] !== undefined) qs.append(k, payload[k]); });
       const url = NEW_ORDER_WEBHOOK_URL + '?' + qs.toString();
