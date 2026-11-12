@@ -8744,7 +8744,7 @@ ${invoiceFootHtml('')}`;
         '<input type="file" id="saVFile" accept="image/*" hidden>' +
         '<button class="sa-btn" data-act="addvar">+ Add option</button><div class="sa-note">Cost and real quantity are edited in Inventory, never here, and customers never see them.</div>' +
         '<div class="sa-msg ' + (ed.msgErr ? 'err' : 'ok') + '" id="saMsg">' + E(ed.msg) + '</div><div class="sa-foot">' +
-        (ed.isNew ? '' : '<button class="sa-btn" data-act="copylink" data-url="' + E(url) + '">Copy link</button><a class="sa-btn" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent((sh.title_arabic || sh.title) + ' ' + url) + '">Share on WhatsApp</a>') +
+        (ed.isNew ? '' : '<button class="sa-btn dan" data-act="delprod">Delete</button><button class="sa-btn" data-act="copylink" data-url="' + E(url) + '">Copy link</button><a class="sa-btn" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent((sh.title_arabic || sh.title) + ' ' + url) + '">Share on WhatsApp</a>') +
         '<button class="sa-btn" data-act="cancel">Cancel</button><button class="sa-btn pri" data-act="saveprod"' + (ed.busy ? ' disabled' : '') + '>Save</button></div></div></div>';
     }
 
@@ -8784,6 +8784,25 @@ ${invoiceFootHtml('')}`;
       const err = r.error ? r.error.message : (r.data && r.data.error);
       if (err) { say(err === 'sku_taken' ? 'This SKU is already used: ' + ((r.data || {}).sku || '') : 'Could not save: ' + err + ((r.data || {}).detail ? ' — ' + r.data.detail : ''), true); if (btn) btn.disabled = false; return; }
       st.ed = null; await Promise.all([loadProducts(), loadCols()]); render(); queuePublish(); toast('Saved');
+    }
+
+    async function deleteProduct() {
+      const ed = st.ed; if (!ed || ed.isNew || ed.busy) return;
+      const say = (m, bad) => { ed.msg = m; ed.msgErr = !!bad; const el = $('saMsg'); if (el) { el.textContent = m; el.className = 'sa-msg ' + (bad ? 'err' : 'ok'); } };
+      const ids = ed.variants.map(v => v.id).filter(Boolean);
+      if (!ids.length) return say('Nothing to delete', true);
+      const stock = ed.variants.reduce((s, v) => s + (Number(v.balance) || 0), 0);
+      const name = ed.shared.title_arabic || ed.shared.title || ed.handle;
+      if (!confirm('Delete "' + name + '" permanently' + (ids.length > 1 ? ' together with its ' + ids.length + ' options' : '') + '?' +
+        (stock > 0 ? '\n\nIt still has ' + stock + ' in stock.' : '') +
+        '\n\nOld orders keep their text, but the Summary can no longer find this product\'s cost, so its past sales stop counting in profit.\nTo just remove it from the website, set it to Hidden instead.')) return;
+      ed.busy = true; say('Deleting…');
+      const btn = modal.querySelector('[data-act="delprod"]'); if (btn) btn.disabled = true;
+      const r = await SB().from('products').delete().in('id', ids).select('id'); ed.busy = false;
+      if (r.error) { say('Could not delete: ' + r.error.message, true); if (btn) btn.disabled = false; return; }
+      if (!r.data || r.data.length !== ids.length) { say('The database did not allow the delete (no delete permission on the products table)', true); if (btn) btn.disabled = false; return; }
+      st.ed = null; await Promise.all([loadProducts(), loadCols()]); render(); queuePublish(); toast('Product deleted');
+      try { if (typeof fetchProducts === 'function') fetchProducts(true).then(() => { try { renderInventory(); } catch (e) {} }); } catch (e) {}
     }
 
     // ============ collections ============
@@ -9358,6 +9377,7 @@ ${invoiceFootHtml('')}`;
       else if (a === 'addurl') { const u = $('saUrl').value.trim(); if (/^https?:\/\//i.test(u)) { st.ed.images.push(u); renderModal(); } }
       else if (a === 'copylink') { try { await navigator.clipboard.writeText(act.dataset.url); toast('Link copied'); } catch (x) { toast('Copy failed'); } }
       else if (a === 'saveprod') await saveProduct();
+      else if (a === 'delprod') await deleteProduct();
       else if (a === 'savecol') await saveCollection();
       else if (a === 'colimg') $('saColFile').click();
       else if (a === 'colimgrm') { st.cd.f.image = ''; renderModal(); }
