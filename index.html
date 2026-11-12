@@ -8737,7 +8737,7 @@ ${invoiceFootHtml('')}`;
             '<div class="sa-var"><span class="h">SKU</span><span class="h">Value 1</span><span class="h">Value 2</span><span class="h">Sale price</span><span class="h">Price before discount</span><span class="h">Weight (kg)</span><span class="h">Stock display</span><span class="h">Real stock</span><span></span>' +
             '<input data-v="' + i + '.sku" value="' + E(v.sku) + '"' + (v.id ? ' readonly' : '') + '><input data-v="' + i + '.option1_value" value="' + E(v.option1_value) + '" placeholder="e.g. 250 g"><input data-v="' + i + '.option2_value" value="' + E(v.option2_value) + '">' +
             '<input data-v="' + i + '.sale_price" type="number" step="any" value="' + E(v.sale_price) + '"><input data-v="' + i + '.regular_price" type="number" step="any" value="' + E(v.regular_price) + '"><input data-v="' + i + '.weight" type="number" min="0" step="any" value="' + E(v.weight) + '" placeholder="0.25">' + modeSel(i, v.store_stock_mode) +
-            '<span class="sa-s">' + (v.id ? E(v.balance) : '—') + '</span>' + (v.id ? '<span></span>' : '<button class="sa-btn dan" data-rmvar="' + i + '">×</button>') + '</div>' +
+            '<span class="sa-s">' + (v.id ? E(v.balance) : '—') + '</span>' + (v.id ? (ed.variants.length > 1 ? '<button class="sa-btn dan" data-delvar="' + i + '" title="Delete this option">×</button>' : '<span></span>') : '<button class="sa-btn dan" data-rmvar="' + i + '">×</button>') + '</div>' +
             '<div class="sa-oimg"><span class="sa-s">Picture for this option:</span><i class="sa-oi' + (!v.variant_image ? ' on' : '') + '" data-vimg="' + i + '|" title="Use the main picture">main</i>' +
             avail.map(u => '<img class="sa-oi' + (v.variant_image === u ? ' on' : '') + '" src="' + E(u) + '" alt="" data-vimg="' + i + '|' + E(u) + '">').join('') +
             '<button class="sa-btn" data-vup="' + i + '">+ Upload</button></div></div>').join(''); })() +
@@ -8802,6 +8802,25 @@ ${invoiceFootHtml('')}`;
       if (r.error) { say('Could not delete: ' + r.error.message, true); if (btn) btn.disabled = false; return; }
       if (!r.data || r.data.length !== ids.length) { say('The database did not allow the delete (no delete permission on the products table)', true); if (btn) btn.disabled = false; return; }
       st.ed = null; await Promise.all([loadProducts(), loadCols()]); render(); queuePublish(); toast('Product deleted');
+      try { if (typeof fetchProducts === 'function') fetchProducts(true).then(() => { try { renderInventory(); } catch (e) {} }); } catch (e) {}
+    }
+
+    // Delete ONE option (one SKU row) of a product. Same warning as deleting a whole product, including what is still in stock.
+    async function deleteOption(i) {
+      const ed = st.ed; if (!ed || ed.isNew || ed.busy) return;
+      const v = ed.variants[i]; if (!v || !v.id) return;
+      const say = (m, bad) => { ed.msg = m; ed.msgErr = !!bad; const el = $('saMsg'); if (el) { el.textContent = m; el.className = 'sa-msg ' + (bad ? 'err' : 'ok'); } };
+      if (ed.variants.filter(x => x.id).length < 2) return say('A product needs at least one option. To remove the whole product use Delete at the bottom.', true);
+      const stock = Number(v.balance) || 0, label = [v.option1_value, v.option2_value].filter(Boolean).join(' / ');
+      if (!confirm('Delete the option ' + (label ? '"' + label + '" ' : '') + '(SKU ' + v.sku + ') permanently?' +
+        (stock > 0 ? '\n\nIt still has ' + stock + ' in stock.' : '') +
+        '\n\nOld orders keep their text, but the Summary can no longer find this option\'s cost, so its past sales stop counting in profit.\nTo just stop selling it, set its stock display to "Out of stock" instead.')) return;
+      ed.busy = true; say('Deleting…');
+      const r = await SB().from('products').delete().eq('id', v.id).select('id'); ed.busy = false;
+      if (r.error) { say('Could not delete: ' + r.error.message, true); return; }
+      if (!r.data || r.data.length !== 1) { say('The database did not allow the delete (no delete permission on the products table)', true); return; }
+      ed.variants.splice(i, 1); ed.msg = 'Option deleted'; ed.msgErr = false; renderModal(); queuePublish(); toast('Option deleted');
+      await Promise.all([loadProducts(), loadCols()]); if (st.ed === ed) renderModal();
       try { if (typeof fetchProducts === 'function') fetchProducts(true).then(() => { try { renderInventory(); } catch (e) {} }); } catch (e) {}
     }
 
@@ -9336,6 +9355,7 @@ ${invoiceFootHtml('')}`;
       if (t.dataset.firstimg !== undefined) { const u = st.ed.images.splice(+t.dataset.firstimg, 1)[0]; st.ed.images.unshift(u); renderModal(); return; }
       if (t.dataset.vimg !== undefined && st.ed) { const q = t.dataset.vimg.split('|'); st.ed.variants[+q[0]].variant_image = q.slice(1).join('|'); renderModal(); return; }
       if (t.dataset.vup !== undefined && st.ed) { st.vupIdx = +t.dataset.vup; $('saVFile').click(); return; }
+      if (t.dataset.delvar !== undefined && st.ed) { await deleteOption(+t.dataset.delvar); return; }
       if (t.dataset.rmvar !== undefined) { st.ed.variants.splice(+t.dataset.rmvar, 1); renderModal(); return; }
       if (t.dataset.rmmember !== undefined) { st.cd.remove.push(t.dataset.rmmember); renderModal(); return; }
       const wa = t.closest('[data-wa]'); if (wa) { const c = st.carts.find(x => x.cart_id === wa.dataset.wa); if (c && !c.contacted_at) setTimeout(() => cartUpdate(c.cart_id, { contacted_at: new Date().toISOString() }), 400); return; }
