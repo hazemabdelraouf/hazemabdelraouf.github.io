@@ -8435,7 +8435,9 @@ ${invoiceFootHtml('')}`;
       root.hidden = false; render(); main.innerHTML = '<p class="sa-note">Loading…</p>';
       await Promise.all([loadProducts(), loadCols(), loadDiscounts(), loadApp()]); render(); enterTab();
     }
-    const groups = () => { const m = new Map(); st.products.forEach(r => { const k = r.handle || ('id' + r.id); if (!m.has(k)) m.set(k, []); m.get(k).push(r); }); return Array.from(m.values()); };
+    const hkey = r => String(r.handle || '').trim().toLowerCase();
+    const gKey = g => hkey(g[0]) || ('id' + g[0].id);          // identifies a product (option rows share it); older rows without a handle use their id
+    const groups = () => { const m = new Map(); st.products.forEach(r => { const k = hkey(r) || ('id' + r.id); if (!m.has(k)) m.set(k, []); m.get(k).push(r); }); return Array.from(m.values()); };
     const gTitle = g => g[0].title_arabic || g[0].title || g[0].sku;
     const gSearch = g => norm(g.map(x => [x.title, x.title_arabic, x.sku, x.handle].join(' ')).join(' '));
     const membersOf = name => groups().filter(g => g.some(x => splitList(x.collections).includes(name)));
@@ -8691,7 +8693,7 @@ ${invoiceFootHtml('')}`;
         const r = g[0], on = String(r.status || '').toUpperCase() === 'ACTIVE', im = imgs(r.images)[0];
         const manual = g.filter(x => (x.store_stock_mode || 'auto') !== 'auto').length, bal = g.reduce((s, x) => s + (Number(x.balance) || 0), 0);
         const prices = g.map(x => Number(x.sale_price) || Number(x.regular_price) || 0).filter(Boolean);
-        return '<div class="sa-row" data-open="' + E(r.handle || '') + '">' + (im ? '<img class="sa-th" src="' + E(im) + '" alt="">' : '<span class="sa-th"></span>') +
+        return '<div class="sa-row" data-open="' + E(gKey(g)) + '">' + (im ? '<img class="sa-th" src="' + E(im) + '" alt="">' : '<span class="sa-th"></span>') +
           '<div><div class="sa-t">' + E(r.title_arabic || r.title || r.sku) + '</div><div class="sa-s">' + E(r.title && r.title_arabic ? r.title + ' · ' : '') + g.map(x => E(x.sku)).join(', ') + '</div></div>' +
           '<div style="text-align:right"><span class="sa-pill ' + (on ? 'ok' : 'off') + '">' + (on ? 'Visible' : 'Hidden') + '</span>' + (manual ? '<span class="sa-pill warn">Manual stock display</span>' : '') +
           '<div class="sa-s">' + (prices.length ? Math.min.apply(null, prices) : '—') + ' EGP · Stock ' + bal + '</div></div></div>';
@@ -8703,9 +8705,9 @@ ${invoiceFootHtml('')}`;
         '<button class="sa-btn" data-act="export">Export to Excel</button><button class="sa-btn" data-act="import">Import from Excel</button><button class="sa-btn" data-act="sync">Match real stock</button><button class="sa-btn pri" data-act="new">+ New product</button></div><div id="saList">' + listHtml() + '</div>';
     }
     function openEditor(handle) {
-      const g = groups().find(x => (x[0].handle || '') === handle && handle !== '__new__'), r = g ? g[0] : null;
+      const g = groups().find(x => gKey(x) === handle && handle !== '__new__'), r = g ? g[0] : null;
       const blank = { status: 'ACTIVE', title: '', title_arabic: '', description: '', description_ar: '', seo_title: '', seo_description: '', seo_title_ar: '', seo_description_ar: '', option1_name: '', option2_name: '' };
-      st.ed = { isNew: !g, handle: g ? handle : '', msg: '', busy: false, shared: r ? Object.assign({}, blank, { status: String(r.status || '').toUpperCase() === 'ACTIVE' ? 'ACTIVE' : 'UNLISTED', title: r.title || '', title_arabic: r.title_arabic || '', description: r.description || '', description_ar: r.description_ar || '', seo_title: r.seo_title || '', seo_description: r.seo_description || '', seo_title_ar: r.seo_title_ar || '', seo_description_ar: r.seo_description_ar || '', option1_name: r.option1_name || '', option2_name: r.option2_name || '' }) : blank,
+      st.ed = { isNew: !g, key: g ? handle : '', handle: g ? String(g[0].handle || '').trim() : '', msg: '', busy: false, uploading: 0, shared: r ? Object.assign({}, blank, { status: String(r.status || '').toUpperCase() === 'ACTIVE' ? 'ACTIVE' : 'UNLISTED', title: r.title || '', title_arabic: r.title_arabic || '', description: r.description || '', description_ar: r.description_ar || '', seo_title: r.seo_title || '', seo_description: r.seo_description || '', seo_title_ar: r.seo_title_ar || '', seo_description_ar: r.seo_description_ar || '', option1_name: r.option1_name || '', option2_name: r.option2_name || '' }) : blank,
         cols: r ? splitList(r.collections) : [], images: r ? imgs(r.images) : [],
         variants: g ? g.map(x => ({ id: x.id, sku: x.sku || '', option1_value: x.option1_value || '', option2_value: x.option2_value || '', sale_price: x.sale_price == null ? '' : x.sale_price, regular_price: x.regular_price == null ? '' : x.regular_price, store_stock_mode: x.store_stock_mode || 'auto', variant_image: x.variant_image || '', weight: (x.weight == null || Number(x.weight) === 0) ? '' : x.weight, balance: x.balance }))
           : [{ id: '', sku: '', option1_value: '', option2_value: '', sale_price: '', regular_price: '', store_stock_mode: 'auto', variant_image: '', weight: '', balance: 0 }] };
@@ -8736,43 +8738,72 @@ ${invoiceFootHtml('')}`;
           return ed.variants.map((v, i) => '<div class="sa-opt"><div class="sa-optn">Option ' + (i + 1) + (v.option1_value ? ' — ' + E(v.option1_value) : '') + '</div>' +
             '<div class="sa-var"><span class="h">SKU</span><span class="h">Value 1</span><span class="h">Value 2</span><span class="h">Sale price</span><span class="h">Price before discount</span><span class="h">Weight (kg)</span><span class="h">Stock display</span><span class="h">Real stock</span><span></span>' +
             '<input data-v="' + i + '.sku" value="' + E(v.sku) + '"' + (v.id ? ' readonly' : '') + '><input data-v="' + i + '.option1_value" value="' + E(v.option1_value) + '" placeholder="e.g. 250 g"><input data-v="' + i + '.option2_value" value="' + E(v.option2_value) + '">' +
-            '<input data-v="' + i + '.sale_price" type="number" step="any" value="' + E(v.sale_price) + '"><input data-v="' + i + '.regular_price" type="number" step="any" value="' + E(v.regular_price) + '"><input data-v="' + i + '.weight" type="number" min="0" step="any" value="' + E(v.weight) + '" placeholder="0.25">' + modeSel(i, v.store_stock_mode) +
+            '<input data-v="' + i + '.sale_price" type="text" inputmode="decimal" value="' + E(v.sale_price) + '"><input data-v="' + i + '.regular_price" type="text" inputmode="decimal" value="' + E(v.regular_price) + '"><input data-v="' + i + '.weight" type="text" inputmode="decimal" value="' + E(v.weight) + '" placeholder="0.25">' + modeSel(i, v.store_stock_mode) +
             '<span class="sa-s">' + (v.id ? E(v.balance) : '—') + '</span>' + (v.id ? (ed.variants.length > 1 ? '<button class="sa-btn dan" data-delvar="' + i + '" title="Delete this option">×</button>' : '<span></span>') : '<button class="sa-btn dan" data-rmvar="' + i + '">×</button>') + '</div>' +
             '<div class="sa-oimg"><span class="sa-s">Picture for this option:</span><i class="sa-oi' + (!v.variant_image ? ' on' : '') + '" data-vimg="' + i + '|" title="Use the main picture">main</i>' +
             avail.map(u => '<img class="sa-oi' + (v.variant_image === u ? ' on' : '') + '" src="' + E(u) + '" alt="" data-vimg="' + i + '|' + E(u) + '">').join('') +
             '<button class="sa-btn" data-vup="' + i + '">+ Upload</button></div></div>').join(''); })() +
         '<input type="file" id="saVFile" accept="image/*" hidden>' +
-        '<button class="sa-btn" data-act="addvar">+ Add option</button><div class="sa-note">Cost and real quantity are edited in Inventory, never here, and customers never see them.</div>' +
+        '<button class="sa-btn" data-act="addvar">+ Add option</button>' + (ed.isNew ? '' : '<button class="sa-btn" data-act="mergeopen">Merge another product into this one…</button>') +
+        (ed.merge ? '<div class="sa-opt"><div class="sa-s">Pick the product that should become an option of this one (it takes this product\'s name, description and pictures; its own picture stays on its option). Unsaved changes in this window are lost.</div><input data-mergeq placeholder="Search by name or SKU" value="' + E(ed.mergeQ || '') + '"><div id="saMergeList">' + mergeListHtml() + '</div></div>' : '') + '<div class="sa-note">Cost and real quantity are edited in Inventory, never here, and customers never see them.</div>' +
         '<div class="sa-msg ' + (ed.msgErr ? 'err' : 'ok') + '" id="saMsg">' + E(ed.msg) + '</div><div class="sa-foot">' +
         (ed.isNew ? '' : '<button class="sa-btn dan" data-act="delprod">Delete</button><button class="sa-btn" data-act="copylink" data-url="' + E(url) + '">Copy link</button><a class="sa-btn" target="_blank" rel="noopener" href="https://wa.me/?text=' + encodeURIComponent((sh.title_arabic || sh.title) + ' ' + url) + '">Share on WhatsApp</a>') +
-        '<button class="sa-btn" data-act="cancel">Cancel</button><button class="sa-btn pri" data-act="saveprod"' + (ed.busy ? ' disabled' : '') + '>Save</button></div></div></div>';
+        '<button class="sa-btn" data-act="cancel">Cancel</button><button class="sa-btn pri" data-act="saveprod"' + (ed.busy || ed.uploading ? ' disabled' : '') + '>' + (ed.uploading ? 'Uploading…' : 'Save') + '</button></div></div></div>';
     }
 
     // ---- images: resized to WebP in the browser, stored in the public bucket ----
+    async function decodeImage(file) {
+      try { return await createImageBitmap(file); } catch (e1) { /* try the slower way below */ }
+      const url = URL.createObjectURL(file);
+      try { const im = new Image(); im.src = url; await im.decode(); return im; }
+      catch (e2) { throw new Error(/hei[cf]/i.test((file.type || '') + file.name) ? 'this photo is HEIC (iPhone format): save/export it as JPG or PNG first' : 'this file could not be read as a picture (' + (file.type || file.name.split('.').pop()) + ')'); }
+      finally { setTimeout(() => URL.revokeObjectURL(url), 8000); }
+    }
     async function toWebp(file, max) {
-      const bmp = await createImageBitmap(file), k = Math.min(1, max / Math.max(bmp.width, bmp.height));
-      const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
-      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-      return await new Promise(res => c.toBlob(res, 'image/webp', 0.85));
+      if (file.size > 40 * 1024 * 1024) throw new Error('the picture is larger than 40 MB');
+      const bmp = await decodeImage(file), w = bmp.width || bmp.naturalWidth, h = bmp.height || bmp.naturalHeight, k = Math.min(1, max / Math.max(w, h));
+      const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); if (bmp.close) bmp.close();
+      const toBlob = type => new Promise(res => c.toBlob(res, type, 0.85));
+      let out = await toBlob('image/webp'); if (!out || !/webp/.test(out.type)) { const j = await toBlob('image/jpeg'); if (j) out = j; }   // some browsers cannot write WebP
+      if (!out) throw new Error('the browser could not convert the picture');
+      return out;
     }
     async function uploadOne(file, folder, max) {
-      const blob = await toWebp(file, max || 1600), path = folder + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 7) + '.webp';
-      const up = await SB().storage.from('store-media').upload(path, blob, { contentType: 'image/webp', cacheControl: '31536000' });
-      if (up.error) throw up.error;
-      return SB().storage.from('store-media').getPublicUrl(path).data.publicUrl;
+      const blob = await toWebp(file, max || 1600), ext = /webp/.test(blob.type) ? 'webp' : (/png/.test(blob.type) ? 'png' : 'jpg');
+      const path = folder + '/' + Date.now() + '-' + Math.random().toString(36).slice(2, 7) + '.' + ext, pub = () => SB().storage.from('store-media').getPublicUrl(path).data.publicUrl;
+      let last;
+      for (let n = 0; n < 3; n++) {                                          // a weak connection should not lose a picture
+        const up = await SB().storage.from('store-media').upload(path, blob, { contentType: blob.type || 'image/webp', cacheControl: '31536000' });
+        if (!up.error) return pub();
+        const m = String(up.error.message || up.error); last = up.error;
+        if (/already exists|duplicate/i.test(m)) return pub();               // an earlier try actually arrived
+        if (/row-level|security|not allowed|unauthori|too large|payload|mime/i.test(m)) break;
+        await new Promise(r => setTimeout(r, 700 * (n + 1)));
+      }
+      throw last;
     }
     async function uploadImages(files) {
-      const ed = st.ed, say = (m, bad) => { ed.msg = m; ed.msgErr = !!bad; const el = $('saMsg'); if (el) { el.textContent = m; el.className = 'sa-msg ' + (bad ? 'err' : 'ok'); } };
+      const ed = st.ed; if (!ed) return; const list = Array.from(files), failed = []; let ok = 0;
+      const say = (m, bad) => { ed.msg = m; ed.msgErr = !!bad; const el = $('saMsg'); if (el) { el.textContent = m; el.className = 'sa-msg ' + (bad ? 'err' : 'ok'); } };
       const folder = 'products/' + (String((ed.variants[0] || {}).sku || 'new').toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'new');
-      for (const f of Array.from(files)) {
-        try { say('Uploading ' + f.name + '…'); ed.images.push(await uploadOne(f, folder, 1600)); }
-        catch (e) { say('Image upload failed: ' + (e.message || e), true); renderModal(); return; }
+      ed.uploading = (ed.uploading || 0) + 1; renderModal();
+      for (let i = 0; i < list.length; i++) {
+        try { say('Uploading ' + (i + 1) + ' of ' + list.length + ': ' + list[i].name + '\u2026'); ed.images.push(await uploadOne(list[i], folder, 1600)); ok++; }
+        catch (e) { failed.push(list[i].name + ' \u2014 ' + (e.message || e)); }
       }
-      say(''); renderModal();
+      ed.uploading--; if (st.ed !== ed) { toast(ok + ' picture(s) uploaded'); return; }
+      ed.msg = failed.length ? (ok ? ok + ' uploaded. ' : '') + 'Not uploaded: ' + failed.join(' | ') : ''; ed.msgErr = !!failed.length; renderModal();
     }
     async function saveProduct() {
-      const ed = st.ed, say = (m, bad) => { ed.msg = m; ed.msgErr = !!bad; const el = $('saMsg'); if (el) { el.textContent = m; el.className = 'sa-msg ' + (bad ? 'err' : 'ok'); } };
+      const ed = st.ed, say = (m, bad) => { ed.msg = m; ed.msgErr = !!bad; const el = $('saMsg'); if (el) { el.textContent = m; el.className = 'sa-msg ' + (bad ? 'err' : 'ok'); if (bad) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } };
+      if (ed.uploading) return say('Please wait — a picture is still uploading', true);
       const sh = ed.shared, skus = ed.variants.map(v => String(v.sku || '').trim());
+      const nn = x => String(x == null ? '' : x).trim().replace(/[\u0660-\u0669]/g, d => d.charCodeAt(0) - 0x660).replace(/[\u06F0-\u06F9]/g, d => d.charCodeAt(0) - 0x6F0).replace(/\u066C/g, '').replace(/[\u066B,]/g, '.');   // Arabic digits and decimal commas
+      for (let i = 0; i < ed.variants.length; i++) for (const [f, label] of [['sale_price', 'Sale price'], ['regular_price', 'Price before discount'], ['weight', 'Weight (kg)']]) {
+        const val = nn(ed.variants[i][f]); if (val !== '' && !(isFinite(Number(val)) && Number(val) >= 0)) return say('Option ' + (i + 1) + ': ' + label + ' must be a number' + (f === 'weight' ? ' in kg, for example 0.25' : '') + ' (you typed “' + ed.variants[i][f] + '”)', true);
+        ed.variants[i][f] = val;
+      }
       if (!sh.title.trim() && !sh.title_arabic.trim()) return say('Enter a title in Arabic or English', true);
       if (skus.some(s => !s)) return say('Every option needs a SKU', true);
       if (new Set(skus.map(s => s.toLowerCase())).size !== skus.length) return say('Duplicate SKU', true);
@@ -8784,6 +8815,24 @@ ${invoiceFootHtml('')}`;
       const err = r.error ? r.error.message : (r.data && r.data.error);
       if (err) { say(err === 'sku_taken' ? 'This SKU is already used: ' + ((r.data || {}).sku || '') : 'Could not save: ' + err + ((r.data || {}).detail ? ' — ' + r.data.detail : ''), true); if (btn) btn.disabled = false; return; }
       st.ed = null; await Promise.all([loadProducts(), loadCols()]); render(); queuePublish(); toast('Saved');
+    }
+
+    // Merge a product that was split by mistake into this one as an option (needs sql/15_store_options_fix.sql)
+    function mergeListHtml() {
+      const ed = st.ed, q = norm(ed.mergeQ || ''), list = groups().filter(g => gKey(g) !== ed.key && (!q || gSearch(g).includes(q))).slice(0, 8);
+      return list.length ? list.map(g => '<div class="sa-row" style="grid-template-columns:1fr auto;cursor:pointer" data-mergepick="' + E(gKey(g)) + '"><div><div class="sa-t">' + E(gTitle(g)) + '</div><div class="sa-s">SKU ' + g.map(x => E(x.sku)).join(', ') + '</div></div><span class="sa-pill off">' + g.length + (g.length > 1 ? ' options' : ' option') + '</span></div>').join('') : '<div class="sa-s">No product found</div>';
+    }
+    async function mergeInto(key) {
+      const ed = st.ed; if (!ed || ed.isNew || ed.busy || ed.uploading) return;
+      const other = groups().find(g => gKey(g) === key); if (!other) return;
+      const say = (m, bad) => { ed.msg = m; ed.msgErr = !!bad; const el = $('saMsg'); if (el) { el.textContent = m; el.className = 'sa-msg ' + (bad ? 'err' : 'ok'); } };
+      if (!confirm('Merge \u201c' + gTitle(other) + '\u201d (SKU ' + other.map(x => x.sku).join(', ') + ') into this product as ' + (other.length > 1 ? other.length + ' options' : 'an option') + '?\n\nIt takes this product\'s name, description, pictures, collections and visibility. Its own first picture stays as the picture of its option.\nUnsaved changes in this window are lost.')) return;
+      ed.busy = true; say('Merging\u2026');
+      const r = await SB().rpc('store_admin_merge_products', { p: { into_ids: ed.variants.map(v => v.id).filter(Boolean), from_ids: other.map(x => x.id) } }); ed.busy = false;
+      const err = r.error ? r.error.message : (r.data && r.data.error);
+      if (err) { say('Could not merge: ' + err + ((r.data || {}).detail ? ' \u2014 ' + r.data.detail : '') + (/function .* does not exist|schema cache/i.test(err) ? ' (run sql/15_store_options_fix.sql first)' : ''), true); return; }
+      await Promise.all([loadProducts(), loadCols()]); queuePublish(); toast('Merged \u2014 now fill in the option values');
+      const h = String(r.data.handle || '').trim().toLowerCase(); st.ed = null; openEditor(h);
     }
 
     async function deleteProduct() {
@@ -9096,13 +9145,17 @@ ${invoiceFootHtml('')}`;
         if (Number.isNaN(v.weight) || (v.weight !== '' && v.weight < 0)) { errors.push('Row ' + line + ' (' + sku + '): the weight must be a number in kg (for example 0.25)'); return; }
         if (has('mode')) { const t = cell(r, PCOL.mode).toLowerCase().replace(/[\s-]+/g, '_'); if (t) { if (!['auto', 'in_stock', 'out_of_stock'].includes(t)) { errors.push('Row ' + line + ' (' + sku + '): Stock display must be auto, in_stock or out_of_stock'); return; } v.store_stock_mode = t; } }
         let status = null; if (has('status')) { const t = cell(r, PCOL.status); if (t) status = /^(visible|active|yes|true|1|on)$/i.test(t) ? 'ACTIVE' : (/^(hidden|unlisted|no|false|0|off)$/i.test(t) ? 'UNLISTED' : null); if (t && !status) { errors.push('Row ' + line + ' (' + sku + '): Website status must be Visible or Hidden'); return; } }
-        const handle = ex ? ex.handle : (cell(r, PCOL.handle) || ('new:' + sku));
-        if (!byHandle.has(handle)) byHandle.set(handle, { handle: ex ? ex.handle : (cell(r, PCOL.handle) || ''), isNew: !ex, rows: [], any: ex });
-        const g = byHandle.get(handle); g.rows.push({ r, v, ex, status, line }); if (!g.any && ex) g.any = ex;
+        const exH = ex ? String(ex.handle || '').trim() : '', sheetH = has('handle') ? cell(r, PCOL.handle) : '';
+        const tKey = ((has('title_arabic') ? cell(r, PCOL.title_arabic) : '') || (has('title') ? cell(r, PCOL.title) : '')).trim().toLowerCase();
+        // rows that belong to one product share its Handle; an old product without a handle stays on its own; new rows with the same title and no Handle become options of ONE product
+        const handle = (exH || sheetH).toLowerCase() || (ex ? 'id:' + ex.id : (tKey ? 'new-title:' + tKey : 'new:' + sku));
+        if (!byHandle.has(handle)) byHandle.set(handle, { handle: exH || sheetH || '', isNew: true, rows: [], any: null });
+        const g = byHandle.get(handle); g.rows.push({ r, v, ex, status, line }); if (ex) { g.isNew = false; if (!g.any) g.any = ex; if (!g.handle && exH) g.handle = exH; }
       });
       const payloads = []; let create = 0, update = 0, same = 0;
       byHandle.forEach(g => {
-        const cur = st.products.filter(x => g.handle && x.handle === g.handle), c0 = cur[0] || {}, shared = {};
+        if (g.isNew && g.handle && st.products.some(x => hkey(x) === g.handle.toLowerCase())) g.isNew = false;          // a new SKU added to a product that already exists
+        const cur = st.products.filter(x => g.handle && hkey(x) === g.handle.toLowerCase()), c0 = cur[0] || g.any || {}, shared = {};
         SHARED.forEach(k => { if (!has(k)) return; const vals = g.rows.map(x => cell(x.r, PCOL[k])), now = String(c0[k] == null ? '' : c0[k]).trim(); shared[k] = vals.find(x => x !== now) !== undefined ? vals.find(x => x !== now) : vals[0]; });
         const stt = g.rows.map(x => x.status).find(x => x); const curStatus = String(c0.status || '').toUpperCase() === 'ACTIVE' ? 'ACTIVE' : 'UNLISTED';
         shared.status = stt || (g.isNew ? 'UNLISTED' : curStatus);
@@ -9303,7 +9356,7 @@ ${invoiceFootHtml('')}`;
         '<div><label>IndexNow key (tells Bing and others about changes instantly)</label><div class="sa-bar" style="margin:0"><input data-m="indexnow_key" value="' + E(st.mk.indexnow_key) + '" dir="ltr" style="flex:1"><button class="sa-btn" data-act="genkey">Generate</button></div></div></div>' +
         '<div class="sa-note">Always on, nothing to set: titles and meta descriptions, hreflang (Arabic/English), product and organization structured data, sitemap with pictures, <b>llms.txt</b> (a summary written for AI assistants), fast static pages.</div>' + '<div class="sa-sec">Search and AI health check</div><div class="sa-note">' + ok + ' of ' + h.total + ' visible products have no important problem. Tap a line to see the products.</div>' +
         SEOK.map(k => { const n = h.issues[k[0]].length; return '<div class="sa-row" style="grid-template-columns:1fr auto;cursor:pointer" data-seo="' + k[0] + '"><div><div class="sa-t">' + k[1] + '</div><div class="sa-s">' + k[2] + '</div></div><span class="sa-pill ' + (n ? (k[0] === 'oneimg' ? 'off' : 'warn') : 'ok') + '">' + (n || 'OK') + '</span></div>' +
-          (st.seoOpen === k[0] && n ? '<div style="margin:-4px 0 10px 12px">' + h.issues[k[0]].slice(0, 25).map(g => '<span class="sa-ch" style="cursor:pointer" data-open="' + E(g[0].handle || '') + '">' + E(gTitle(g)) + '</span>').join(' ') + (n > 25 ? '<div class="sa-s">…and ' + (n - 25) + ' more</div>' : '') + '</div>' : ''); }).join('') +
+          (st.seoOpen === k[0] && n ? '<div style="margin:-4px 0 10px 12px">' + h.issues[k[0]].slice(0, 25).map(g => '<span class="sa-ch" style="cursor:pointer" data-open="' + E(gKey(g)) + '">' + E(gTitle(g)) + '</span>').join(' ') + (n > 25 ? '<div class="sa-s">…and ' + (n - 25) + ' more</div>' : '') + '</div>' : ''); }).join('') +
         '<div class="sa-row" style="grid-template-columns:1fr auto;cursor:default"><div><div class="sa-t">Collections without a description</div><div class="sa-s">' + (h.colNoDesc.length ? E(h.colNoDesc.slice(0, 8).map(c => c.title || c.match_name).join(' · ')) + (h.colNoDesc.length > 8 ? '…' : '') : 'All have one') + '</div></div><span class="sa-pill ' + (h.colNoDesc.length ? 'warn' : 'ok') + '">' + (h.colNoDesc.length || 'OK') + '</span></div>' +
         '<div class="sa-row" style="grid-template-columns:1fr auto;cursor:default"><div><div class="sa-t">Collections without an English name</div><div class="sa-s">' + (h.colNoEn.length ? E(h.colNoEn.slice(0, 8).map(c => c.title || c.match_name).join(' · ')) + (h.colNoEn.length > 8 ? '…' : '') : 'All have one') + '</div></div><span class="sa-pill ' + (h.colNoEn.length ? 'warn' : 'ok') + '">' + (h.colNoEn.length || 'OK') + '</span></div>' + '<div class="sa-sec">Get found — checklist</div><ol class="sa-note" style="font-size:13px;line-height:1.9;padding-left:18px">' +
         '<li><b>Google Search Console</b> → add <b>' + E(SITES[0][1]) + '</b> as a property, paste the verification code above, then submit <span class="sa-code" style="display:inline">' + E(SITES[0][1]) + '/sitemap.xml</span></li>' +
@@ -9382,6 +9435,7 @@ ${invoiceFootHtml('')}`;
       if (t.dataset.rimg) { st.rowTarget = t.dataset.rimg; $('saRowFile').click(); return; }
       const sl = t.dataset; if (sl.slup !== undefined || sl.sldn !== undefined || sl.sldel !== undefined) { const s = st.app.hero.slides, n = +(sl.slup ?? sl.sldn ?? sl.sldel); if (sl.sldel !== undefined) s.splice(n, 1); else { const m = sl.slup !== undefined ? n - 1 : n + 1; if (m >= 0 && m < s.length) { const x = s[n]; s[n] = s[m]; s[m] = x; } } main.innerHTML = appearanceHtml(); return; }
       if (sl.slimg) { st.slTarget = sl.slimg; $('saSlFile').click(); return; }
+      const mp = t.closest('[data-mergepick]'); if (mp && st.ed) { await mergeInto(mp.dataset.mergepick); return; }
       const oc = t.closest('[data-opencol]'); if (oc) { openCollection(oc.dataset.opencol); return; }
       const di = t.closest('[data-editdisc]'); if (di) { openDiscount(di.dataset.editdisc); return; }
       if (open && !act) { openEditor(open.dataset.open); return; }
@@ -9392,12 +9446,16 @@ ${invoiceFootHtml('')}`;
       else if (a === 'new') openEditor('__new__');
       else if (a === 'newcol') openCollection('');
       else if (a === 'cancel') { st.ed = null; st.dd = null; st.cd = null; st.imp = null; renderModal(); }
-      else if (a === 'addvar') { st.ed.variants.push({ id: '', sku: '', option1_value: '', option2_value: '', sale_price: '', regular_price: '', store_stock_mode: 'auto', variant_image: '', weight: '', balance: 0 }); renderModal(); }
+      else if (a === 'addvar') { const used = new Set(st.products.map(x => String(x.sku || '').trim().toLowerCase()).concat(st.ed.variants.map(x => String(x.sku || '').trim().toLowerCase())));
+        const base = String((st.ed.variants[0] || {}).sku || '').trim(); let n = st.ed.variants.length + 1, sku = '';
+        if (base) { do { sku = base + '-' + n++; } while (used.has(sku.toLowerCase())); }                  // suggested SKU, free to change
+        st.ed.variants.push({ id: '', sku, option1_value: '', option2_value: '', sale_price: '', regular_price: '', store_stock_mode: 'auto', variant_image: '', weight: '', balance: 0 }); renderModal(); }
       else if (a === 'pick') $('saFile').click();
       else if (a === 'addurl') { const u = $('saUrl').value.trim(); if (/^https?:\/\//i.test(u)) { st.ed.images.push(u); renderModal(); } }
       else if (a === 'copylink') { try { await navigator.clipboard.writeText(act.dataset.url); toast('Link copied'); } catch (x) { toast('Copy failed'); } }
       else if (a === 'saveprod') await saveProduct();
       else if (a === 'delprod') await deleteProduct();
+      else if (a === 'mergeopen') { if (st.ed) { st.ed.merge = !st.ed.merge; st.ed.mergeQ = ''; renderModal(); } }
       else if (a === 'savecol') await saveCollection();
       else if (a === 'colimg') $('saColFile').click();
       else if (a === 'colimgrm') { st.cd.f.image = ''; renderModal(); }
@@ -9438,6 +9496,7 @@ ${invoiceFootHtml('')}`;
     root.addEventListener('click', e => { const b = e.target.closest && e.target.closest('#saAp button, #saAp [data-rpick], #saAp [data-runcol]'); if (b && !b.dataset.atab) markDirty(); }, true);
     root.addEventListener('input', e => {
       const t = e.target;
+      if (t.dataset && t.dataset.mergeq !== undefined && st.ed) { st.ed.mergeQ = t.value; const ml = $('saMergeList'); if (ml) ml.innerHTML = mergeListHtml(); return; }
       if (t.classList.contains('sa-pq')) { pkSearch(t.closest('[data-pk]'), t.value); return; }
       if (t.classList.contains('sa-rq')) { rqSearch(t.closest('[data-rowpk]'), t.value); return; }
       if (t.id === 'saGlQ') { st.gl.q = t.value; main.innerHTML = locationsHtml(); const gq = $('saGlQ'); gq.focus(); gq.setSelectionRange(gq.value.length, gq.value.length); return; }
@@ -9468,9 +9527,10 @@ ${invoiceFootHtml('')}`;
       if (t.id === 'saRowFile' && t.files[0] && st.rowTarget) { const p = st.rowTarget.split('|'); try { st.app.sections[+p[0]][p[1]] = await uploadOne(t.files[0], 'banners', 2400); main.innerHTML = appearanceHtml(); updateCounters(); } catch (x) { toast('Upload failed: ' + (x.message || x)); } t.value = ''; return; }
       if (t.id === 'saFile') { uploadImages(t.files); t.value = ''; return; }
       if (t.id === 'saVFile' && t.files[0] && st.ed) {                      // picture for ONE option
-        const ed = st.ed, v = ed.variants[st.vupIdx], folder = 'products/' + (String((ed.variants[0] || {}).sku || 'new').toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'new');
-        try { ed.msg = 'Uploading…'; ed.msgErr = false; v.variant_image = await uploadOne(t.files[0], folder, 1600); ed.msg = ''; } catch (x) { ed.msg = 'Image upload failed: ' + (x.message || x); ed.msgErr = true; }
-        renderModal(); t.value = ''; return;
+        const ed = st.ed, v = ed.variants[st.vupIdx], file = t.files[0], folder = 'products/' + (String((ed.variants[0] || {}).sku || 'new').toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'new'); t.value = '';
+        ed.uploading = (ed.uploading || 0) + 1; ed.msg = 'Uploading ' + file.name + '\u2026'; ed.msgErr = false; renderModal();
+        try { v.variant_image = await uploadOne(file, folder, 1600); ed.msg = ''; } catch (x) { ed.msg = 'Picture not uploaded: ' + (x.message || x); ed.msgErr = true; }
+        ed.uploading--; if (st.ed === ed) renderModal(); return;
       }
       if (t.id === 'saColFile' && t.files[0]) { try { st.cd.f.image = await uploadOne(t.files[0], 'collections', 1400); renderModal(); } catch (x) { st.cd.msg = 'Image upload failed: ' + (x.message || x); renderModal(); } t.value = ''; return; }
       if (t.id === 'saSlFile' && t.files[0] && st.slTarget) { const p = st.slTarget.split('|'); try { st.app.hero.slides[+p[0]][p[1]] = await uploadOne(t.files[0], 'banners', 2400); main.innerHTML = appearanceHtml(); updateCounters(); } catch (x) { toast('Upload failed: ' + (x.message || x)); } t.value = ''; return; }
