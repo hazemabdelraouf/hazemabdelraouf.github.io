@@ -8339,6 +8339,16 @@ ${invoiceFootHtml('')}`;
     .ap-tab:hover{color:var(--cream);background:rgba(127,127,127,.08)}.ap-tab.on{color:var(--cream);border-bottom-color:var(--gold,#c8a45d);background:rgba(127,127,127,.1)}
     .ap-pane{padding:6px 18px 20px}.ap-ph{margin:14px 0 2px;font-size:19px}.ap-lead{margin:0 0 14px;font-size:13px;color:var(--cream-dim);line-height:1.6}
     .ap-sticky{position:sticky;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px;z-index:6;margin:0;border-radius:0 0 16px 16px}
+    .wz{border:1px solid var(--gold,#c8a45d);border-radius:14px;padding:14px;margin:10px 0 14px;background:rgba(200,164,93,.07)}
+    .wz-h{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px}
+    .wz-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+    .wz-card,.wz-opt{text-align:start;display:flex;flex-direction:column;gap:4px;padding:14px;border:1.5px solid var(--line);border-radius:12px;background:var(--panel);color:inherit;font:inherit;cursor:pointer;transition:transform .15s,border-color .15s,background .15s}
+    .wz-card:hover,.wz-opt:hover{border-color:var(--gold,#c8a45d);transform:translateY(-2px)}.wz-ic{font-size:26px;line-height:1}
+    .wz-card small,.wz-opt small{color:var(--cream-dim);line-height:1.5;font-size:12px}
+    .wz-opt{padding:10px 14px;flex:1;min-width:190px}.wz-opt.on{border-color:var(--gold,#c8a45d);background:rgba(200,164,93,.16)}
+    .wz-q{margin:12px 0}.wz-ql{font-weight:800;font-size:13px;margin-bottom:6px}.wz-opts{display:flex;gap:8px;flex-wrap:wrap}
+    .wz-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px 12px;max-height:200px;overflow:auto;padding:8px 10px;border:1px solid var(--line);border-radius:10px}.wz-checks label{display:flex;gap:6px;align-items:center;margin:0;font-size:13px}
+    .wz-new{animation:wzglow 3.6s ease}@keyframes wzglow{0%,70%{box-shadow:0 0 0 3px var(--gold,#c8a45d)}100%{box-shadow:0 0 0 0 transparent}}
     .ap-dirty{font-size:12.5px;font-weight:700;color:#d97706}.ap-wrap #saAMsg{margin:0 18px 8px}
     @media(max-width:640px){.ap-pane{padding:4px 12px 16px}.ap-wrap .sa-g2,.ap-wrap .sa-g3{grid-template-columns:1fr}}
     .sa-card h3{margin:0 0 12px;font-size:18px}.sa-sec{font-size:12px;font-weight:800;color:var(--cream-dim);text-transform:uppercase;margin:16px 0 6px}
@@ -8632,7 +8642,7 @@ ${invoiceFootHtml('')}`;
         '<div><label>Title size</label>' + sel('tscale', [['', 'Site default'], ['0.8', 'Smaller'], ['1.2', 'Larger'], ['1.4', 'Much larger']]) + '</div>' +
         '<div><label>Pictures in this row</label>' + sel('fit', [['', 'Site default'], ['contain', 'Whole picture + blurred background'], ['plain', 'Whole picture, plain background'], ['cover', 'Fill the frame (crops the edges)']]) + '</div>';
       const titleHint = r.type === 'categories' ? 'Shop by category' : r.type === 'latest' ? 'Latest products' : r.type === 'collection' ? 'the collection name' : '';
-      return '<div class="sa-sl"' + (r.on === false ? ' style="opacity:.6"' : '') + '><div class="sa-bar" style="margin-bottom:6px"><b>' + (r.fixed ? (r.type === 'categories' ? 'Fixed · Shop by category — always right under the banner' : 'Fixed · Latest products — always after your rows, before the footer') : 'Row ' + n + ' · ' + E(rowTypeName(r.type))) + '</b>' + (rowIncomplete(r) ? '<span class="sa-chip err" style="margin-inline-start:8px">incomplete — will not show</span>' : '') + '<span style="flex:1"></span>' +
+      return '<div class="sa-sl" id="saRow-' + E(r.id) + '"' + (r.on === false ? ' style="opacity:.6"' : '') + '><div class="sa-bar" style="margin-bottom:6px"><b>' + (r.fixed ? (r.type === 'categories' ? 'Fixed · Shop by category — always right under the banner' : 'Fixed · Latest products — always after your rows, before the footer') : 'Row ' + n + ' · ' + E(rowTypeName(r.type))) + '</b>' + (rowIncomplete(r) ? '<span class="sa-chip err" style="margin-inline-start:8px">incomplete — will not show</span>' : '') + '<span style="flex:1"></span>' +
         (r.fixed ? '</div>' : '<label style="display:flex;gap:6px;align-items:center;margin:0"><input type="checkbox" data-r="' + n + '.on"' + (r.on !== false ? ' checked' : '') + '> Visible</label>' +
         '<button class="sa-btn" data-rup="' + n + '"' + (n <= 1 ? ' disabled' : '') + '>↑</button><button class="sa-btn" data-rdn="' + n + '"' + (n >= total - 2 ? ' disabled' : '') + '>↓</button><button class="sa-btn dan" data-rdel="' + n + '">Delete</button></div>') +
         '<div class="sa-g2">' + (r.type === 'text' || r.type === 'banner' || r.type === 'categories' || r.type === 'latest' || r.type === 'collection' || r.type === 'products' ? inp('title_ar', 'Title (Arabic)' + (titleHint ? ' — empty = ' + titleHint : ''), 'dir="rtl"') + inp('title_en', 'Title (English)' + (titleHint ? ' — empty = ' + titleHint : '')) : '') + '</div>' +
@@ -8655,11 +8665,62 @@ ${invoiceFootHtml('')}`;
       '<p><b>Background / Title position / Space above-below / Show the title</b>: colour behind the row, title on the start side or centred, empty space around the row, and whether the title is shown at all (empty title = the default name).</p>' +
       '<p><b>Visible checkbox</b> (rows you add): untick to hide a row without deleting it. Rows with nothing to show (empty collection, no image) are skipped automatically.</p>' +
       '</div></details>';
+    // ============ "Add a row" guide: 1) what kind of row  2) a few simple questions  3) the row appears, highlighted ============
+    const WZ_TYPES = [
+      ['collection', '\U0001f6cd\ufe0f', 'Products of a collection', 'A line of products from one of your collections that slides on its own. Great for offers and best sellers.'],
+      ['categories', '\u2b55', 'Collections as pictures', 'Round or square pictures of your collections. A tap opens the collection.'],
+      ['banner', '\U0001f5bc\ufe0f', 'Picture with text and buttons', 'One big picture across the screen with your words and buttons on it.'],
+      ['products', '\u261d\ufe0f', 'Products I choose', 'Pick exact products one by one, from any collection.'],
+      ['text', '\U0001f4dd', 'Title and paragraph', 'Only words: a message, an announcement or a short story about your brand.']
+    ];
+    function wizHtml() {
+      const w = st.wiz;
+      if (!w) return '<div class="sa-bar"><button class="sa-btn pri" data-act="wiz-open">+ Add a row</button><span class="sa-s">Rows are the sections of the home page. The guide asks what you want and sets it up for you.</span></div>';
+      if (w.step === 1) return '<div class="wz"><div class="wz-h"><b>What do you want to add?</b><button class="sa-btn" data-act="wiz-close">Cancel</button></div><div class="wz-grid">' +
+        WZ_TYPES.map(t => '<button type="button" class="wz-card" data-wiz="' + t[0] + '"><span class="wz-ic">' + t[1] + '</span><b>' + t[2] + '</b><small>' + t[3] + '</small></button>').join('') + '</div></div>';
+      const t = WZ_TYPES.find(x => x[0] === w.type), opt = (f, v, label, hint) => '<button type="button" class="wz-opt' + (w[f] === v ? ' on' : '') + '" data-wzset="' + f + '|' + v + '"><b>' + label + '</b>' + (hint ? '<small>' + hint + '</small>' : '') + '</button>';
+      const q = (label, inner) => '<div class="wz-q"><div class="wz-ql">' + label + '</div><div class="wz-opts">' + inner + '</div></div>';
+      let body = '';
+      if (w.type === 'collection') {
+        body = '<div class="wz-q"><div class="wz-ql">Which collection?</div>' + (st.cols.length ? '<select data-wz="col"><option value="">Choose a collection\u2026</option>' + st.cols.map(c => '<option value="' + E(c.match_name) + '"' + (w.col === c.match_name ? ' selected' : '') + '>' + E(colName(c, true)) + '</option>').join('') + '</select>' : '<div class="sa-note">You have no collections yet. Create one in the Collections tab first.</div>') + '</div>' +
+          q('How should the products appear?', opt('layout', 'slider', 'One sliding line', 'Recommended. Moves on its own, with arrows.') + opt('layout', 'grid', 'A grid', 'Several lines under each other.'));
+      } else if (w.type === 'categories') {
+        body = q('Which collections?', opt('which', 'all', 'All my main collections', 'Automatic, in your collections order.') + opt('which', 'pick', 'I will choose', 'Pick them below.')) +
+          (w.which === 'pick' ? '<div class="wz-q"><div class="wz-ql">Tick the collections to show</div><div class="wz-checks">' + st.cols.map(c => '<label><input type="checkbox" data-wzc="' + E(c.match_name) + '"' + (w.cols.includes(c.match_name) ? ' checked' : '') + '> ' + E(colName(c, true)) + '</label>').join('') + '</div></div>' : '') +
+          q('What shape?', opt('style', 'circles', 'Circles', 'Round pictures with the name under.') + opt('style', 'tiles', 'Rounded squares', 'Bigger pictures with the name on them.')) +
+          q('How should they appear?', opt('layout', 'slider', 'One sliding line', 'Recommended.') + opt('layout', 'grid', 'A grid', 'Several lines under each other.'));
+      } else if (w.type === 'banner') {
+        body = q('How wide?', opt('width', 'full', 'Edge to edge', 'The picture fills the whole screen width.') + opt('width', 'page', 'Inside the page margins', 'Same width as the products below it.')) +
+          '<div class="sa-note">Next you upload the picture and write the text and buttons in the new row.</div>';
+      } else if (w.type === 'products') {
+        body = '<div class="sa-note">Next you search the products you want and add them one by one in the new row.</div>';
+      } else {
+        body = '<div class="sa-note">Next you write the text in the new row, in Arabic and in English.</div>';
+      }
+      const titles = '<div class="wz-q"><div class="wz-ql">Title of the row <span class="sa-s">(optional)</span></div><div class="sa-g2"><input data-wz="title_ar" dir="rtl" placeholder="العنوان بالعربي" value="' + E(w.title_ar) + '"><input data-wz="title_en" placeholder="Title in English" value="' + E(w.title_en) + '"></div></div>';
+      return '<div class="wz"><div class="wz-h"><b>' + t[1] + ' ' + t[2] + '</b><button class="sa-btn" data-act="wiz-close">Cancel</button></div>' + body + (w.type === 'text' || w.type === 'banner' ? '' : titles) +
+        (w.err ? '<div class="sa-msg err">' + E(w.err) + '</div>' : '') + '<div class="sa-bar" style="margin-top:12px"><button class="sa-btn" data-act="wiz-back">\u2190 Back</button><span style="flex:1"></span><button class="sa-btn pri" data-act="wiz-add">Add this row</button></div></div>';
+    }
+    function wizAdd() {
+      const w = st.wiz; if (!w) return; w.err = '';
+      const r = newRow(w.type); r.id = rowId(); r.fixed = false;
+      if (w.type === 'collection') { if (!w.col) { w.err = 'Choose the collection first.'; main.innerHTML = appearanceHtml(); return; } Object.assign(r, { col: w.col, layout: w.layout }); }
+      if (w.type === 'categories') {
+        if (w.which === 'pick' && !w.cols.length) { w.err = 'Tick at least one collection, or choose \u201cAll my main collections\u201d.'; main.innerHTML = appearanceHtml(); return; }
+        Object.assign(r, { size: '', full: false, cols_desktop: 5, count: 12, style: w.style, layout: w.layout, cols: w.which === 'pick' ? w.cols.slice() : [] });
+      }
+      if (w.type === 'banner') r.full = w.width === 'full';
+      if (w.type !== 'text' && w.type !== 'banner') { r.title_ar = w.title_ar.trim(); r.title_en = w.title_en.trim(); r.show_title = !!(r.title_ar || r.title_en); }
+      st.app.sections.splice(st.app.sections.length - 1, 0, r);
+      const hint = { collection: 'Row added. Press Save appearance to publish it.', categories: 'Row added. Press Save appearance to publish it.', banner: 'Row added \u2014 now upload the picture and write the text and buttons.', products: 'Row added \u2014 now search and add the products.', text: 'Row added \u2014 now write the text.' }[w.type];
+      st.wiz = null; st.appDirty = true; main.innerHTML = appearanceHtml(); updateCounters(); toast(hint);
+      const el = $('saRow-' + r.id); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('wz-new'); setTimeout(() => el.classList.remove('wz-new'), 3600); }
+    }
     function rowsHtml() {
       const rows = st.app.sections;
-      return '<div class="sa-sec">Home page rows</div><div class="sa-note">Order on the home page: banner → <b>Shop by category</b> (fixed) → your rows → <b>Latest products</b> (fixed) → footer. Add rows between the two fixed blocks, then press <b>Save appearance</b> at the bottom.</div>' + ROW_HELP +
+      return '<div class="sa-sec">Home page rows</div><div class="sa-note">Order on the home page: banner → <b>Shop by category</b> (fixed) → your rows → <b>Latest products</b> (fixed) → footer. Add rows between the two fixed blocks, then press <b>Save appearance</b> at the bottom.</div>' + wizHtml() + ROW_HELP +
         rows.map((r, n) => rowCardHtml(r, n, rows.length)).join('') +
-        '<div class="sa-bar"><select id="saRowType">' + ROW_TYPES.filter(t => t[0] !== 'latest').map(t => '<option value="' + t[0] + '">' + t[1] + '</option>').join('') + '</select><button class="sa-btn" data-act="rows-add">+ Add row</button><span style="flex:1"></span><button class="sa-btn dan" data-act="rows-reset">Remove all rows I added</button></div><input type="file" id="saRowFile" accept="image/*" hidden>';
+        '<div class="sa-bar"><button class="sa-btn pri" data-act="wiz-open">+ Add a row</button><span style="flex:1"></span><button class="sa-btn dan" data-act="rows-reset">Remove all rows I added</button></div><input type="file" id="saRowFile" accept="image/*" hidden>';
     }
     function rqSearch(box, q) {
       const n = +box.dataset.rowpk, res = box.querySelector('.sa-pr'), nq = norm(q).trim(); if (!nq) { res.hidden = true; return; }
@@ -9439,6 +9500,8 @@ ${invoiceFootHtml('')}`;
       if (t.dataset.glsave) { await glSave(t.dataset.glsave); return; }
       if (t.dataset.gldel) { await glDelete(t.dataset.gldel); return; }
       const rp = t.closest('[data-rpick]'); if (rp) { const s = rp.dataset.rpick, i = s.indexOf('|'), row = st.app.sections[+s.slice(0, i)], sku = s.slice(i + 1); if (row && !(row.skus || []).includes(sku)) row.skus = (row.skus || []).concat([sku]); main.innerHTML = appearanceHtml(); return; }
+      const wzk = t.closest('[data-wiz]'); if (wzk && st.app) { st.wiz = { step: 2, type: wzk.dataset.wiz, col: '', layout: 'slider', style: 'circles', which: 'all', cols: [], width: 'full', title_ar: '', title_en: '', err: '' }; main.innerHTML = appearanceHtml(); return; }
+      const wzo = t.closest('[data-wzset]'); if (wzo && st.wiz) { const q = wzo.dataset.wzset.split('|'); st.wiz[q[0]] = q[1]; main.innerHTML = appearanceHtml(); return; }
       const atab = t.closest('[data-atab]');
       if (atab) { st.appTab = atab.dataset.atab; main.innerHTML = appearanceHtml(); updateCounters(); (main.closest('.sa-body') || main).scrollTop = 0; window.scrollTo(0, 0); return; }
       if (t.dataset.pgup !== undefined || t.dataset.pgdn !== undefined) { const n = +(t.dataset.pgup !== undefined ? t.dataset.pgup : t.dataset.pgdn), m = t.dataset.pgup !== undefined ? n - 1 : n + 1, L = st.app.pages; if (L[m]) { const x = L[n]; L[n] = L[m]; L[m] = x; } main.innerHTML = appearanceHtml(); return; }
@@ -9493,6 +9556,10 @@ ${invoiceFootHtml('')}`;
       else if (a === 'applyimport') await applyImport();
       else if (a === 'addslide') { st.app.hero.slides.push({ image: '', mobile: '', title_ar: '', title_en: '', subtitle_ar: '', subtitle_en: '', cta_ar: 'تسوق الآن', cta_en: 'Shop now', href: '/{lang}/products/' }); main.innerHTML = appearanceHtml(); updateCounters(); }
       else if (a === 'rows-custom') { main.innerHTML = appearanceHtml(); }
+      else if (a === 'wiz-open') { st.wiz = { step: 1 }; main.innerHTML = appearanceHtml(); const z = main.querySelector('.wz'); if (z) z.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      else if (a === 'wiz-close') { st.wiz = null; main.innerHTML = appearanceHtml(); updateCounters(); }
+      else if (a === 'wiz-back') { st.wiz.step = 1; st.wiz.err = ''; main.innerHTML = appearanceHtml(); }
+      else if (a === 'wiz-add') wizAdd();
       else if (a === 'rows-add') { const nr = newRow($('saRowType').value); if (nr.type === 'categories') Object.assign(nr, { id: rowId(), size: '', full: false, cols_desktop: 5, count: 12 }); st.app.sections.splice(st.app.sections.length - 1, 0, nr); main.innerHTML = appearanceHtml(); updateCounters(); }
       else if (a === 'rows-reset') { if (confirm('Remove all the rows you added? The fixed Shop by category and Latest products blocks stay.')) { st.app.sections = st.app.sections.filter(r => r.fixed); main.innerHTML = appearanceHtml(); } }
       else if (a === 'gl-addgov') await glAddGov();
@@ -9507,11 +9574,11 @@ ${invoiceFootHtml('')}`;
       else if (a === 'checkapi') { const el = $('saApiRes'); el.textContent = 'Checking…'; try { await fetch(siteUrl() + '/api/cart?id=check', { mode: 'no-cors' }); el.textContent = 'The website API answered ✓'; } catch (x) { el.textContent = 'No answer — is the site published?'; } }
     });
     const markDirty = () => { if (!st.appDirty) { st.appDirty = true; const d = $('saDirty'); if (d) d.hidden = false; } };
-    root.addEventListener('input', e => { if (e.target.closest && e.target.closest('#saAp')) markDirty(); }, true);
+    root.addEventListener('input', e => { if (e.target.closest && e.target.closest('#saAp') && !e.target.closest('.wz')) markDirty(); }, true);
     const markMk = () => { if (!st.mkDirty) { st.mkDirty = true; const d = $('saMkDirty'); if (d) d.hidden = false; } };
     root.addEventListener('input', e => { if (e.target.closest && e.target.closest('#saMkp [data-m]')) markMk(); }, true);
     root.addEventListener('click', e => { if (e.target.closest && e.target.closest('#saMkp [data-act="genkey"]')) markMk(); }, true);
-    root.addEventListener('click', e => { const b = e.target.closest && e.target.closest('#saAp button, #saAp [data-rpick], #saAp [data-runcol]'); if (b && !b.dataset.atab) markDirty(); }, true);
+    root.addEventListener('click', e => { const b = e.target.closest && e.target.closest('#saAp button, #saAp [data-rpick], #saAp [data-runcol]'); if (b && !b.dataset.atab && !b.closest('.wz') && b.dataset.act !== 'wiz-open' && b.dataset.act !== 'wiz-close') markDirty(); }, true);
     root.addEventListener('input', e => {
       const t = e.target;
       if (t.dataset && t.dataset.mergeq !== undefined && st.ed) { st.ed.mergeQ = t.value; const ml = $('saMergeList'); if (ml) ml.innerHTML = mergeListHtml(); return; }
@@ -9527,6 +9594,8 @@ ${invoiceFootHtml('')}`;
       else if (t.dataset.r !== undefined && st.app && Array.isArray(st.app.sections)) { const i = t.dataset.r.indexOf('.'), row = st.app.sections[+t.dataset.r.slice(0, i)]; if (row) row[t.dataset.r.slice(i + 1)] = t.type === 'checkbox' ? t.checked : t.value; }
       else if (t.dataset.gld !== undefined && st.gl) { const p = t.dataset.gld.split(':'), gid = p[0] + ':' + p[1]; (st.gl.draft[gid] = st.gl.draft[gid] || {})[p[2]] = t.type === 'checkbox' ? t.checked : t.value; }
       else if (t.dataset.a !== undefined && st.app) { const p = t.dataset.a.split('.'); st.app[p[0]][p[1]] = t.value; if (p[0] === 'fonts') main.innerHTML = appearanceHtml(); }
+      else if (t.dataset.wz !== undefined && st.wiz) { st.wiz[t.dataset.wz] = t.value; }
+      else if (t.dataset.wzc !== undefined && st.wiz) { const c = st.wiz.cols, i = c.indexOf(t.dataset.wzc); if (t.checked && i < 0) c.push(t.dataset.wzc); if (!t.checked && i >= 0) c.splice(i, 1); }
       else if (t.dataset.rb !== undefined && st.app) { const q = t.dataset.rb.split('.'), row = st.app.sections[+q[0]], b = row && Array.isArray(row.buttons) ? row.buttons[+q[1]] : null; if (b) b[q[2]] = t.value; }
       else if (t.dataset.pg !== undefined && st.app) { const q = t.dataset.pg.split('.'); if (st.app.pages[+q[0]]) st.app.pages[+q[0]][q[1]] = t.value; }
       else if (t.dataset.s !== undefined && st.app) { const p = t.dataset.s.split('.'); st.app.hero.slides[+p[0]][p[1]] = t.value; }
